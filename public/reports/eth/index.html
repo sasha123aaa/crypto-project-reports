@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ethereum — live report</title>
+  <title>Ethereum — клиентский отчет v7</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    :root{--bg:#1f2329;--bg2:#191d22;--line:rgba(255,255,255,.10);--text:#eef3ff;--muted:#a8b2c7;--shadow:0 18px 40px rgba(0,0,0,.28)}
+    :root{--bg:#1f2329;--bg2:#191d22;--line:rgba(255,255,255,.10);--text:#eef3ff;--muted:#a8b2c7;--shadow:0 18px 40px rgba(0,0,0,.28);--soft:#e9ecf0;--warn:#e0b86a}
     *{box-sizing:border-box}
     html{scroll-behavior:smooth}
     body{margin:0;font-family:Inter,Arial,sans-serif;color:var(--text);background:linear-gradient(180deg,var(--bg) 0%, var(--bg2) 100%)}
@@ -66,6 +66,10 @@
     .info-dot::after{content:attr(data-tip);position:absolute;left:50%;bottom:130%;transform:translateX(-50%);min-width:220px;max-width:300px;padding:10px 12px;border-radius:12px;background:#11161d;border:1px solid rgba(255,255,255,.14);color:#eef3ff;font-size:12px;line-height:1.45;font-weight:500;white-space:normal;opacity:0;visibility:hidden;pointer-events:none;box-shadow:0 12px 30px rgba(0,0,0,.35);z-index:999}
     .info-dot::before{content:"";position:absolute;left:50%;bottom:118%;transform:translateX(-50%);border-left:6px solid transparent;border-right:6px solid transparent;border-top:6px solid #11161d;opacity:0;visibility:hidden;pointer-events:none;z-index:1000}
     .info-dot:hover::after,.info-dot:hover::before{opacity:1;visibility:visible}
+    .status-chip{display:inline-block;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;border:1px solid rgba(255,255,255,.12)}
+    .status-live{background:rgba(99,200,132,.14);color:#d7ffe2}
+    .status-partial{background:rgba(224,184,106,.12);color:#ffe6b3}
+    .status-manual{background:rgba(255,255,255,.08);color:#dbe5ff}
     @media (max-width:1180px){.page{grid-template-columns:1fr}.sidebar{position:static}.hero-grid,.split-2,.split-4,.focus-grid,.hero-kpis,.mini-grid{grid-template-columns:1fr}h1{font-size:42px}}
   </style>
 </head>
@@ -73,30 +77,14 @@
   <div class="page">
     <aside class="panel sidebar">
       <div class="eyebrow">Crypto Project Deep Dive</div>
-      <div class="coin">
-        <div class="coin-badge">Ξ</div>
-        <div>
-          <div class="coin-name">Ethereum</div>
-          <div class="coin-ticker">ETH • live report</div>
-        </div>
-      </div>
+      <div class="coin"><div class="coin-badge">Ξ</div><div><div class="coin-name">Ethereum</div><div class="coin-ticker">ETH • infrastructure asset</div></div></div>
       <div class="tag-row"><div class="tag">L1</div><div class="tag">DeFi</div><div class="tag">Smart Contracts</div></div>
       <nav class="nav">
-        <a href="#hero">Первый экран</a>
-        <a href="#chart">Живой график</a>
-        <a href="#summary">Executive Summary</a>
-        <a href="#tokenomics">Токеномика</a>
-        <a href="#financials">Финансы</a>
-        <a href="#tvl">TVL и капитал</a>
-        <a href="#valuation">Оценка</a>
+        <a href="#hero">Первый экран</a><a href="#chart">Живой график</a><a href="#summary">Executive Summary</a>
+        <a href="#tokenomics">Токеномика</a><a href="#financials">Финансы</a><a href="#tvl">TVL и капитал</a>
+        <a href="#valuation">Оценка</a><a href="#risks">Риски</a><a href="#final">Итог</a>
       </nav>
-      <div class="stamp">
-        Версия: live report<br>
-        Текст: статический<br>
-        Метрики: автообновляемые через /api/*<br>
-        Обновлено: <span id="updatedAt">—</span><br>
-        Статус загрузки: <span id="loadState">загрузка…</span>
-      </div>
+      <div class="stamp">Версия: v7 client<br>Формат: клиентский отчет<br>Обновлено: <span id="updatedAt">—</span><br>Статус данных: <span id="loadState">загрузка…</span></div>
     </aside>
 
     <main class="content">
@@ -106,70 +94,72 @@
             <div class="eyebrow">Первый экран</div>
             <h1>Ethereum как базовая инфраструктура рынка</h1>
             <div class="subtitle">Сильный фундаментал, зрелый актив, ключевой вопрос — удержание ценности внутри экосистемы.</div>
-            <div class="lead">В этой версии метрики подтягиваются через proxy-маршруты самого сайта.</div>
+            <div class="lead">Ethereum остается одной из главных сетей крипторынка. Это базовый слой для смарт-контрактов, DeFi, стейблкоинов и части инфраструктуры второго уровня. Сила ETH в том, что актив опирается не только на рыночный интерес, но и на капитал внутри экосистемы, высокую ликвидность и реальное использование сети.</div>
             <div class="focus-grid">
-              <div class="focus"><div class="small">Главная сила</div><div class="text">Огромный капитал в экосистеме, сильная ликвидность и роль базового инфраструктурного слоя рынка.</div></div>
-              <div class="focus"><div class="small">Главный риск</div><div class="text">Часть создаваемой ценности может уходить в приложения и L2, а не оставаться напрямую в ETH.</div></div>
+              <div class="focus"><div class="small">Главная сила</div><div class="text">Сильная инфраструктурная позиция, глубокая ликвидность и крупный капитал внутри экосистемы.</div></div>
+              <div class="focus"><div class="small">Главный риск</div><div class="text">Часть ценности может уходить в L2 и приложения, а не оставаться напрямую на уровне ETH.</div></div>
               <div class="focus"><div class="small">Общий статус</div><div class="text">Сильный фундаментал, но зрелый актив, которому нужно подтверждать оценку через экономику сети.</div></div>
             </div>
           </div>
           <div>
             <div class="hero-kpis">
-              <div class="kpi"><div class="label">Цена</div><div class="value" id="kpiPrice">—</div><div class="sub">live</div></div>
-              <div class="kpi"><div class="label">Рыночная капитализация</div><div class="value" id="kpiMcap">—</div><div class="sub">live</div></div>
-              <div class="kpi"><div class="label"><span class="metric-label">FDV <span class="info-dot" data-tip="Полная оценка актива при условии, что все токены уже находятся в обращении.">i</span></span></div><div class="value" id="kpiFdv">—</div><div class="sub">live</div></div>
-              <div class="kpi"><div class="label"><span class="metric-label">TVL <span class="info-dot" data-tip="Общий объем капитала, заблокированного в протоколах сети.">i</span></span></div><div class="value" id="kpiTvl">—</div><div class="sub">live</div></div>
-              <div class="kpi"><div class="label"><span class="metric-label">Stablecoins Mcap <span class="info-dot" data-tip="Общий объем стейблкоинов внутри сети.">i</span></span></div><div class="value" id="kpiStable">—</div><div class="sub">live</div></div>
-              <div class="kpi"><div class="label"><span class="metric-label">Volume 24h <span class="info-dot" data-tip="Объем торгов активом за последние 24 часа.">i</span></span></div><div class="value" id="kpiVol">—</div><div class="sub">live</div></div>
+              <div class="kpi"><div class="label">Цена</div><div class="value" id="kpiPrice">—</div><div class="sub">актуальный рыночный срез</div></div>
+              <div class="kpi"><div class="label">Рыночная капитализация</div><div class="value" id="kpiMcap">—</div><div class="sub" id="subMcap">актуальный рыночный срез</div></div>
+              <div class="kpi"><div class="label"><span class="metric-label">FDV <span class="info-dot" data-tip="Полная оценка актива при условии, что все токены уже находятся в обращении.">i</span></span></div><div class="value" id="kpiFdv">—</div><div class="sub" id="subFdv">структура оценки актива</div></div>
+              <div class="kpi"><div class="label"><span class="metric-label">TVL <span class="info-dot" data-tip="Общий объем капитала, заблокированного в протоколах сети.">i</span></span></div><div class="value" id="kpiTvl">—</div><div class="sub">капитал внутри сети</div></div>
+              <div class="kpi"><div class="label"><span class="metric-label">Stablecoins Mcap <span class="info-dot" data-tip="Общий объем стейблкоинов внутри сети.">i</span></span></div><div class="value" id="kpiStable">—</div><div class="sub">ликвидность экосистемы</div></div>
+              <div class="kpi"><div class="label"><span class="metric-label">Volume 24h <span class="info-dot" data-tip="Объем торгов активом за последние 24 часа.">i</span></span></div><div class="value" id="kpiVol">—</div><div class="sub" id="subVol">торговая активность за сутки</div></div>
             </div>
           </div>
         </div>
       </section>
 
       <section id="chart" class="panel section">
-        <div class="section-head"><div class="section-tag">Живой график</div><div class="section-title">ETHUSDT</div><div class="section-sub">TradingView</div></div>
+        <div class="section-head"><div class="section-tag">Живой график</div><div class="section-title">ETHUSDT</div><div class="section-sub">Рыночная динамика актива</div></div>
         <div class="widget-wrap"><div class="tradingview-widget-container" style="height:100%;width:100%"><div id="tv_chart_main" style="height:100%;width:100%"></div></div></div>
       </section>
 
       <section id="summary" class="panel section">
-        <div class="section-head"><div class="section-tag">Executive Summary</div><div class="section-title">Ключевая картина по ETH</div><div class="section-sub">Что важно понять инвестору до просмотра деталей</div></div>
+        <div class="section-head"><div class="section-tag">Executive Summary</div><div class="section-title">Ключевая картина по ETH</div><div class="section-sub">Что важно понять инвестору до погружения в детали</div></div>
         <div class="summary-list">
           <div class="summary-item">Ethereum сохраняет сильную позицию по капиталу, ликвидности и масштабу экосистемы.</div>
           <div class="summary-item">У актива зрелая структура предложения без классического навеса от венчурных разлоков.</div>
           <div class="summary-item">Главный вопрос для инвестора — как распределяется ценность между L1, L2 и приложениями.</div>
-          <div class="summary-item">Фундаментально ETH выглядит сильным, но рынок будет требовать подтверждения лидерства через экономику сети.</div>
+          <div class="summary-item">ETH выглядит сильным фундаментально, но рынок будет требовать подтверждения лидерства через экономику сети.</div>
         </div>
       </section>
 
       <section id="tokenomics" class="panel section">
-        <div class="section-head"><div class="section-tag">Токеномика</div><div class="section-title">Live токеномика</div><div class="section-sub">Через Worker proxy</div></div>
+        <div class="section-head"><div class="section-tag">Токеномика</div><div class="section-title">Как устроено предложение ETH</div><div class="section-sub">Структура обращения, предложение монет и рыночные параметры актива</div></div>
         <div class="split-2">
           <div class="card"><div class="card-title">История цены ETH</div><div class="chart-wrap"><canvas id="priceChart"></canvas></div></div>
           <div class="card">
+            <div class="summary-item">У ETH нет классического календаря разлоков, как у большинства молодых токенов. Главный вопрос здесь не в венчурном навесе, а в балансе между выпуском, сжиганием и реальным спросом на саму сеть.</div>
             <table>
-              <tr><th>Метрика</th><th>Значение</th></tr>
-              <tr><td>Market Cap</td><td id="tokMcap">—</td></tr>
-              <tr><td><span class="metric-label">FDV <span class="info-dot" data-tip="Полная оценка актива при условии, что все токены уже находятся в обращении.">i</span></span></td><td id="tokFdv">—</td></tr>
-              <tr><td><span class="metric-label">Circulating Supply <span class="info-dot" data-tip="Количество монет в свободном обращении на рынке.">i</span></span></td><td id="tokCirc">—</td></tr>
-              <tr><td><span class="metric-label">Total Supply <span class="info-dot" data-tip="Общее текущее количество выпущенных монет.">i</span></span></td><td id="tokTotal">—</td></tr>
-              <tr><td><span class="metric-label">Max Supply <span class="info-dot" data-tip="Максимально возможное количество монет. У Ethereum жесткого лимита нет.">i</span></span></td><td id="tokMax">—</td></tr>
-              <tr><td><span class="metric-label">Volume 24h <span class="info-dot" data-tip="Объем торгов активом за последние 24 часа.">i</span></span></td><td id="tokVol">—</td></tr>
+              <tr><th>Метрика</th><th>Значение</th><th>Статус</th></tr>
+              <tr><td>Market Cap</td><td id="tokMcap">—</td><td><span class="status-chip status-live" id="stTokMcap">live</span></td></tr>
+              <tr><td><span class="metric-label">FDV <span class="info-dot" data-tip="Полная оценка актива при условии, что все токены уже находятся в обращении.">i</span></span></td><td id="tokFdv">—</td><td><span class="status-chip status-live" id="stTokFdv">live</span></td></tr>
+              <tr><td><span class="metric-label">Circulating Supply <span class="info-dot" data-tip="Количество монет в свободном обращении на рынке.">i</span></span></td><td id="tokCirc">—</td><td><span class="status-chip status-live" id="stTokCirc">live</span></td></tr>
+              <tr><td><span class="metric-label">Total Supply <span class="info-dot" data-tip="Общее текущее количество выпущенных монет.">i</span></span></td><td id="tokTotal">—</td><td><span class="status-chip status-live" id="stTokTotal">live</span></td></tr>
+              <tr><td><span class="metric-label">Max Supply <span class="info-dot" data-tip="Максимально возможное количество монет. У Ethereum жесткого лимита нет.">i</span></span></td><td id="tokMax">Нет</td><td><span class="status-chip status-manual">структура актива</span></td></tr>
+              <tr><td><span class="metric-label">Volume 24h <span class="info-dot" data-tip="Объем торгов активом за последние 24 часа.">i</span></span></td><td id="tokVol">—</td><td><span class="status-chip status-live" id="stTokVol">live</span></td></tr>
             </table>
           </div>
         </div>
       </section>
 
       <section id="financials" class="panel section">
-        <div class="section-head"><div class="section-tag">Финансы</div><div class="section-title">Live финансы</div><div class="section-sub">Current values + overview endpoints</div></div>
+        <div class="section-head"><div class="section-tag">Финансы</div><div class="section-title">Экономика сети</div><div class="section-sub">Комиссии и экономическая активность как подтверждение реального использования</div></div>
         <div class="split-2">
-          <div class="card"><div class="card-title">Fees history</div><div class="chart-wrap"><canvas id="feesChart"></canvas></div></div>
+          <div class="card"><div class="card-title">История сетевых комиссий</div><div class="chart-wrap"><canvas id="feesChart"></canvas></div></div>
           <div class="card">
+            <div class="summary-item">У Ethereum есть реальная экономика, но не вся создаваемая ценность остается напрямую на уровне ETH. Поэтому здесь важно смотреть не только на комиссии базовой сети, но и на то, где именно формируется денежная активность внутри экосистемы.</div>
             <table>
-              <tr><th>Метрика</th><th>Значение</th></tr>
-              <tr><td><span class="metric-label">Chain Fees 24h <span class="info-dot" data-tip="Комиссии, которые сеть собрала за последние 24 часа.">i</span></span></td><td id="finFees">—</td></tr>
-              <tr><td><span class="metric-label">Chain Revenue 24h <span class="info-dot" data-tip="Часть комиссий, которая остается у самой сети как доход.">i</span></span></td><td id="finRevenue">—</td></tr>
-              <tr><td><span class="metric-label">App Fees 24h <span class="info-dot" data-tip="Комиссии, собранные приложениями внутри экосистемы.">i</span></span></td><td id="finAppFees">—</td></tr>
-              <tr><td><span class="metric-label">App Revenue 24h <span class="info-dot" data-tip="Доход приложений внутри экосистемы после их собственной модели монетизации.">i</span></span></td><td id="finAppRev">—</td></tr>
+              <tr><th>Метрика</th><th>Значение</th><th>Статус</th></tr>
+              <tr><td><span class="metric-label">Chain Fees 24h <span class="info-dot" data-tip="Комиссии, которые сеть собрала за последние 24 часа.">i</span></span></td><td id="finFees">—</td><td><span class="status-chip status-live" id="stFinFees">live</span></td></tr>
+              <tr><td><span class="metric-label">Chain Revenue 24h <span class="info-dot" data-tip="Часть комиссий, которая остается у самой сети как доход.">i</span></span></td><td id="finRevenue">требуется отдельный источник</td><td><span class="status-chip status-partial">ожидает источник</span></td></tr>
+              <tr><td><span class="metric-label">App Fees 24h <span class="info-dot" data-tip="Комиссии, собранные приложениями внутри экосистемы.">i</span></span></td><td id="finAppFees">требуется отдельный источник</td><td><span class="status-chip status-partial">ожидает источник</span></td></tr>
+              <tr><td><span class="metric-label">App Revenue 24h <span class="info-dot" data-tip="Доход приложений внутри экосистемы после их собственной модели монетизации.">i</span></span></td><td id="finAppRev">требуется отдельный источник</td><td><span class="status-chip status-partial">ожидает источник</span></td></tr>
             </table>
             <div class="note" id="feesNote">Загрузка…</div>
           </div>
@@ -177,27 +167,47 @@
       </section>
 
       <section id="tvl" class="panel section">
-        <div class="section-head"><div class="section-tag">TVL и капитал</div><div class="section-title">Live капитал</div><div class="section-sub">Current + historical</div></div>
+        <div class="section-head"><div class="section-tag">TVL и капитал</div><div class="section-title">Капитал внутри экосистемы</div><div class="section-sub">Насколько рынок доверяет Ethereum капитал</div></div>
         <div class="split-2">
-          <div class="card"><div class="card-title">TVL history</div><div class="chart-wrap"><canvas id="tvlChart"></canvas></div></div>
+          <div class="card"><div class="card-title">Динамика капитала в Ethereum</div><div class="chart-wrap"><canvas id="tvlChart"></canvas></div></div>
           <div class="card">
+            <div class="summary-item">Ethereum остается одной из главных сетей по объему капитала в DeFi и по объему стейблкоинов внутри экосистемы. Эти метрики особенно важны, потому что они показывают не просто интерес к активу, а глубину инфраструктуры и уровень доверия рынка.</div>
             <div class="mini-grid">
-              <div class="mini"><div class="label"><span class="metric-label">TVL <span class="info-dot" data-tip="Объем капитала, заблокированного в протоколах сети.">i</span></span></div><div class="value" id="capTvl">—</div><div class="sub">live</div></div>
-              <div class="mini"><div class="label"><span class="metric-label">Stablecoins <span class="info-dot" data-tip="Общий объем стейблкоинов внутри экосистемы сети.">i</span></span></div><div class="value" id="capStable">—</div><div class="sub">live</div></div>
-              <div class="mini"><div class="label"><span class="metric-label">Inflows 24h <span class="info-dot" data-tip="Приток капитала в сеть за последние 24 часа.">i</span></span></div><div class="value" id="capInflows">—</div><div class="sub">live</div></div>
-              <div class="mini"><div class="label"><span class="metric-label">Bridged TVL <span class="info-dot" data-tip="Капитал, переведенный в сеть через мосты из других сетей.">i</span></span></div><div class="value" id="capBridged">—</div><div class="sub">live</div></div>
+              <div class="mini"><div class="label"><span class="metric-label">TVL <span class="info-dot" data-tip="Объем капитала, заблокированного в протоколах сети.">i</span></span></div><div class="value" id="capTvl">—</div><div class="sub">капитал внутри сети</div></div>
+              <div class="mini"><div class="label"><span class="metric-label">Stablecoins <span class="info-dot" data-tip="Общий объем стейблкоинов внутри экосистемы сети.">i</span></span></div><div class="value" id="capStable">—</div><div class="sub">ликвидность экосистемы</div></div>
+              <div class="mini"><div class="label"><span class="metric-label">Inflows 24h <span class="info-dot" data-tip="Приток капитала в сеть за последние 24 часа.">i</span></span></div><div class="value" id="capInflows">данные временно недоступны</div><div class="sub">требуется отдельный источник</div></div>
+              <div class="mini"><div class="label"><span class="metric-label">Bridged TVL <span class="info-dot" data-tip="Капитал, переведенный в сеть через мосты из других сетей.">i</span></span></div><div class="value" id="capBridged">данные временно недоступны</div><div class="sub">требуется отдельный источник</div></div>
             </div>
           </div>
         </div>
       </section>
 
       <section id="valuation" class="panel section">
-        <div class="section-head"><div class="section-tag">Оценка</div><div class="section-title">Авторасчет</div><div class="section-sub">Коэффициенты считаются на странице</div></div>
+        <div class="section-head"><div class="section-tag">Оценка</div><div class="section-title">Где находится ETH по оценке</div><div class="section-sub">Сравнение актива с ключевыми фундаментальными метриками</div></div>
         <div class="split-4">
           <div class="card"><div class="kpi label"><span class="metric-label">Market Cap / TVL <span class="info-dot" data-tip="Соотношение рыночной капитализации к TVL.">i</span></span></div><div class="kpi value" id="valMcapTvl" style="font-size:34px;margin-top:10px">—</div></div>
           <div class="card"><div class="kpi label"><span class="metric-label">Volume / Market Cap <span class="info-dot" data-tip="Отношение объема торгов к рыночной капитализации.">i</span></span></div><div class="kpi value" id="valVolMcap" style="font-size:34px;margin-top:10px">—</div></div>
           <div class="card"><div class="kpi label"><span class="metric-label">Stablecoins / TVL <span class="info-dot" data-tip="Соотношение объема стейблкоинов в сети к общему TVL.">i</span></span></div><div class="kpi value" id="valStableTvl" style="font-size:34px;margin-top:10px">—</div></div>
           <div class="card"><div class="kpi label">Статус оценки</div><div class="kpi value" style="font-size:24px;margin-top:18px">зрелый актив</div></div>
+        </div>
+      </section>
+
+      <section id="risks" class="panel section">
+        <div class="section-head"><div class="section-tag">Риски</div><div class="section-title">Главные зоны внимания</div><div class="section-sub">Что может ограничивать рост ETH дальше</div></div>
+        <div class="summary-list">
+          <div class="summary-item">Ослабление сетевой экономики и более слабый захват ценности на уровне базовой сети.</div>
+          <div class="summary-item">Размывание роли ETH между L1, L2 и приложениями внутри экосистемы.</div>
+          <div class="summary-item">Высокая зрелость актива, из-за которой рынок строже оценивает замедление роста.</div>
+          <div class="summary-item">Конкуренция со стороны других сетей и альтернативных execution-слоев.</div>
+        </div>
+      </section>
+
+      <section id="final" class="panel section">
+        <div class="section-head"><div class="section-tag">Итог</div><div class="section-title">Финальная оценка ETH</div><div class="section-sub">Сильный базовый актив с акцентом на качество экономики сети</div></div>
+        <div class="summary-list">
+          <div class="summary-item">Ethereum остается одним из самых фундаментально сильных активов крипторынка. У него сильная инфраструктурная позиция, крупная экосистема, высокая ликвидность и живая активность сети.</div>
+          <div class="summary-item">При этом ETH — уже зрелый актив. Поэтому для дальнейшего сильного инвестиционного тезиса рынок будет ждать подтверждения лидерства не только через бренд, но и через реальную экономику сети.</div>
+          <div class="summary-item">Итоговый тезис по ETH остается сильным, но дальнейший потенциал зависит от того, как сеть удержит капитал, активность и ценность внутри экосистемы.</div>
         </div>
       </section>
     </main>
@@ -208,6 +218,12 @@
   <script src="https://s3.tradingview.com/tv.js"></script>
   <script>
     function setText(id, val){ const el = document.getElementById(id); if(el) el.textContent = val; }
+    function setChip(id, text, className){
+      const el = document.getElementById(id);
+      if(!el) return;
+      el.textContent = text;
+      el.className = className;
+    }
     function fmtUsd(v){
       if(v == null || Number.isNaN(Number(v))) return "—";
       v = Number(v);
@@ -237,7 +253,9 @@
       return new Date(ts).toLocaleDateString("ru-RU",{month:"short", day:"numeric"});
     }
     function chartBase(type, id, labels, datasets){
-      return new Chart(document.getElementById(id), {
+      const ctx = document.getElementById(id);
+      if(!ctx) return null;
+      return new Chart(ctx, {
         type,
         data:{labels,datasets},
         options:{
@@ -285,19 +303,35 @@
         setText("kpiMcap", fmtUsd(m.market_cap));
         setText("kpiFdv", fmtUsd(m.fully_diluted_valuation));
         setText("kpiVol", fmtUsd(m.total_volume));
+
         setText("tokMcap", fmtUsd(m.market_cap));
         setText("tokFdv", fmtUsd(m.fully_diluted_valuation));
         setText("tokCirc", fmtNum(m.circulating_supply) + " ETH");
         setText("tokTotal", m.total_supply ? fmtNum(m.total_supply) + " ETH" : "—");
-        setText("tokMax", m.max_supply ? fmtNum(m.max_supply) + " ETH" : "Нет");
         setText("tokVol", fmtUsd(m.total_volume));
+      } else {
+        setText("kpiMcap", "данные временно недоступны");
+        setText("kpiFdv", "данные временно недоступны");
+        setText("kpiVol", "данные временно недоступны");
+        setText("tokMcap", "данные временно недоступны");
+        setText("tokFdv", "данные временно недоступны");
+        setText("tokCirc", "данные временно недоступны");
+        setText("tokTotal", "данные временно недоступны");
+        setText("tokVol", "данные временно недоступны");
+        setText("subMcap", "источник временно не ответил");
+        setText("subFdv", "источник временно не ответил");
+        setText("subVol", "источник временно не ответил");
+
+        setChip("stTokMcap", "временно недоступно", "status-chip status-partial");
+        setChip("stTokFdv", "временно недоступно", "status-chip status-partial");
+        setChip("stTokCirc", "временно недоступно", "status-chip status-partial");
+        setChip("stTokTotal", "временно недоступно", "status-chip status-partial");
+        setChip("stTokVol", "временно недоступно", "status-chip status-partial");
       }
 
       if (chart && chart.prices && chart.prices.length) {
-        if (!m) {
-          const lastPrice = chart.prices[chart.prices.length - 1][1];
-          setText("kpiPrice", fmtUsd(lastPrice));
-        }
+        const lastPrice = chart.prices[chart.prices.length - 1][1];
+        if (!m) setText("kpiPrice", fmtUsd(lastPrice));
         chartBase("line","priceChart",
           chart.prices.slice(-180).map(p => labelFromTs(p[0])),
           [{label:"Цена ETH",data:chart.prices.slice(-180).map(p => p[1]),borderColor:"#76d9ff",backgroundColor:"rgba(118,217,255,.12)",tension:.3,pointRadius:0}]
@@ -307,12 +341,18 @@
       if (chain) {
         setText("kpiTvl", fmtUsd(chain.tvl));
         setText("capTvl", fmtUsd(chain.tvl));
+      } else {
+        setText("kpiTvl", "данные временно недоступны");
+        setText("capTvl", "данные временно недоступны");
       }
 
       const stableVal = stable?.totalCirculatingUSD?.peggedUSD || stable?.totalCirculatingUSD || stable?.mcap || null;
       if (stableVal) {
         setText("kpiStable", fmtUsd(stableVal));
         setText("capStable", fmtUsd(stableVal));
+      } else {
+        setText("kpiStable", "данные временно недоступны");
+        setText("capStable", "данные временно недоступны");
       }
 
       if (tvlHistory && tvlHistory.length) {
@@ -337,29 +377,25 @@
         chartBase("line","tvlChart", tvlHistory.slice(-180).map(p => labelFromTs((p.date || 0) * 1000)), datasets);
       }
 
-      setText("capInflows", "см. chain page");
-      setText("capBridged", "см. chain page");
-
       const feeSeries = feesOverview && Array.isArray(feesOverview.totalDataChart) ? feesOverview.totalDataChart : [];
       if (feeSeries.length) {
         const lastFee = feeSeries[feeSeries.length - 1][1];
         setText("finFees", fmtUsd(lastFee));
-        setText("finRevenue", "см. chain page");
-        setText("finAppFees", "см. chain page");
-        setText("finAppRev", "см. chain page");
         chartBase("bar","feesChart",
           feeSeries.slice(-180).map(p => labelFromTs((String(p[0]).length > 10 ? p[0] : p[0] * 1000))),
           [{label:"Fees history",data:feeSeries.slice(-180).map(p => p[1] || 0),backgroundColor:"#76d9ff",borderRadius:8}]
         );
-        setText("feesNote", "История fees подтянулась автоматически.");
+        setText("feesNote", "История сетевых комиссий подтянулась автоматически.");
       } else {
-        setText("feesNote", "Fees overview сейчас недоступен.");
+        setText("finFees", "данные временно недоступны");
+        setChip("stFinFees", "временно недоступно", "status-chip status-partial");
+        setText("feesNote", "Источник по сетевым комиссиям временно недоступен.");
       }
 
       const tvlNum = chain?.tvl || null;
-      setText("valMcapTvl", (m?.market_cap && tvlNum) ? (m.market_cap / tvlNum).toFixed(2) + "x" : "—");
-      setText("valVolMcap", (m?.total_volume && m?.market_cap) ? ((m.total_volume / m.market_cap) * 100).toFixed(2) + "%" : "—");
-      setText("valStableTvl", (stableVal && tvlNum) ? (stableVal / tvlNum).toFixed(2) + "x" : "—");
+      setText("valMcapTvl", (m?.market_cap && tvlNum) ? (m.market_cap / tvlNum).toFixed(2) + "x" : "данные временно недоступны");
+      setText("valVolMcap", (m?.total_volume && m?.market_cap) ? ((m.total_volume / m.market_cap) * 100).toFixed(2) + "%" : "данные временно недоступны");
+      setText("valStableTvl", (stableVal && tvlNum) ? (stableVal / tvlNum).toFixed(2) + "x" : "данные временно недоступны");
 
       const failed = results.map((r, i) => ({ r, i })).filter(x => x.r.status === "rejected").map(x => x.i);
       setText("loadState", failed.length === 0 ? "данные загружены" : "частично загружено");
