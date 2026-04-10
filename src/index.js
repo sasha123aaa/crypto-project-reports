@@ -35,10 +35,7 @@ async function handleApi(url) {
   if (!target) {
     return new Response(
       JSON.stringify({ error: "Unknown API route" }),
-      {
-        status: 404,
-        headers: { "content-type": "application/json; charset=utf-8" },
-      }
+      { status: 404, headers: { "content-type": "application/json; charset=utf-8" } }
     );
   }
 
@@ -48,10 +45,7 @@ async function handleApi(url) {
         "accept": "application/json,text/plain,*/*",
         "user-agent": "Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0",
       },
-      cf: {
-        cacheTtl: 300,
-        cacheEverything: true,
-      },
+      cf: { cacheTtl: 300, cacheEverything: true },
     });
 
     const text = await upstream.text();
@@ -65,14 +59,8 @@ async function handleApi(url) {
     });
   } catch (error) {
     return new Response(
-      JSON.stringify({
-        error: "Proxy fetch failed",
-        detail: String(error),
-      }),
-      {
-        status: 500,
-        headers: { "content-type": "application/json; charset=utf-8" },
-      }
+      JSON.stringify({ error: "Proxy fetch failed", detail: String(error) }),
+      { status: 500, headers: { "content-type": "application/json; charset=utf-8" } }
     );
   }
 }
