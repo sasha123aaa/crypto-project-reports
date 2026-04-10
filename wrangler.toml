@@ -4,4 +4,4 @@ compatibility_date = "2026-04-10"
 
 [assets]
 directory = "./public"
-binding = "ASSETS"
+binding = "ASSETS" 
