@@ -21,9 +21,9 @@ async function handleApi(url) {
     "/api/llama/tvl-history":
       "https://api.llama.fi/charts/Ethereum",
     "/api/llama/stable-history":
-      "https://api.llama.fi/stablecoincharts/ethereum",
+      "https://stablecoins.llama.fi/stablecoincharts/ethereum",
     "/api/llama/stable-chains":
-      "https://api.llama.fi/stablecoinchains",
+      "https://stablecoins.llama.fi/stablecoinchains",
     "/api/llama/fees-overview":
       "https://api.llama.fi/overview/fees/ethereum?excludeTotalDataChart=false&excludeTotalDataChartBreakdown=true&dataType=dailyFees",
     "/api/llama/dex-overview":
