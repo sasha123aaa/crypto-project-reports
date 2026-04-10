@@ -4,75 +4,316 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ethereum — v6 worker live metrics</title>
+  <title>Ethereum — v6 worker proxy</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root{
-      --bg:#1f2329; --bg2:#191d22; --line:rgba(255,255,255,.10); --text:#eef3ff; --muted:#a8b2c7;
+      --bg:#1f2329;
+      --bg2:#191d22;
+      --line:rgba(255,255,255,.10);
+      --text:#eef3ff;
+      --muted:#a8b2c7;
       --shadow:0 18px 40px rgba(0,0,0,.28);
     }
     *{box-sizing:border-box}
     html{scroll-behavior:smooth}
-    body{margin:0;font-family:Inter,Arial,sans-serif;color:var(--text);background:linear-gradient(180deg,var(--bg) 0%, var(--bg2) 100%)}
-    .page{max-width:1500px;margin:0 auto;padding:24px;display:grid;grid-template-columns:280px 1fr;gap:24px}
-    .panel{background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.02));border:1px solid var(--line);border-radius:28px;box-shadow:var(--shadow)}
-    .sidebar{position:sticky;top:24px;height:fit-content;padding:20px}
-    .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--muted);font-weight:800}
-    .coin{margin-top:10px;display:flex;align-items:center;gap:12px}
-    .coin-badge{width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#6c7682,#2b333c);font-size:22px;font-weight:800}
-    .coin-name{font-size:28px;font-weight:800;line-height:1}
-    .coin-ticker{font-size:13px;color:var(--muted);margin-top:4px}
-    .tag-row{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}
-    .tag{padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid var(--line);font-size:12px;font-weight:700;color:#dce6ff}
+    body{
+      margin:0;
+      font-family:Inter,Arial,sans-serif;
+      color:var(--text);
+      background:linear-gradient(180deg,var(--bg) 0%, var(--bg2) 100%);
+    }
+    .page{
+      max-width:1500px;
+      margin:0 auto;
+      padding:24px;
+      display:grid;
+      grid-template-columns:280px 1fr;
+      gap:24px;
+    }
+    .panel{
+      background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.02));
+      border:1px solid var(--line);
+      border-radius:28px;
+      box-shadow:var(--shadow);
+    }
+    .sidebar{
+      position:sticky;
+      top:24px;
+      height:fit-content;
+      padding:20px;
+    }
+    .eyebrow{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.18em;
+      color:var(--muted);
+      font-weight:800;
+    }
+    .coin{
+      margin-top:10px;
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+    .coin-badge{
+      width:44px;
+      height:44px;
+      border-radius:14px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:linear-gradient(135deg,#6c7682,#2b333c);
+      font-size:22px;
+      font-weight:800;
+    }
+    .coin-name{
+      font-size:28px;
+      font-weight:800;
+      line-height:1;
+    }
+    .coin-ticker{
+      font-size:13px;
+      color:var(--muted);
+      margin-top:4px;
+    }
+    .tag-row{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin:18px 0;
+    }
+    .tag{
+      padding:8px 12px;
+      border-radius:999px;
+      background:rgba(255,255,255,.04);
+      border:1px solid var(--line);
+      font-size:12px;
+      font-weight:700;
+      color:#dce6ff;
+    }
     .nav{margin-top:10px}
-    .nav a{display:block;text-decoration:none;padding:10px 12px;border-radius:14px;color:#c8d2ee;margin:4px 0;font-size:14px}
+    .nav a{
+      display:block;
+      text-decoration:none;
+      padding:10px 12px;
+      border-radius:14px;
+      color:#c8d2ee;
+      margin:4px 0;
+      font-size:14px;
+    }
     .nav a:hover{background:rgba(255,255,255,.05)}
-    .stamp{margin-top:16px;padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--muted);font-size:12px;line-height:1.55}
-    .content{display:flex;flex-direction:column;gap:24px}
+    .stamp{
+      margin-top:16px;
+      padding:12px 14px;
+      border-radius:16px;
+      background:rgba(255,255,255,.04);
+      border:1px solid var(--line);
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.55;
+    }
+    .content{
+      display:flex;
+      flex-direction:column;
+      gap:24px;
+    }
     .hero{padding:28px}
-    .hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:24px}
-    h1{margin:16px 0 0;font-size:56px;line-height:.98;letter-spacing:-.03em}
-    .subtitle{margin-top:14px;color:#e2e8f8;font-size:20px;line-height:1.45;max-width:860px}
-    .lead{margin-top:18px;color:var(--muted);font-size:16px;line-height:1.75;max-width:860px}
-    .hero-kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
-    .kpi,.card{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:22px;padding:16px}
-    .kpi .label,.mini .label{font-size:12px;color:var(--muted)}
-    .kpi .value{font-size:28px;font-weight:800;margin-top:8px}
-    .kpi .sub,.mini .sub{font-size:12px;color:#c7d2ea;margin-top:6px}
-    .focus-grid{margin-top:20px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-    .focus{border-radius:22px;padding:16px;border:1px solid rgba(255,255,255,.14);background:linear-gradient(180deg, rgba(233,236,240,.20), rgba(233,236,240,.10));min-height:112px}
-    .focus .small{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:#c8d0de;font-weight:800}
-    .focus .text{margin-top:10px;font-size:14px;line-height:1.6;font-weight:700}
+    .hero-grid{
+      display:grid;
+      grid-template-columns:1.1fr .9fr;
+      gap:24px;
+    }
+    h1{
+      margin:16px 0 0;
+      font-size:56px;
+      line-height:.98;
+      letter-spacing:-.03em;
+    }
+    .subtitle{
+      margin-top:14px;
+      color:#e2e8f8;
+      font-size:20px;
+      line-height:1.45;
+      max-width:860px;
+    }
+    .lead{
+      margin-top:18px;
+      color:var(--muted);
+      font-size:16px;
+      line-height:1.75;
+      max-width:860px;
+    }
+    .hero-kpis{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:14px;
+    }
+    .kpi,.card{
+      background:rgba(255,255,255,.04);
+      border:1px solid var(--line);
+      border-radius:22px;
+      padding:16px;
+    }
+    .kpi .label,.mini .label{
+      font-size:12px;
+      color:var(--muted);
+    }
+    .kpi .value{
+      font-size:28px;
+      font-weight:800;
+      margin-top:8px;
+    }
+    .kpi .sub,.mini .sub{
+      font-size:12px;
+      color:#c7d2ea;
+      margin-top:6px;
+    }
+    .focus-grid{
+      margin-top:20px;
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:14px;
+    }
+    .focus{
+      border-radius:22px;
+      padding:16px;
+      border:1px solid rgba(255,255,255,.14);
+      background:linear-gradient(180deg, rgba(233,236,240,.20), rgba(233,236,240,.10));
+      min-height:112px;
+    }
+    .focus .small{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.14em;
+      color:#c8d0de;
+      font-weight:800;
+    }
+    .focus .text{
+      margin-top:10px;
+      font-size:14px;
+      line-height:1.6;
+      font-weight:700;
+    }
     .section{padding:22px}
     .section-head{margin-bottom:16px}
-    .section-tag{display:inline-block;padding:7px 10px;border-radius:12px;font-size:11px;text-transform:uppercase;letter-spacing:.14em;font-weight:800;color:#d9e6ff;background:rgba(118,217,255,.10);border:1px solid rgba(118,217,255,.18)}
-    .section-title{font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:8px}
-    .section-sub{font-size:14px;color:var(--muted);margin-top:6px}
-    .split-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    .split-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
-    .card-title{font-size:17px;font-weight:800}
-    .body-text{margin-top:14px;color:#d7e0fa;font-size:15px;line-height:1.75}
-    .body-text p{margin:0 0 10px}
-    .summary-list{display:grid;gap:10px}
-    .summary-item,.note{padding:14px 16px;border-radius:18px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:#dce6ff;line-height:1.65;font-size:14px}
-    .mini-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
-    .mini{padding:14px;border-radius:18px;background:rgba(255,255,255,.03);border:1px solid var(--line)}
-    .mini .value{margin-top:6px;font-size:22px;font-weight:800}
-    .chart-wrap{height:360px;margin-top:12px}
-    table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{padding:12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-    th{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#cfe0ff}
-    td{font-size:14px;color:#d9e6ff}
+    .section-tag{
+      display:inline-block;
+      padding:7px 10px;
+      border-radius:12px;
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.14em;
+      font-weight:800;
+      color:#d9e6ff;
+      background:rgba(118,217,255,.10);
+      border:1px solid rgba(118,217,255,.18);
+    }
+    .section-title{
+      font-size:30px;
+      font-weight:800;
+      letter-spacing:-.02em;
+      margin-top:8px;
+    }
+    .section-sub{
+      font-size:14px;
+      color:var(--muted);
+      margin-top:6px;
+    }
+    .split-2{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:16px;
+    }
+    .split-4{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:16px;
+    }
+    .card-title{
+      font-size:17px;
+      font-weight:800;
+    }
+    .summary-list{
+      display:grid;
+      gap:10px;
+    }
+    .summary-item,.note{
+      padding:14px 16px;
+      border-radius:18px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.03);
+      color:#dce6ff;
+      line-height:1.65;
+      font-size:14px;
+    }
+    .mini-grid{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:12px;
+      margin-top:12px;
+    }
+    .mini{
+      padding:14px;
+      border-radius:18px;
+      background:rgba(255,255,255,.03);
+      border:1px solid var(--line);
+    }
+    .mini .value{
+      margin-top:6px;
+      font-size:22px;
+      font-weight:800;
+    }
+    .chart-wrap{
+      height:360px;
+      margin-top:12px;
+    }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:12px;
+    }
+    th,td{
+      padding:12px;
+      border-bottom:1px solid var(--line);
+      text-align:left;
+      vertical-align:top;
+    }
+    th{
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.12em;
+      color:#cfe0ff;
+    }
+    td{
+      font-size:14px;
+      color:#d9e6ff;
+    }
     tr:last-child td{border-bottom:0}
-    .status-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:800;border:1px solid var(--line);background:rgba(60,66,74,.95);color:#eef3ff}
-    .good-chip{background:rgba(233,236,240,.16)}
-    .neutral-chip{background:rgba(233,236,240,.12)}
-    .widget-wrap{border-radius:20px;overflow:hidden;border:1px solid var(--line);background:#111;height:520px}
-    .pill-status{display:inline-block;padding:6px 10px;border-radius:999px;border:1px solid var(--line);font-size:12px;font-weight:700}
-    .ok{background:rgba(78,201,124,.15)}
-    .warn{background:rgba(255,184,77,.15)}
-    .home-btn{position:fixed;right:24px;bottom:24px;z-index:9999}
-    .home-btn a{display:inline-block;padding:12px 16px;border-radius:14px;background:rgba(255,255,255,.1);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.12);color:#fff;text-decoration:none;font-weight:700}
+    .widget-wrap{
+      border-radius:20px;
+      overflow:hidden;
+      border:1px solid var(--line);
+      background:#111;
+      height:520px;
+    }
+    .home-btn{
+      position:fixed;
+      right:24px;
+      bottom:24px;
+      z-index:9999;
+    }
+    .home-btn a{
+      display:inline-block;
+      padding:12px 16px;
+      border-radius:14px;
+      background:rgba(255,255,255,.1);
+      backdrop-filter:blur(8px);
+      border:1px solid rgba(255,255,255,.12);
+      color:#fff;
+      text-decoration:none;
+      font-weight:700;
+    }
     @media (max-width:1180px){
       .page{grid-template-columns:1fr}
       .sidebar{position:static}
@@ -87,9 +328,16 @@
       <div class="eyebrow">Crypto Project Deep Dive</div>
       <div class="coin">
         <div class="coin-badge">Ξ</div>
-        <div><div class="coin-name">Ethereum</div><div class="coin-ticker">ETH • v6 worker proxy</div></div>
+        <div>
+          <div class="coin-name">Ethereum</div>
+          <div class="coin-ticker">ETH • v6 worker proxy</div>
+        </div>
       </div>
-      <div class="tag-row"><div class="tag">L1</div><div class="tag">DeFi</div><div class="tag">Smart Contracts</div></div>
+      <div class="tag-row">
+        <div class="tag">L1</div>
+        <div class="tag">DeFi</div>
+        <div class="tag">Smart Contracts</div>
+      </div>
       <nav class="nav">
         <a href="#hero">Первый экран</a>
         <a href="#chart">Живой график</a>
@@ -138,12 +386,24 @@
       </section>
 
       <section id="chart" class="panel section">
-        <div class="section-head"><div class="section-tag">Живой график</div><div class="section-title">ETHUSDT</div><div class="section-sub">TradingView</div></div>
-        <div class="widget-wrap"><div class="tradingview-widget-container" style="height:100%;width:100%"><div id="tv_chart_main" style="height:100%;width:100%"></div></div></div>
+        <div class="section-head">
+          <div class="section-tag">Живой график</div>
+          <div class="section-title">ETHUSDT</div>
+          <div class="section-sub">TradingView</div>
+        </div>
+        <div class="widget-wrap">
+          <div class="tradingview-widget-container" style="height:100%;width:100%">
+            <div id="tv_chart_main" style="height:100%;width:100%"></div>
+          </div>
+        </div>
       </section>
 
       <section id="summary" class="panel section">
-        <div class="section-head"><div class="section-tag">Executive Summary</div><div class="section-title">Ключевая картина по ETH</div><div class="section-sub">Что важно понять инвестору до просмотра деталей</div></div>
+        <div class="section-head">
+          <div class="section-tag">Executive Summary</div>
+          <div class="section-title">Ключевая картина по ETH</div>
+          <div class="section-sub">Что важно понять инвестору до просмотра деталей</div>
+        </div>
         <div class="summary-list">
           <div class="summary-item">Ethereum сохраняет сильную позицию по капиталу, ликвидности и масштабу экосистемы.</div>
           <div class="summary-item">У актива зрелая структура предложения без классического навеса от венчурных разлоков.</div>
@@ -153,9 +413,16 @@
       </section>
 
       <section id="tokenomics" class="panel section">
-        <div class="section-head"><div class="section-tag">Токеномика</div><div class="section-title">Live токеномика</div><div class="section-sub">Через Worker proxy</div></div>
+        <div class="section-head">
+          <div class="section-tag">Токеномика</div>
+          <div class="section-title">Live токеномика</div>
+          <div class="section-sub">Через Worker proxy</div>
+        </div>
         <div class="split-2">
-          <div class="card"><div class="card-title">История цены ETH</div><div class="chart-wrap"><canvas id="priceChart"></canvas></div></div>
+          <div class="card">
+            <div class="card-title">История цены ETH</div>
+            <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+          </div>
           <div class="card">
             <table>
               <tr><th>Метрика</th><th>Значение</th></tr>
@@ -171,9 +438,16 @@
       </section>
 
       <section id="financials" class="panel section">
-        <div class="section-head"><div class="section-tag">Финансы</div><div class="section-title">Live финансы</div><div class="section-sub">Current values + overview endpoints</div></div>
+        <div class="section-head">
+          <div class="section-tag">Финансы</div>
+          <div class="section-title">Live финансы</div>
+          <div class="section-sub">Current values + overview endpoints</div>
+        </div>
         <div class="split-2">
-          <div class="card"><div class="card-title">Fees history</div><div class="chart-wrap"><canvas id="feesChart"></canvas></div></div>
+          <div class="card">
+            <div class="card-title">Fees history</div>
+            <div class="chart-wrap"><canvas id="feesChart"></canvas></div>
+          </div>
           <div class="card">
             <table>
               <tr><th>Метрика</th><th>Значение</th></tr>
@@ -188,9 +462,16 @@
       </section>
 
       <section id="tvl" class="panel section">
-        <div class="section-head"><div class="section-tag">TVL и капитал</div><div class="section-title">Live капитал</div><div class="section-sub">Current + historical</div></div>
+        <div class="section-head">
+          <div class="section-tag">TVL и капитал</div>
+          <div class="section-title">Live капитал</div>
+          <div class="section-sub">Current + historical</div>
+        </div>
         <div class="split-2">
-          <div class="card"><div class="card-title">TVL history</div><div class="chart-wrap"><canvas id="tvlChart"></canvas></div></div>
+          <div class="card">
+            <div class="card-title">TVL history</div>
+            <div class="chart-wrap"><canvas id="tvlChart"></canvas></div>
+          </div>
           <div class="card">
             <div class="mini-grid">
               <div class="mini"><div class="label">TVL</div><div class="value" id="capTvl">—</div><div class="sub">live</div></div>
@@ -203,7 +484,11 @@
       </section>
 
       <section id="valuation" class="panel section">
-        <div class="section-head"><div class="section-tag">Оценка</div><div class="section-title">Авторасчет</div><div class="section-sub">Коэффициенты считаются на странице</div></div>
+        <div class="section-head">
+          <div class="section-tag">Оценка</div>
+          <div class="section-title">Авторасчет</div>
+          <div class="section-sub">Коэффициенты считаются на странице</div>
+        </div>
         <div class="split-4">
           <div class="card"><div class="kpi label">Market Cap / TVL</div><div class="kpi value" id="valMcapTvl" style="font-size:34px;margin-top:10px">—</div></div>
           <div class="card"><div class="kpi label">Volume / Market Cap</div><div class="kpi value" id="valVolMcap" style="font-size:34px;margin-top:10px">—</div></div>
@@ -218,8 +503,6 @@
 
   <script src="https://s3.tradingview.com/tv.js"></script>
   <script>
-    const state = {};
-
     function setText(id, val){ const el = document.getElementById(id); if(el) el.textContent = val; }
     function fmtUsd(v){
       if(v == null || Number.isNaN(Number(v))) return "—";
@@ -253,11 +536,6 @@
       if(last === 't') return num * 1e12;
       return num;
     }
-    function parseMoney(v){
-      if (typeof v === "number") return v;
-      return humanToNumber(v);
-    }
-
     async function getJson(url){
       const r = await fetch(url, {headers:{accept:"application/json"}});
       if(!r.ok) throw new Error(url + " " + r.status);
@@ -271,7 +549,8 @@
         type,
         data:{labels,datasets},
         options:{
-          responsive:true, maintainAspectRatio:false,
+          responsive:true,
+          maintainAspectRatio:false,
           plugins:{legend:{labels:{color:"#d9e6ff", usePointStyle:true, boxWidth:8}}},
           scales:{
             x:{ticks:{color:"#8fa0c9"}, grid:{display:false}},
@@ -286,44 +565,44 @@
         setText("updatedAt", new Date().toLocaleString("ru-RU"));
         setText("loadState", "загрузка…");
 
-        const [markets, chart, chains, tvlHistory, stableHistory, stableChains, feesOverview, dexOverview] = await Promise.all([
+        const [markets, chart, chains, tvlHistory, stableHistory, stableChains, feesOverview] = await Promise.all([
           getJson("/api/coingecko/markets"),
           getJson("/api/coingecko/chart"),
           getJson("/api/llama/chains"),
           getJson("/api/llama/tvl-history"),
           getJson("/api/llama/stable-history"),
           getJson("/api/llama/stable-chains"),
-          getJson("/api/llama/fees-overview"),
-          getJson("/api/llama/dex-overview"),
+          getJson("/api/llama/fees-overview")
         ]);
 
         const m = markets[0];
         const chain = chains.find(x => (x.name || "").toLowerCase() === "ethereum");
         const stable = stableChains.find(x => (x.name || "").toLowerCase() === "ethereum");
 
-        // hero + tokenomics
         setText("kpiPrice", fmtUsd(m.current_price));
         setText("kpiMcap", fmtUsd(m.market_cap));
         setText("kpiFdv", fmtUsd(m.fully_diluted_valuation));
         setText("kpiVol", fmtUsd(m.total_volume));
+
         setText("tokMcap", fmtUsd(m.market_cap));
         setText("tokFdv", fmtUsd(m.fully_diluted_valuation));
         setText("tokCirc", fmtNum(m.circulating_supply) + " ETH");
         setText("tokTotal", m.total_supply ? fmtNum(m.total_supply) + " ETH" : "—");
         setText("tokMax", m.max_supply ? fmtNum(m.max_supply) + " ETH" : "Нет");
         setText("tokVol", fmtUsd(m.total_volume));
+
+        setText("kpiTvl", fmtUsd(chain?.tvl));
+        setText("capTvl", fmtUsd(chain?.tvl));
+
+        const stableVal = stable?.totalCirculatingUSD?.peggedUSD || stable?.totalCirculatingUSD || stable?.mcap || null;
+        setText("kpiStable", fmtUsd(stableVal));
+        setText("capStable", fmtUsd(stableVal));
+
         chartBase("line","priceChart",
           chart.prices.slice(-180).map(p => labelFromTs(p[0])),
           [{label:"Цена ETH", data:chart.prices.slice(-180).map(p => p[1]), borderColor:"#76d9ff", backgroundColor:"rgba(118,217,255,.12)", tension:.3, pointRadius:0}]
         );
 
-        // chain current from /v2/chains
-        setText("kpiTvl", fmtUsd(chain?.tvl));
-        setText("capTvl", fmtUsd(chain?.tvl));
-        setText("kpiStable", fmtUsd(stable?.totalCirculatingUSD?.peggedUSD || stable?.totalCirculatingUSD || stable?.mcap));
-        setText("capStable", fmtUsd(stable?.totalCirculatingUSD?.peggedUSD || stable?.totalCirculatingUSD || stable?.mcap));
-
-        // tvl history
         chartBase("line","tvlChart",
           tvlHistory.slice(-180).map(p => labelFromTs((p.date||0) * 1000)),
           [
@@ -332,44 +611,29 @@
           ]
         );
 
-        // approximate current chain extras from current endpoint if present
-        setText("capInflows", chain?.mcap ? "см. chain page" : "н/д");
-        setText("capBridged", chain?.mcap ? "см. chain page" : "н/д");
+        setText("capInflows", "см. chain page");
+        setText("capBridged", "см. chain page");
 
-        // overview endpoints
         const feeSeries = Array.isArray(feesOverview.totalDataChart) ? feesOverview.totalDataChart : [];
-        const dexSeries = Array.isArray(dexOverview.totalDataChart) ? dexOverview.totalDataChart : [];
-
         if (feeSeries.length) {
-          const lastFee = feeSeries[feeSeries.length-1][1];
+          const lastFee = feeSeries[feeSeries.length - 1][1];
           setText("finFees", fmtUsd(lastFee));
           setText("finRevenue", "см. chain page");
           setText("finAppFees", "см. chain page");
           setText("finAppRev", "см. chain page");
           chartBase("bar","feesChart",
-            feeSeries.slice(-180).map(p => labelFromTs((String(p[0]).length>10 ? p[0] : p[0]*1000))),
+            feeSeries.slice(-180).map(p => labelFromTs((String(p[0]).length > 10 ? p[0] : p[0] * 1000))),
             [{label:"Fees history", data:feeSeries.slice(-180).map(p => p[1] || 0), backgroundColor:"#76d9ff", borderRadius:8}]
           );
           setText("feesNote", "История fees подтянулась автоматически.");
         } else {
-          chartBase("bar","feesChart",["—"],[{label:"Нет данных", data:[0], backgroundColor:"#4b5563", borderRadius:8}]);
-          setText("feesNote", "Fees overview не отдал historical chart.");
+          setText("feesNote", "Overview endpoint не отдал historical chart.");
         }
 
-        if (dexSeries.length) {
-          const lastDex = dexSeries[dexSeries.length-1][1];
-          chartBase("bar","dexChart",
-            dexSeries.slice(-180).map(p => labelFromTs((String(p[0]).length>10 ? p[0] : p[0]*1000))),
-            [{label:"DEX volume history", data:dexSeries.slice(-180).map(p => p[1] || 0), backgroundColor:"#8bff7d", borderRadius:8}]
-          );
-        }
-
-        // valuation
-        const stableNum = parseMoney(fmtUsd(stable?.totalCirculatingUSD?.peggedUSD || stable?.totalCirculatingUSD || stable?.mcap));
-        const tvlNum = chain?.tvl;
-        setText("valMcapTvl", (m.market_cap && tvlNum) ? (m.market_cap/tvlNum).toFixed(2) + "x" : "—");
-        setText("valVolMcap", (m.total_volume && m.market_cap) ? ((m.total_volume/m.market_cap)*100).toFixed(2) + "%" : "—");
-        setText("valStableTvl", (stableNum && tvlNum) ? (stableNum/tvlNum).toFixed(2) + "x" : "—");
+        const tvlNum = chain?.tvl || null;
+        setText("valMcapTvl", (m.market_cap && tvlNum) ? (m.market_cap / tvlNum).toFixed(2) + "x" : "—");
+        setText("valVolMcap", (m.total_volume && m.market_cap) ? ((m.total_volume / m.market_cap) * 100).toFixed(2) + "%" : "—");
+        setText("valStableTvl", (stableVal && tvlNum) ? (stableVal / tvlNum).toFixed(2) + "x" : "—");
 
         setText("loadState", "данные загружены");
       } catch (err) {
@@ -379,6 +643,8 @@
     }
 
     window.addEventListener("load", function () {
+      setText("updatedAt", new Date().toLocaleString("ru-RU"));
+
       if (window.TradingView) {
         new TradingView.widget({
           autosize: true,
@@ -394,6 +660,7 @@
           container_id: "tv_chart_main"
         });
       }
+
       loadAll();
     });
   </script>
