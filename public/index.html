@@ -5,113 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Crypto Project Reports</title>
   <style>
-    :root{
-      --bg:#1f2329;
-      --bg2:#191d22;
-      --line:rgba(255,255,255,.10);
-      --text:#eef3ff;
-      --muted:#a8b2c7;
-      --shadow:0 18px 40px rgba(0,0,0,.28);
-    }
+    :root{--bg:#1f2329;--bg2:#191d22;--line:rgba(255,255,255,.10);--text:#eef3ff;--muted:#a8b2c7;--shadow:0 18px 40px rgba(0,0,0,.28)}
     *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family:Inter,Arial,sans-serif;
-      color:var(--text);
-      background:linear-gradient(180deg,var(--bg) 0%, var(--bg2) 100%);
-    }
-    .wrap{
-      max-width:1280px;
-      margin:0 auto;
-      padding:40px 24px;
-    }
-    .hero,.card{
-      background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.02));
-      border:1px solid var(--line);
-      border-radius:28px;
-      box-shadow:var(--shadow);
-    }
-    .hero{padding:28px}
-    .eyebrow{
-      font-size:12px;
-      text-transform:uppercase;
-      letter-spacing:.16em;
-      color:var(--muted);
-      font-weight:800;
-    }
-    h1{
-      font-size:56px;
-      line-height:1;
-      margin:14px 0 0;
-    }
-    .sub{
-      margin-top:16px;
-      max-width:940px;
-      color:#dbe3f8;
-      font-size:20px;
-      line-height:1.45;
-    }
-    .muted{
-      margin-top:14px;
-      color:var(--muted);
-      font-size:15px;
-      line-height:1.75;
-      max-width:940px;
-    }
-    .reports{
-      margin-top:24px;
-      display:grid;
-      grid-template-columns:repeat(2,1fr);
-      gap:18px;
-    }
-    .card{padding:22px}
-    .label{
-      font-size:12px;
-      color:var(--muted);
-      text-transform:uppercase;
-      letter-spacing:.12em;
-      font-weight:800;
-    }
-    .report-title{
-      margin-top:10px;
-      font-size:28px;
-      font-weight:800;
-    }
-    .meta{
-      margin-top:10px;
-      color:#a8b2c7;
-      font-size:14px;
-      line-height:1.6;
-    }
-    .pill-row{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      margin-top:14px;
-    }
-    .pill{
-      padding:7px 11px;
-      border-radius:999px;
-      background:rgba(255,255,255,.05);
-      border:1px solid var(--line);
-      font-size:12px;
-      font-weight:700;
-    }
-    .btn{
-      display:inline-block;
-      margin-top:18px;
-      padding:12px 16px;
-      border-radius:14px;
-      text-decoration:none;
-      color:#fff;
-      background:rgba(255,255,255,.08);
-      border:1px solid var(--line);
-      font-weight:800;
-    }
-    @media (max-width:1000px){
-      h1{font-size:40px}
-      .reports{grid-template-columns:1fr}
-    }
+    body{margin:0;font-family:Inter,Arial,sans-serif;color:var(--text);background:linear-gradient(180deg,var(--bg) 0%, var(--bg2) 100%)}
+    .wrap{max-width:1200px;margin:0 auto;padding:40px 24px}
+    .hero,.card{background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.02));border:1px solid var(--line);border-radius:28px;box-shadow:var(--shadow)}
+    .hero{padding:32px}
+    .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--muted);font-weight:800}
+    h1{margin:14px 0 0;font-size:56px;line-height:1;letter-spacing:-.03em}
+    .sub{margin-top:16px;color:#dfe7fb;font-size:22px;line-height:1.4}
+    .lead{margin-top:14px;color:var(--muted);font-size:16px;line-height:1.7;max-width:900px}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:24px}
+    .card{padding:20px}
+    .card h3{margin:0 0 10px;font-size:26px}
+    .muted{color:var(--muted)}
+    .btn{display:inline-block;margin-top:14px;padding:12px 16px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid var(--line);color:#fff;text-decoration:none;font-weight:700}
+    @media (max-width:980px){.grid{grid-template-columns:1fr} h1{font-size:42px}}
   </style>
 </head>
 <body>
@@ -119,36 +28,28 @@
     <section class="hero">
       <div class="eyebrow">Crypto Project Reports</div>
       <h1>База разборов криптопроектов</h1>
-      <div class="sub">
-        v6. Здесь уже используется Cloudflare Worker-прокси, чтобы live-метрики работали с твоего домена, а не ломались в браузере.
-      </div>
-      <div class="muted">
-        Старый v5 отдельно удалять не нужно. Новый деплой заменит текущую версию на этой же ссылке.
-      </div>
+      <div class="sub">Стартовая версия библиотеки отчетов</div>
+      <div class="lead">Это чистая рабочая база. Сейчас внутри лежит ETH-отчет с live-метриками через Worker proxy. Дальше можно добавлять новые страницы по схеме reports/slug/index.html.</div>
+      <a class="btn" href="/reports/eth/">Открыть отчет ETH</a>
     </section>
 
-    <section class="reports">
+    <div class="grid">
       <div class="card">
-        <div class="label">ETH v6</div>
-        <div class="report-title">Ethereum</div>
-        <div class="meta">
-          Live metrics через Worker API routes, TradingView-график и авторасчет мультипликаторов.
-        </div>
-        <div class="pill-row">
-          <div class="pill">L1</div>
-          <div class="pill">DeFi</div>
-          <div class="pill">Worker proxy</div>
-        </div>
-        <a class="btn" href="./reports/eth/">Открыть ETH</a>
+        <div class="eyebrow">Структура</div>
+        <h3>Масштабируемая база</h3>
+        <div class="muted">Один сайт, много отдельных страниц по монетам и проектам.</div>
       </div>
-
       <div class="card">
-        <div class="label">Что изменилось</div>
-        <div class="meta">
-          Теперь страница не ходит напрямую в CoinGecko и DefiLlama из браузера. Она берет данные с маршрутов этого же сайта, например /api/coingecko/markets и /api/llama/chains.
-        </div>
+        <div class="eyebrow">Первый отчет</div>
+        <h3>Ethereum</h3>
+        <div class="muted">Живой график, live-метрики, подсказки к терминам и базовая структура deep dive.</div>
       </div>
-    </section>
+      <div class="card">
+        <div class="eyebrow">Следующий шаг</div>
+        <h3>Добавлять новые проекты</h3>
+        <div class="muted">Потом можно добавить BNB, SOL, EDGE и другие страницы в той же структуре.</div>
+      </div>
+    </div>
   </div>
 </body>
 </html>
