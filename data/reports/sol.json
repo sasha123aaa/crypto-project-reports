@@ -1,9 +1,9 @@
 {
   "meta": {
-    "slug": "eth",
-    "project_name": "Ethereum",
-    "ticker": "ETH",
-    "subtitle": "ETH • infrastructure asset",
+    "slug": "sol",
+    "project_name": "Solana",
+    "ticker": "SOL",
+    "subtitle": "SOL • infrastructure asset",
     "categories": [
       "L1",
       "DeFi",
@@ -66,7 +66,7 @@
     "watch": []
   },
   "about": {
-    "title": "Что такое Ethereum",
+    "title": "Что такое Solana",
     "paragraphs": [
       "Заполни этот блок позже."
     ]
@@ -105,7 +105,7 @@
     "items": []
   },
   "final_verdict": {
-    "title": "Финальная оценка ETH",
+    "title": "Финальная оценка SOL",
     "subtitle": "Стартовая версия",
     "paragraphs": []
   },
