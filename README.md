@@ -1,4 +1,4 @@
-# Crypto Project Reports.
+# Crypto Project Reports
 
 Универсальный каркас для живых разборов криптопроектов через Cloudflare Workers + Assets.
 
