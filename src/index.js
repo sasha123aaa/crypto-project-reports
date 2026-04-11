@@ -25,7 +25,9 @@ async function handleHybridReportApi(request, env, url) {
   }
 
   const staticJson = await loadStaticReportJson(request, env, slug);
-  if (!staticJson.ok) return staticJson.response;
+  if (!staticJson.ok) {
+    return staticJson.response;
+  }
 
   const report = staticJson.data;
 
@@ -36,13 +38,14 @@ async function handleHybridReportApi(request, env, url) {
 
     report.meta.updated_at = new Date().toISOString();
     report.meta.data_status = "hybrid-live";
+    report.meta.live_debug = live.debug;
 
     return json(report, 200);
   } catch (error) {
     report.meta.updated_at = new Date().toISOString();
     report.meta.data_status = "hybrid-fallback";
     report.meta.live_error = error instanceof Error ? error.message : String(error);
-  
+
     return json(report, 200);
   }
 }
@@ -85,16 +88,7 @@ async function loadStaticReportJson(request, env, slug) {
 }
 
 async function fetchLiveMetrics(project) {
-  const [
-    cgMarket,
-    cgChart,
-    chains,
-    stableChains,
-    feesOverview,
-    dexOverview,
-    tvlHistory,
-    stableHistory,
-  ] = await Promise.all([
+  const results = await Promise.allSettled([
     fetchCoinGeckoMarket(project.coingeckoId),
     fetchCoinGeckoChart(project.coingeckoId),
     project.defillamaChain ? fetchDefiLlamaChains() : Promise.resolve(null),
@@ -104,6 +98,26 @@ async function fetchLiveMetrics(project) {
     project.defillamaChain ? fetchTVLHistory(project.defillamaChain) : Promise.resolve([]),
     project.stablecoinChain ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve([]),
   ]);
+
+  const [
+    cgMarketRes,
+    cgChartRes,
+    chainsRes,
+    stableChainsRes,
+    feesOverviewRes,
+    dexOverviewRes,
+    tvlHistoryRes,
+    stableHistoryRes,
+  ] = results;
+
+  const cgMarket = cgMarketRes.status === "fulfilled" ? cgMarketRes.value : null;
+  const cgChart = cgChartRes.status === "fulfilled" ? cgChartRes.value : null;
+  const chains = chainsRes.status === "fulfilled" ? chainsRes.value : null;
+  const stableChains = stableChainsRes.status === "fulfilled" ? stableChainsRes.value : null;
+  const feesOverview = feesOverviewRes.status === "fulfilled" ? feesOverviewRes.value : null;
+  const dexOverview = dexOverviewRes.status === "fulfilled" ? dexOverviewRes.value : null;
+  const tvlHistory = tvlHistoryRes.status === "fulfilled" ? tvlHistoryRes.value : [];
+  const stableHistory = stableHistoryRes.status === "fulfilled" ? stableHistoryRes.value : [];
 
   const chainNow = findChainData(chains, project.defillamaChain);
   const stableNow = findStableChainData(stableChains, project.stablecoinChain);
@@ -151,6 +165,16 @@ async function fetchLiveMetrics(project) {
       feesHistory: feesOverview?.totalDataChart || [],
       dexHistory: dexOverview?.totalDataChart || [],
     },
+    debug: {
+      cgMarket: cgMarketRes.status,
+      cgChart: cgChartRes.status,
+      chains: chainsRes.status,
+      stableChains: stableChainsRes.status,
+      feesOverview: feesOverviewRes.status,
+      dexOverview: dexOverviewRes.status,
+      tvlHistory: tvlHistoryRes.status,
+      stableHistory: stableHistoryRes.status,
+    },
   };
 }
 
@@ -159,23 +183,39 @@ function mergeLiveMetrics(report, live) {
   const sourceDL = "DefiLlama";
 
   if (live.market.price != null) {
-    report.market.price = liveMetric(live.market.price, formatMoney(live.market.price), sourceCG);
+    report.market.price = liveMetric(
+      live.market.price,
+      formatMoney(live.market.price),
+      sourceCG
+    );
   }
 
   if (live.market.marketCap != null) {
-    const metric = liveMetric(live.market.marketCap, formatMoney(live.market.marketCap), sourceCG);
+    const metric = liveMetric(
+      live.market.marketCap,
+      formatMoney(live.market.marketCap),
+      sourceCG
+    );
     report.market.market_cap = metric;
     if (report.tokenomics?.metrics) report.tokenomics.metrics.market_cap = metric;
   }
 
   if (live.market.fdv != null) {
-    const metric = liveMetric(live.market.fdv, formatMoney(live.market.fdv), sourceCG);
+    const metric = liveMetric(
+      live.market.fdv,
+      formatMoney(live.market.fdv),
+      sourceCG
+    );
     report.market.fdv = metric;
     if (report.tokenomics?.metrics) report.tokenomics.metrics.fdv = metric;
   }
 
   if (live.market.volume24h != null) {
-    const metric = liveMetric(live.market.volume24h, formatMoney(live.market.volume24h), sourceCG);
+    const metric = liveMetric(
+      live.market.volume24h,
+      formatMoney(live.market.volume24h),
+      sourceCG
+    );
     report.market.volume_24h = metric;
     if (report.liquidity?.metrics) report.liquidity.metrics.spot_volume = metric;
   }
@@ -211,12 +251,20 @@ function mergeLiveMetrics(report, live) {
   }
 
   if (live.capital.tvl != null) {
-    const metric = liveMetric(live.capital.tvl, formatMoney(live.capital.tvl), sourceDL);
+    const metric = liveMetric(
+      live.capital.tvl,
+      formatMoney(live.capital.tvl),
+      sourceDL
+    );
     report.capital.metrics.tvl = metric;
   }
 
   if (live.capital.stablecoins != null) {
-    const metric = liveMetric(live.capital.stablecoins, formatMoney(live.capital.stablecoins), sourceDL);
+    const metric = liveMetric(
+      live.capital.stablecoins,
+      formatMoney(live.capital.stablecoins),
+      sourceDL
+    );
     report.capital.metrics.stablecoins_mcap = metric;
   }
 
@@ -299,6 +347,7 @@ function safePercent(a, b) {
 function formatMoney(value) {
   if (value == null || Number.isNaN(value)) return "—";
   const abs = Math.abs(value);
+
   if (abs >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
   if (abs >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
   if (abs >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
@@ -308,7 +357,9 @@ function formatMoney(value) {
 
 function formatNumber(value) {
   if (value == null || Number.isNaN(value)) return "—";
-  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(value);
+  return new Intl.NumberFormat("ru-RU", {
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 async function fetchCoinGeckoMarket(coingeckoId) {
