@@ -215,21 +215,21 @@
     "metrics": {
       "daily_active_addresses": {
         "value": null,
-        "formatted": "—",
-        "status": "unavailable",
-        "source": "not connected yet"
+        "formatted": "источник подключается",
+        "status": "partial",
+        "source": "coming soon"
       },
       "new_addresses": {
         "value": null,
-        "formatted": "—",
-        "status": "unavailable",
-        "source": "not connected yet"
+        "formatted": "источник подключается",
+        "status": "partial",
+        "source": "coming soon"
       },
       "transactions": {
         "value": null,
-        "formatted": "—",
-        "status": "unavailable",
-        "source": "not connected yet"
+        "formatted": "источник подключается",
+        "status": "partial",
+        "source": "coming soon"
       }
     }
   },
