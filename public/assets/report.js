@@ -68,7 +68,7 @@ function listHtml(items = []) {
   return items.map((item) => `<div class="list-item">${escapeHtml(item)}</div>`).join("");
 }
 
-function chartCard(id, title, subtitle = "", controlsHtml = "") {
+function chartCard(id, title, subtitle = "") {
   return `
     <section class="panel">
       <div class="chart-head">
@@ -76,7 +76,6 @@ function chartCard(id, title, subtitle = "", controlsHtml = "") {
           <div class="section-title">${escapeHtml(title)}</div>
           ${subtitle ? `<div class="section-sub">${escapeHtml(subtitle)}</div>` : ""}
         </div>
-        ${controlsHtml ? `<div class="chart-controls">${controlsHtml}</div>` : ""}
       </div>
       <div class="chart-shell">
         <canvas id="${id}"></canvas>
@@ -85,15 +84,14 @@ function chartCard(id, title, subtitle = "", controlsHtml = "") {
   `;
 }
 
-function tradingViewCard(symbol = "BINANCE:ETHUSDT") {
+function tradingViewCard() {
   return `
     <section class="panel">
       <div class="section-title">Живой график TradingView</div>
       <div class="section-sub">Интерактивный график для детального просмотра цены и структуры рынка</div>
       <div class="tv-shell">
-        <div id="tv-widget"></div>
+        <div id="tv-widget" style="width:100%;height:100%;"></div>
       </div>
-      <script src="https://s3.tradingview.com/tv.js"></script>
     </section>
   `;
 }
@@ -101,11 +99,12 @@ function tradingViewCard(symbol = "BINANCE:ETHUSDT") {
 function normalizeCoinGeckoPrices(prices = []) {
   return (prices || [])
     .map((row) => {
-      const ts = Array.isArray(row) ? row[0] : null;
+      const ts = Array.isArray(row) ? Number(row[0]) : null;
       const value = Array.isArray(row) ? Number(row[1]) : null;
-      if (!ts || !Number.isFinite(value)) return null;
+      if (!Number.isFinite(ts) || !Number.isFinite(value)) return null;
 
       return {
+        ts,
         label: new Date(ts).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }),
         value
       };
@@ -120,9 +119,10 @@ function normalizeLlamaSeries(rows = [], key) {
       const raw = row?.[key] ?? row?.totalLiquidityUSD ?? row?.totalCirculatingUSD ?? null;
       const value = Number(raw);
 
-      if (!ts || !Number.isFinite(value)) return null;
+      if (!Number.isFinite(ts) || !Number.isFinite(value)) return null;
 
       return {
+        ts,
         label: new Date(ts).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }),
         value
       };
@@ -133,13 +133,14 @@ function normalizeLlamaSeries(rows = [], key) {
 function normalizeLlamaOverviewChart(rows = []) {
   return (rows || [])
     .map((row) => {
-      const ts = Array.isArray(row) ? Number(row[0]) : null;
+      const ts = Array.isArray(row) ? Number(row[0]) * 1000 : null;
       const value = Array.isArray(row) ? Number(row[1]) : null;
 
-      if (!ts || !Number.isFinite(value)) return null;
+      if (!Number.isFinite(ts) || !Number.isFinite(value)) return null;
 
       return {
-        label: new Date(ts * 1000).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }),
+        ts,
+        label: new Date(ts).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }),
         value
       };
     })
@@ -153,25 +154,51 @@ function formatAxisValue(value) {
   if (abs >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
   if (abs >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
   if (abs >= 1e3) return `${(value / 1e3).toFixed(1)}K`;
-  return String(Math.round(value));
+  if (abs >= 100) return `${Math.round(value)}`;
+  if (abs >= 1) return `${value.toFixed(1)}`;
+  return `${value.toFixed(2)}`;
+}
+
+function mergeSeriesByTimestamp(datasets) {
+  const tsSet = new Set();
+
+  datasets.forEach((dataset) => {
+    (dataset.series || []).forEach((point) => {
+      if (Number.isFinite(point.ts)) tsSet.add(point.ts);
+    });
+  });
+
+  const timestamps = Array.from(tsSet).sort((a, b) => a - b);
+  const labels = timestamps.map((ts) =>
+    new Date(ts).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })
+  );
+
+  const prepared = datasets
+    .filter((dataset) => dataset.series?.length)
+    .map((dataset) => {
+      const map = new Map(dataset.series.map((point) => [point.ts, point.value]));
+      return {
+        label: dataset.label,
+        data: timestamps.map((ts) => (map.has(ts) ? map.get(ts) : null)),
+        borderWidth: 2,
+        tension: 0.25,
+        pointRadius: 0,
+        spanGaps: true,
+        fill: false,
+        yAxisID: dataset.yAxisID || "y",
+        hidden: !!dataset.hidden
+      };
+    });
+
+  return { labels, prepared };
 }
 
 function createLineChart(canvasId, datasets) {
   const el = document.getElementById(canvasId);
   if (!el || !datasets?.length) return;
 
-  const labels = datasets[0]?.series?.map((x) => x.label) || [];
-  const prepared = datasets
-    .filter((item) => item.series?.length)
-    .map((item) => ({
-      label: item.label,
-      data: item.series.map((x) => x.value),
-      borderWidth: 2,
-      tension: 0.25,
-      pointRadius: 0,
-      fill: false,
-      yAxisID: item.yAxisID || "y"
-    }));
+  const { labels, prepared } = mergeSeriesByTimestamp(datasets);
+  if (!prepared.length || !labels.length) return;
 
   new Chart(el, {
     type: "line",
@@ -191,6 +218,7 @@ function createLineChart(canvasId, datasets) {
         tooltip: {
           callbacks: {
             label(context) {
+              if (context.parsed.y == null) return `${context.dataset.label}: —`;
               return `${context.dataset.label}: ${formatAxisValue(context.parsed.y)}`;
             }
           }
@@ -249,6 +277,7 @@ function createBarChart(canvasId, series, label) {
         tooltip: {
           callbacks: {
             label(context) {
+              if (context.parsed.y == null) return `${label}: —`;
               return `${label}: ${formatAxisValue(context.parsed.y)}`;
             }
           }
@@ -383,22 +412,57 @@ function buildStatusBanner(meta) {
   `;
 }
 
-function initTradingView(symbol) {
-  if (!window.TradingView || !document.getElementById("tv-widget")) return;
+function loadTradingViewScript() {
+  return new Promise((resolve, reject) => {
+    if (window.TradingView) {
+      resolve();
+      return;
+    }
 
-  new window.TradingView.widget({
-    autosize: true,
-    symbol,
-    interval: "D",
-    timezone: "Etc/UTC",
-    theme: "dark",
-    style: "1",
-    locale: "ru",
-    enable_publishing: false,
-    hide_side_toolbar: false,
-    allow_symbol_change: true,
-    container_id: "tv-widget"
+    const existing = document.querySelector('script[data-tv-script="1"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("TradingView script failed")), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://s3.tradingview.com/tv.js";
+    script.async = true;
+    script.dataset.tvScript = "1";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("TradingView script failed"));
+    document.head.appendChild(script);
   });
+}
+
+async function initTradingView(symbol) {
+  const container = document.getElementById("tv-widget");
+  if (!container) return;
+
+  try {
+    await loadTradingViewScript();
+
+    if (!window.TradingView) return;
+
+    container.innerHTML = "";
+
+    new window.TradingView.widget({
+      autosize: true,
+      symbol,
+      interval: "D",
+      timezone: "Etc/UTC",
+      theme: "dark",
+      style: "1",
+      locale: "ru",
+      enable_publishing: false,
+      hide_side_toolbar: false,
+      allow_symbol_change: true,
+      container_id: "tv-widget"
+    });
+  } catch (error) {
+    container.innerHTML = `<div class="error-box">TradingView не загрузился</div>`;
+  }
 }
 
 async function loadReport() {
@@ -462,20 +526,10 @@ async function loadReport() {
           </section>
 
           ${buildCoverageHtml(data)}
-          ${tradingViewCard(tvSymbolMap[slug] || "BINANCE:ETHUSDT")}
+          ${tradingViewCard()}
 
-          ${chartCard(
-            "priceChart",
-            "Цена актива",
-            "История цены по CoinGecko"
-          )}
-
-          ${chartCard(
-            "comboChart",
-            "Сравнение капитализации экосистемы",
-            "Цена, TVL и стейблкоины в одном окне"
-          )}
-
+          ${chartCard("priceChart", "Цена актива", "История цены по CoinGecko")}
+          ${chartCard("comboChart", "Сравнение капитализации экосистемы", "Цена, TVL и стейблкоины в одном окне")}
           ${technicalBiasHtml(data.technical_bias)}
 
           <section class="panel">
@@ -588,7 +642,7 @@ async function loadReport() {
     createLineChart("comboChart", [
       { label: "Цена", series: priceSeries, yAxisID: "y" },
       { label: "TVL", series: tvlSeries, yAxisID: "y1" },
-      { label: "Stablecoins", series: stableSeries, yAxisID: "y1" }
+      { label: "Stablecoins", series: stableSeries, yAxisID: "y1", hidden: false }
     ]);
 
     createBarChart("feesChart", feesSeries, "Fees");
@@ -602,7 +656,7 @@ async function loadReport() {
       { label: "Stablecoins", series: stableSeries, yAxisID: "y" }
     ]);
 
-    setTimeout(() => initTradingView(tvSymbolMap[slug] || "BINANCE:ETHUSDT"), 300);
+    initTradingView(tvSymbolMap[slug] || "BINANCE:ETHUSDT");
   } catch (error) {
     app.innerHTML = `<div class="error-box">Ошибка загрузки: ${escapeHtml(error.message)}</div>`;
   }
