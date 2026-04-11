@@ -8,7 +8,7 @@ export const PROJECTS = {
     categories: ["L1", "DeFi", "Smart Contracts"],
     coingeckoId: "ethereum",
     defillamaChain: "Ethereum",
-    stablecoinChain: "ethereum",
+    stablecoinChain: "Ethereum",
     bybitSymbol: "ETHUSDT",
     tags: ["L1", "DeFi", "Smart Contracts"]
   }
