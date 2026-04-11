@@ -116,14 +116,32 @@ function normalizeLlamaSeries(rows = [], key) {
   return (rows || [])
     .map((row) => {
       const ts = row?.date ? Number(row.date) * 1000 : null;
-      const raw = row?.[key] ?? row?.totalLiquidityUSD ?? row?.totalCirculatingUSD ?? null;
+
+      let raw = row?.[key];
+
+      if (raw && typeof raw === "object") {
+        raw = raw.peggedUSD ?? raw.usd ?? null;
+      }
+
+      if (raw == null) {
+        raw =
+          row?.totalLiquidityUSD ??
+          row?.totalCirculatingUSD ??
+          row?.totalCirculating?.peggedUSD ??
+          row?.totalCirculating?.usd ??
+          null;
+      }
+
       const value = Number(raw);
 
       if (!Number.isFinite(ts) || !Number.isFinite(value)) return null;
 
       return {
         ts,
-        label: new Date(ts).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }),
+        label: new Date(ts).toLocaleDateString("ru-RU", {
+          day: "2-digit",
+          month: "2-digit"
+        }),
         value
       };
     })
@@ -191,6 +209,18 @@ function mergeSeriesByTimestamp(datasets) {
     });
 
   return { labels, prepared };
+}
+
+function toIndexedSeries(series = []) {
+  if (!Array.isArray(series) || !series.length) return [];
+
+  const first = series.find((x) => Number.isFinite(x?.value) && x.value !== 0);
+  if (!first) return [];
+
+  return series.map((point) => ({
+    ...point,
+    value: (point.value / first.value) * 100
+  }));
 }
 
 function createLineChart(canvasId, datasets) {
@@ -527,9 +557,7 @@ async function loadReport() {
 
           ${buildCoverageHtml(data)}
           ${tradingViewCard()}
-
-          ${chartCard("priceChart", "Цена актива", "История цены по CoinGecko")}
-          ${chartCard("comboChart", "Сравнение капитализации экосистемы", "Цена, TVL и стейблкоины в одном окне")}
+          ${chartCard("comboChart", "Сравнение динамики экосистемы", "Все линии стартуют от 100, чтобы честно сравнивать темп движения")}
           ${technicalBiasHtml(data.technical_bias)}
 
           <section class="panel">
@@ -635,14 +663,14 @@ async function loadReport() {
     const feesSeries = normalizeLlamaOverviewChart(data?.charts?.fees_history);
     const dexSeries = normalizeLlamaOverviewChart(data?.charts?.dex_history);
 
-    createLineChart("priceChart", [
-      { label: "Цена", series: priceSeries, yAxisID: "y" }
-    ]);
+    const comboPrice = toIndexedSeries(priceSeries);
+    const comboTvl = toIndexedSeries(tvlSeries);
+    const comboStable = toIndexedSeries(stableSeries);
 
     createLineChart("comboChart", [
-      { label: "Цена", series: priceSeries, yAxisID: "y" },
-      { label: "TVL", series: tvlSeries, yAxisID: "y1" },
-      { label: "Stablecoins", series: stableSeries, yAxisID: "y1", hidden: false }
+      { label: "Цена = 100", series: comboPrice, yAxisID: "y" },
+      { label: "TVL = 100", series: comboTvl, yAxisID: "y" },
+      { label: "Stablecoins = 100", series: comboStable, yAxisID: "y", hidden: !comboStable.length }
     ]);
 
     createBarChart("feesChart", feesSeries, "Fees");
