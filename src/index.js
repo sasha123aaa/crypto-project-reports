@@ -41,7 +41,8 @@ async function handleHybridReportApi(request, env, url) {
   } catch (error) {
     report.meta.updated_at = new Date().toISOString();
     report.meta.data_status = "hybrid-fallback";
-
+    report.meta.live_error = error instanceof Error ? error.message : String(error);
+  
     return json(report, 200);
   }
 }
