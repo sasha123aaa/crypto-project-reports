@@ -36,9 +36,22 @@ async function handleHybridReportApi(request, env, url) {
 
     mergeLiveMetrics(report, live);
 
+    const debug = live.debug || {};
+    const statuses = Object.values(debug);
+
+    const hasFulfilled = statuses.includes("fulfilled");
+    const hasRejected = statuses.includes("rejected");
+
     report.meta.updated_at = new Date().toISOString();
-    report.meta.data_status = "hybrid-live";
-    report.meta.live_debug = live.debug;
+    report.meta.live_debug = debug;
+
+    if (hasFulfilled && hasRejected) {
+      report.meta.data_status = "hybrid-partial-live";
+    } else if (hasFulfilled) {
+      report.meta.data_status = "hybrid-live";
+    } else {
+      report.meta.data_status = "hybrid-fallback";
+    }
 
     return json(report, 200);
   } catch (error) {
@@ -122,18 +135,18 @@ async function fetchLiveMetrics(project) {
   const chainNow = findChainData(chains, project.defillamaChain);
   const stableNow = findStableChainData(stableChains, project.stablecoinChain);
 
-  const price = cgMarket?.current_price ?? null;
-  const marketCap = cgMarket?.market_cap ?? null;
-  const fdv = cgMarket?.fully_diluted_valuation ?? null;
-  const volume24h = cgMarket?.total_volume ?? null;
-  const circulatingSupply = cgMarket?.circulating_supply ?? null;
-  const totalSupply = cgMarket?.total_supply ?? null;
-  const maxSupply = cgMarket?.max_supply ?? null;
+  const price = toNumber(cgMarket?.current_price);
+  const marketCap = toNumber(cgMarket?.market_cap);
+  const fdv = toNumber(cgMarket?.fully_diluted_valuation);
+  const volume24h = toNumber(cgMarket?.total_volume);
+  const circulatingSupply = toNumber(cgMarket?.circulating_supply);
+  const totalSupply = toNumber(cgMarket?.total_supply);
+  const maxSupply = toNumber(cgMarket?.max_supply);
 
-  const tvl = chainNow?.tvl ?? getLastTVL(tvlHistory);
-  const stablecoins = stableNow?.totalCirculatingUSD ?? getLastStable(stableHistory);
-  const chainFees24h = feesOverview?.total24h ?? null;
-  const dexVolume24h = dexOverview?.total24h ?? null;
+  const tvl = toNumber(chainNow?.tvl ?? getLastTVL(tvlHistory));
+  const stablecoins = toNumber(stableNow?.totalCirculatingUSD ?? getLastStable(stableHistory));
+  const chainFees24h = toNumber(feesOverview?.total24h);
+  const dexVolume24h = toNumber(dexOverview?.total24h);
 
   return {
     market: {
@@ -159,11 +172,11 @@ async function fetchLiveMetrics(project) {
       stablecoinsTVL: safeDivide(stablecoins, tvl),
     },
     charts: {
-      priceHistory: cgChart?.prices || [],
+      priceHistory: Array.isArray(cgChart?.prices) ? cgChart.prices : [],
       tvlHistory: Array.isArray(tvlHistory) ? tvlHistory : [],
       stableHistory: Array.isArray(stableHistory) ? stableHistory : [],
-      feesHistory: feesOverview?.totalDataChart || [],
-      dexHistory: dexOverview?.totalDataChart || [],
+      feesHistory: Array.isArray(feesOverview?.totalDataChart) ? feesOverview.totalDataChart : [],
+      dexHistory: Array.isArray(dexOverview?.totalDataChart) ? dexOverview.totalDataChart : [],
     },
     debug: {
       cgMarket: cgMarketRes.status,
@@ -182,7 +195,7 @@ function mergeLiveMetrics(report, live) {
   const sourceCG = "CoinGecko";
   const sourceDL = "DefiLlama";
 
-  if (live.market.price != null) {
+  if (isValidNumber(live.market.price)) {
     report.market.price = liveMetric(
       live.market.price,
       formatMoney(live.market.price),
@@ -190,7 +203,7 @@ function mergeLiveMetrics(report, live) {
     );
   }
 
-  if (live.market.marketCap != null) {
+  if (isValidNumber(live.market.marketCap)) {
     const metric = liveMetric(
       live.market.marketCap,
       formatMoney(live.market.marketCap),
@@ -200,7 +213,7 @@ function mergeLiveMetrics(report, live) {
     if (report.tokenomics?.metrics) report.tokenomics.metrics.market_cap = metric;
   }
 
-  if (live.market.fdv != null) {
+  if (isValidNumber(live.market.fdv)) {
     const metric = liveMetric(
       live.market.fdv,
       formatMoney(live.market.fdv),
@@ -210,7 +223,7 @@ function mergeLiveMetrics(report, live) {
     if (report.tokenomics?.metrics) report.tokenomics.metrics.fdv = metric;
   }
 
-  if (live.market.volume24h != null) {
+  if (isValidNumber(live.market.volume24h)) {
     const metric = liveMetric(
       live.market.volume24h,
       formatMoney(live.market.volume24h),
@@ -220,7 +233,7 @@ function mergeLiveMetrics(report, live) {
     if (report.liquidity?.metrics) report.liquidity.metrics.spot_volume = metric;
   }
 
-  if (live.market.circulatingSupply != null) {
+  if (isValidNumber(live.market.circulatingSupply)) {
     const metric = liveMetric(
       live.market.circulatingSupply,
       formatNumber(live.market.circulatingSupply),
@@ -230,7 +243,7 @@ function mergeLiveMetrics(report, live) {
     if (report.tokenomics?.metrics) report.tokenomics.metrics.circulating_supply = metric;
   }
 
-  if (live.market.totalSupply != null) {
+  if (isValidNumber(live.market.totalSupply)) {
     const metric = liveMetric(
       live.market.totalSupply,
       formatNumber(live.market.totalSupply),
@@ -240,7 +253,7 @@ function mergeLiveMetrics(report, live) {
     if (report.tokenomics?.metrics) report.tokenomics.metrics.total_supply = metric;
   }
 
-  if (live.market.maxSupply != null) {
+  if (isValidNumber(live.market.maxSupply)) {
     const metric = liveMetric(
       live.market.maxSupply,
       formatNumber(live.market.maxSupply),
@@ -250,25 +263,23 @@ function mergeLiveMetrics(report, live) {
     if (report.tokenomics?.metrics) report.tokenomics.metrics.max_supply = metric;
   }
 
-  if (live.capital.tvl != null) {
-    const metric = liveMetric(
+  if (isValidNumber(live.capital.tvl)) {
+    report.capital.metrics.tvl = liveMetric(
       live.capital.tvl,
       formatMoney(live.capital.tvl),
       sourceDL
     );
-    report.capital.metrics.tvl = metric;
   }
 
-  if (live.capital.stablecoins != null) {
-    const metric = liveMetric(
+  if (isValidNumber(live.capital.stablecoins)) {
+    report.capital.metrics.stablecoins_mcap = liveMetric(
       live.capital.stablecoins,
       formatMoney(live.capital.stablecoins),
       sourceDL
     );
-    report.capital.metrics.stablecoins_mcap = metric;
   }
 
-  if (live.financials.chainFees24h != null) {
+  if (isValidNumber(live.financials.chainFees24h)) {
     report.financials.metrics.chain_fees_24h = liveMetric(
       live.financials.chainFees24h,
       formatMoney(live.financials.chainFees24h),
@@ -276,7 +287,7 @@ function mergeLiveMetrics(report, live) {
     );
   }
 
-  if (live.financials.dexVolume24h != null) {
+  if (isValidNumber(live.financials.dexVolume24h)) {
     const metric = liveMetric(
       live.financials.dexVolume24h,
       formatMoney(live.financials.dexVolume24h),
@@ -286,14 +297,14 @@ function mergeLiveMetrics(report, live) {
     if (report.liquidity?.metrics) report.liquidity.metrics.dex_volume_24h = metric;
   }
 
-  if (live.valuation.marketCapTVL != null) {
+  if (isValidNumber(live.valuation.marketCapTVL)) {
     report.valuation.metrics.market_cap_tvl = calcMetric(
       live.valuation.marketCapTVL,
       `${live.valuation.marketCapTVL.toFixed(2)}x`
     );
   }
 
-  if (live.valuation.volumeMarketCap != null) {
+  if (isValidNumber(live.valuation.volumeMarketCap)) {
     const metric = calcMetric(
       live.valuation.volumeMarketCap,
       `${live.valuation.volumeMarketCap.toFixed(2)}%`
@@ -302,18 +313,42 @@ function mergeLiveMetrics(report, live) {
     report.financials.metrics.volume_market_cap = metric;
   }
 
-  if (live.valuation.stablecoinsTVL != null) {
+  if (isValidNumber(live.valuation.stablecoinsTVL)) {
     report.valuation.metrics.stablecoins_tvl = calcMetric(
       live.valuation.stablecoinsTVL,
       `${live.valuation.stablecoinsTVL.toFixed(2)}x`
     );
   }
 
-  report.charts.price_history = live.charts.priceHistory;
-  report.charts.tvl_history = live.charts.tvlHistory;
-  report.charts.stablecoins_history = live.charts.stableHistory;
-  report.charts.fees_history = live.charts.feesHistory;
-  report.charts.dex_history = live.charts.dexHistory;
+  if (live.charts.priceHistory?.length) {
+    report.charts.price_history = live.charts.priceHistory;
+  }
+
+  if (live.charts.tvlHistory?.length) {
+    report.charts.tvl_history = live.charts.tvlHistory;
+  }
+
+  if (live.charts.stableHistory?.length) {
+    report.charts.stablecoins_history = live.charts.stableHistory;
+  }
+
+  if (live.charts.feesHistory?.length) {
+    report.charts.fees_history = live.charts.feesHistory;
+  }
+
+  if (live.charts.dexHistory?.length) {
+    report.charts.dex_history = live.charts.dexHistory;
+  }
+}
+
+function toNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function isValidNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 function liveMetric(value, formatted, source) {
@@ -335,31 +370,35 @@ function calcMetric(value, formatted) {
 }
 
 function safeDivide(a, b) {
-  if (a == null || b == null || b === 0) return null;
+  if (!isValidNumber(a) || !isValidNumber(b) || b === 0) return null;
   return a / b;
 }
 
 function safePercent(a, b) {
-  if (a == null || b == null || b === 0) return null;
+  if (!isValidNumber(a) || !isValidNumber(b) || b === 0) return null;
   return (a / b) * 100;
 }
 
 function formatMoney(value) {
-  if (value == null || Number.isNaN(value)) return "—";
-  const abs = Math.abs(value);
+  const num = toNumber(value);
+  if (!isValidNumber(num)) return "—";
 
-  if (abs >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
-  if (abs >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
-  if (abs >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
-  return `$${value.toFixed(2)}`;
+  const abs = Math.abs(num);
+
+  if (abs >= 1e12) return `$${(num / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `$${(num / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
+  if (abs >= 1e3) return `$${(num / 1e3).toFixed(2)}K`;
+  return `$${num.toFixed(2)}`;
 }
 
 function formatNumber(value) {
-  if (value == null || Number.isNaN(value)) return "—";
+  const num = toNumber(value);
+  if (!isValidNumber(num)) return "—";
+
   return new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(num);
 }
 
 async function fetchCoinGeckoMarket(coingeckoId) {
@@ -458,12 +497,12 @@ function findStableChainData(chains, chainKey) {
 
 function getLastTVL(rows) {
   if (!Array.isArray(rows) || !rows.length) return null;
-  return rows[rows.length - 1]?.totalLiquidityUSD ?? null;
+  return toNumber(rows[rows.length - 1]?.totalLiquidityUSD);
 }
 
 function getLastStable(rows) {
   if (!Array.isArray(rows) || !rows.length) return null;
-  return rows[rows.length - 1]?.totalCirculatingUSD ?? null;
+  return toNumber(rows[rows.length - 1]?.totalCirculatingUSD);
 }
 
 function json(data, status = 200) {
