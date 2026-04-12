@@ -405,7 +405,7 @@ async function fetchBybitCandles(symbol, timeframe) {
   const interval = BYBIT_INTERVAL[timeframe];
   if (!interval) return [];
 
-  const url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=200`;
+  const url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=500`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Bybit kline HTTP ${res.status}`);
 
