@@ -98,7 +98,7 @@ async function fetchLiveMetrics(project) {
   const tvlHistory = normalizeTvlHistory(tvlHistoryRaw);
   const stableHistory = normalizeStableHistory(stableHistoryRaw);
   const tvl = toNumber(chainNow?.tvl ?? getLastTVL(tvlHistory));
-  const stablecoins = toNumber(chainNow?.stablecoins ?? stableNow?.totalCirculatingUSD ?? getLastStable(stableHistory));
+  const stablecoins = toNumber(extractStablecoinsCurrent(chainNow, stableNow) ?? getLastStable(stableHistory));
   const feesHistory = normalizeOverviewHistory(feesOverview?.totalDataChart);
   const dexHistory = normalizeOverviewHistory(dexOverview?.totalDataChart);
   const chainFees24h = toNumber(feesOverview?.total24h);
@@ -226,17 +226,39 @@ async function fetchTVLHistory(chain){
 async function fetchStablecoinHistory(chain){ const res = await fetch(`https://stablecoins.llama.fi/stablecoincharts/${encodeURIComponent(chain)}`); if(!res.ok) throw new Error(`DefiLlama stable history error: ${res.status}`); return res.json(); }
 async function fetchChainUsersMetrics(chain){
   const chainSlug = String(chain || "").toLowerCase();
-  const res = await fetch(`https://defillama.com/chain/${encodeURIComponent(chainSlug)}?addresses=`, { headers:{ accept:"text/html" } });
+  const res = await fetch(`https://defillama.com/chain/${encodeURIComponent(chainSlug)}?addresses=`, {
+    headers:{
+      accept:"text/html,application/xhtml+xml,application/json",
+      "user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0",
+    }
+  });
   if (!res.ok) throw new Error(`DefiLlama users page error: ${res.status}`);
   const html = await res.text();
+  const fromNextData = extractUsersFromNextData(html);
   return {
-    dailyActiveAddresses24h: extractMetricFromHtml(html, "Active Addresses (24h)"),
-    newAddresses24h: extractMetricFromHtml(html, "New Addresses (24h)"),
-    transactions24h: extractMetricFromHtml(html, "Transactions (24h)"),
+    dailyActiveAddresses24h: toNumber(fromNextData?.dailyActiveAddresses24h ?? extractMetricFromHtml(html, "Active Addresses (24h)")),
+    newAddresses24h: toNumber(fromNextData?.newAddresses24h ?? extractMetricFromHtml(html, "New Addresses (24h)")),
+    transactions24h: toNumber(fromNextData?.transactions24h ?? extractMetricFromHtml(html, "Transactions (24h)")),
   };
 }
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item) => String(item.name).toLowerCase() === String(chainName).toLowerCase()) : null; }
 function findStableChainData(chains, chainKey){ const target = String(chainKey || "").toLowerCase(); return Array.isArray(chains) ? chains.find((item) => [item?.gecko_id,item?.name,item?.chain,item?.tokenSymbol].filter(Boolean).map((v)=>String(v).toLowerCase()).includes(target)) : null; }
+function extractStablecoinsCurrent(chainNow, stableNow){
+  const fromChain = toNumber(chainNow?.stablecoins ?? chainNow?.stablecoinMcap ?? chainNow?.stablecoinsMcap ?? chainNow?.stables);
+  if (isValidNumber(fromChain)) return fromChain;
+  const rawStable = stableNow?.totalCirculatingUSD ?? stableNow?.totalCirculating ?? stableNow?.totalLiquidityUSD ?? stableNow?.mcap ?? null;
+  if (isValidNumber(toNumber(rawStable))) return toNumber(rawStable);
+  if (rawStable && typeof rawStable === "object") {
+    return toNumber(
+      rawStable.peggedUSD
+      ?? rawStable.usd
+      ?? rawStable.total
+      ?? rawStable.current
+      ?? null
+    );
+  }
+  return null;
+}
 function getLastTVL(rows){ if(!Array.isArray(rows) || !rows.length) return null; return toNumber(rows[rows.length-1]?.totalLiquidityUSD); }
 function getLastStable(rows){ if(!Array.isArray(rows) || !rows.length) return null; const last = rows[rows.length-1]; return toNumber(last?.totalCirculatingUSD ?? last?.totalCirculating?.peggedUSD ?? last?.totalCirculating?.usd ?? null); }
 function toMillis(ts){ const num = Number(ts); if (!Number.isFinite(num)) return null; return num < 1e12 ? Math.trunc(num * 1000) : Math.trunc(num); }
@@ -276,6 +298,44 @@ function normalizeOverviewHistory(rows){
   const firstValidIndex = sorted.findIndex(([, value]) => value > 0);
   if (firstValidIndex < 0) return [];
   return sorted.slice(firstValidIndex);
+}
+function extractUsersFromNextData(html){
+  if (!html) return null;
+  const match = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+  if (!match?.[1]) return null;
+  try {
+    const payload = JSON.parse(match[1]);
+    const found = {
+      dailyActiveAddresses24h: findNumberByKeys(payload, ["activeaddresses24h", "dailyactiveaddresses24h"]),
+      newAddresses24h: findNumberByKeys(payload, ["newaddresses24h"]),
+      transactions24h: findNumberByKeys(payload, ["transactions24h"]),
+    };
+    if (isValidNumber(found.dailyActiveAddresses24h) || isValidNumber(found.newAddresses24h) || isValidNumber(found.transactions24h)) {
+      return found;
+    }
+  } catch {}
+  return null;
+}
+function findNumberByKeys(node, expectedKeys){
+  if (!node) return null;
+  const queue = [node];
+  const target = new Set((expectedKeys || []).map((x) => String(x).toLowerCase()));
+  while (queue.length) {
+    const item = queue.shift();
+    if (!item || typeof item !== "object") continue;
+    if (Array.isArray(item)) {
+      queue.push(...item);
+      continue;
+    }
+    for (const [key, value] of Object.entries(item)) {
+      if (target.has(String(key).toLowerCase())) {
+        const num = toNumber(typeof value === "object" ? value?.value ?? value?.current ?? value?.amount : value);
+        if (isValidNumber(num)) return num;
+      }
+      if (value && typeof value === "object") queue.push(value);
+    }
+  }
+  return null;
 }
 
 function mergeUsersMetrics(report, users){
