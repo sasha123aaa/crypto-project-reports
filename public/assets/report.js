@@ -90,6 +90,15 @@ function statusChip(status = "unknown") {
   return `<span class="status-chip ${escapeHtml(status)}">${labelMap[status] || status.toUpperCase()}</span>`;
 }
 
+function hasNoLiveUsers(metrics) {
+  if (!metrics || typeof metrics !== "object") return true;
+  return Object.values(metrics).every((metric) => {
+    const value = Number(metric?.value);
+    const formatted = String(metric?.formatted || "").toLowerCase();
+    return !Number.isFinite(value) && (formatted === "—" || formatted.includes("источник подключается"));
+  });
+}
+
 function metricHtml(title, metric) {
   const help = METRIC_HELP[title]
     ? `<span class="info-wrap"><span class="info-icon">i</span><span class="tooltip">${escapeHtml(METRIC_HELP[title])}</span></span>`
@@ -120,7 +129,8 @@ function normalizeCoinGeckoPrices(prices = []) {
 
 function normalizeLlamaSeries(rows = [], key) {
   return (rows || []).map((row) => {
-    const ts = row?.date ? Number(row.date) * 1000 : null;
+    const rawTs = Number(row?.date);
+    const ts = Number.isFinite(rawTs) ? (rawTs < 1e12 ? rawTs * 1000 : rawTs) : null;
     let raw = row?.[key];
     if (raw && typeof raw === "object") raw = raw.peggedUSD ?? raw.usd ?? null;
     if (raw == null) raw = row?.totalLiquidityUSD ?? row?.totalCirculatingUSD ?? row?.totalCirculating?.peggedUSD ?? row?.totalCirculating?.usd ?? null;
@@ -132,11 +142,48 @@ function normalizeLlamaSeries(rows = [], key) {
 
 function normalizeLlamaOverviewChart(rows = []) {
   return (rows || []).map((row) => {
-    const ts = Array.isArray(row) ? Number(row[0]) * 1000 : null;
+    const rawTs = Array.isArray(row) ? Number(row[0]) : null;
+    const ts = Number.isFinite(rawTs) ? (rawTs < 1e12 ? rawTs * 1000 : rawTs) : null;
     const value = Array.isArray(row) ? Number(row[1]) : null;
     if (!Number.isFinite(ts) || !Number.isFinite(value)) return null;
     return { ts, label: new Date(ts).toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit" }), value };
   }).filter(Boolean);
+}
+
+function sanitizeSeries(series = [], { trimLeadingZeroes = false } = {}) {
+  if (!Array.isArray(series) || !series.length) return [];
+  const dedupMap = new Map();
+  series.forEach((point) => {
+    const ts = Number(point?.ts);
+    const value = Number(point?.value);
+    if (!Number.isFinite(ts) || !Number.isFinite(value)) return;
+    dedupMap.set(ts, { ...point, ts, value });
+  });
+  const sorted = Array.from(dedupMap.values()).sort((a, b) => a.ts - b.ts);
+  if (!sorted.length) return [];
+  let firstValidIndex = 0;
+  if (trimLeadingZeroes) {
+    firstValidIndex = sorted.findIndex((point) => point.value > 0);
+    if (firstValidIndex < 0) return [];
+  }
+  return sorted.slice(firstValidIndex).map((point) => ({
+    ...point,
+    label: new Date(point.ts).toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit" }),
+  }));
+}
+
+function alignSeriesWithMetric(series = [], metricValue) {
+  const value = Number(metricValue);
+  if (!Number.isFinite(value) || value <= 0) return series;
+  if (!Array.isArray(series) || !series.length) {
+    return [{ ts: Date.now(), label: new Date().toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit" }), value }];
+  }
+  const aligned = [...series];
+  const last = aligned[aligned.length - 1];
+  if (Number.isFinite(last?.value) && Math.abs(last.value - value) < 1e-6) return aligned;
+  const nowTs = Math.max(Date.now(), Number(last?.ts) || 0);
+  aligned.push({ ts: nowTs, label: new Date(nowTs).toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit" }), value });
+  return aligned;
 }
 
 function formatAxisValue(value) {
@@ -252,17 +299,9 @@ function technicalBiasHtml(bias) {
   return `<section class="panel"><div class="section-title">Быстрый теханализ</div><div class="section-sub">Краткая оценка структуры по ключевым таймфреймам</div><div class="ta-meta-row"><div class="ta-meta-box"><div class="metric-title">Источник</div><div class="ta-meta-value">${escapeHtml(bias?.source || "—")}</div></div><div class="ta-meta-box"><div class="metric-title">Обновлено</div><div class="ta-meta-value">${bias?.updated_at ? new Date(bias.updated_at).toLocaleString("ru-RU") : "—"}</div></div></div><div class="ta-groups">${groupsHtml}</div></section>`;
 }
 
-function buildCoverageHtml(data) {
-  const metrics = [data?.market?.price,data?.market?.market_cap,data?.market?.fdv,data?.market?.volume_24h,data?.capital?.metrics?.tvl,data?.capital?.metrics?.stablecoins_mcap,data?.financials?.metrics?.chain_fees_24h,data?.financials?.metrics?.dex_volume_24h,data?.valuation?.metrics?.market_cap_tvl,data?.valuation?.metrics?.volume_market_cap,data?.valuation?.metrics?.stablecoins_tvl];
-  const counts = { live:0, manual:0, calculated:0, partial:0, unavailable:0 };
-  metrics.forEach((m) => { const s = m?.status || "unavailable"; if (counts[s] !== undefined) counts[s] += 1; else counts.unavailable += 1; });
-  return `<section class="panel"><div class="section-title">Покрытие данных</div><div class="section-sub">Насколько отчет сейчас живой, а не только шаблонный</div><div class="hero-grid"><div class="metric-box"><div class="metric-top-row"><div class="metric-title">LIVE метрики</div>${statusChip("live")}</div><div class="metric-value">${counts.live}</div><div class="metric-status-line">подтянулись из внешних источников</div></div><div class="metric-box"><div class="metric-top-row"><div class="metric-title">MANUAL метрики</div>${statusChip("manual")}</div><div class="metric-value">${counts.manual}</div><div class="metric-status-line">пока взяты из статичного JSON</div></div><div class="metric-box"><div class="metric-top-row"><div class="metric-title">CALC метрики</div>${statusChip("calculated")}</div><div class="metric-value">${counts.calculated}</div><div class="metric-status-line">посчитаны на основе live-данных</div></div></div></section>`;
-}
-
-function buildStatusBanner(meta) {
-  const status = meta?.data_status || "unknown";
-  const helpMap = { "hybrid-live":"Большая часть ключевых метрик подгружена в live-режиме.", "hybrid-partial-live":"Часть метрик live, часть пока остается manual.", "hybrid-fallback":"Live-источники сработали не полностью, поэтому часть значений показана из резервного JSON." };
-  return `<section class="panel compact-panel"><div class="status-banner-row"><div class="status-banner-left">${statusChip(status === "hybrid-live" ? "live" : status === "hybrid-partial-live" ? "partial" : "manual")}<span class="status-banner-title">${escapeHtml(status)}</span></div><div class="status-banner-text">${escapeHtml(helpMap[status] || "Текущий режим данных отчета.")}</div></div></section>`;
+function buildUsersStatusCard(metrics) {
+  const status = metrics?.daily_active_addresses?.status || "partial";
+  return `<div class="list-item"><strong>Статус данных</strong><br>${statusChip(status)}<div class="metric-status-line">Надежный live-источник пользовательских метрик пока недоступен. Блок обновится автоматически после подключения.</div></div>`;
 }
 
 function loadTradingViewScript() {
@@ -380,11 +419,9 @@ async function loadReport() {
       .map(([v,l],i) => `<button class="range-btn ${i===0 ? "active" : ""}" data-range="${v}">${l}</button>`).join("");
 
     app.innerHTML = `<div class="layout"><aside class="sidebar-card"><div class="eyebrow">Crypto Project Deep Dive</div><div class="project-main">${escapeHtml(data.meta.project_name)}</div><div class="project-sub">${escapeHtml(data.meta.subtitle)}</div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="small-note">Обновлено: ${new Date(data.meta.updated_at).toLocaleString("ru-RU")}</div><div class="small-note">Статус данных: ${escapeHtml(data.meta.data_status)}</div><div class="small-note">Slug: ${escapeHtml(data.meta.slug)}</div></aside><main class="content">
-      ${buildStatusBanner(data.meta)}
       <section class="panel"><div class="eyebrow">Первый экран</div><h1>${escapeHtml(data.hero.title)}</h1><div class="subtitle">${escapeHtml(data.hero.subtitle)}</div><p class="lead">${escapeHtml(data.hero.lead)}</p>
       <div class="hero-grid">${metricHtml("Цена", data.market.price)}${metricHtml("Рыночная капитализация", data.market.market_cap)}${metricHtml("FDV", data.market.fdv)}${metricHtml("Объем 24ч", data.market.volume_24h)}${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div>
       <div class="three-col top-gap"><div class="list-item"><strong>Главная сила</strong><br>${escapeHtml(data.hero.main_strength || "—")}</div><div class="list-item"><strong>Главный риск</strong><br>${escapeHtml(data.hero.main_risk || "—")}</div><div class="list-item"><strong>Общий статус</strong><br>${escapeHtml(data.hero.status_text || "—")}</div></div></section>
-      ${buildCoverageHtml(data)}
       ${tradingViewCard()}
       ${chartCard("comboChart","Сравнение динамики экосистемы","Все линии нормализованы к 100 внутри выбранного периода.",comboControls,"По умолчанию показан только общий период пересечения серий, чтобы график не искажал картину.")}
       ${technicalBiasHtml(data.technical_bias)}
@@ -398,18 +435,20 @@ async function loadReport() {
       <section class="panel"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div></section>
       ${chartCard("tvlChart","TVL","История TVL по DefiLlama")}
       ${chartCard("stableChart","Stablecoins внутри сети","История стейблкоинов по DefiLlama")}
-      <section class="panel"><div class="section-title">Пользователи</div>${(data.users.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Daily Active Addresses", data.users.metrics.daily_active_addresses)}${metricHtml("New Addresses", data.users.metrics.new_addresses)}${metricHtml("Transactions", data.users.metrics.transactions)}</div></section>
+      <section class="panel"><div class="section-title">Пользователи</div>${(data.users.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Daily Active Addresses", data.users.metrics.daily_active_addresses)}${metricHtml("New Addresses", data.users.metrics.new_addresses)}${metricHtml("Transactions", data.users.metrics.transactions)}</div>${hasNoLiveUsers(data.users.metrics) ? `<div class="three-col top-gap">${buildUsersStatusCard(data.users.metrics)}</div>` : ""}</section>
       <section class="panel"><div class="section-title">Оценка</div>${(data.valuation.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Market Cap / TVL", data.valuation.metrics.market_cap_tvl)}${metricHtml("Volume / Market Cap", data.valuation.metrics.volume_market_cap)}${metricHtml("Stablecoins / TVL", data.valuation.metrics.stablecoins_tvl)}${metricHtml("Статус оценки", data.valuation.metrics.valuation_status)}</div></section>
       <section class="panel"><div class="section-title">Риски</div><div class="list-wrap">${listHtml(data.risks.items)}</div></section>
       <section class="panel"><div class="section-title">Что отслеживать</div><div class="list-wrap">${listHtml(data.watchlist.items)}</div></section>
       <section class="panel"><div class="section-title">${escapeHtml(data.final_verdict.title)}</div><div class="subtitle">${escapeHtml(data.final_verdict.subtitle)}</div>${(data.final_verdict.paragraphs || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}</section>
     </main></div>`;
 
-    const priceSeries = normalizeCoinGeckoPrices(data?.charts?.price_history);
-    const tvlSeries = normalizeLlamaSeries(data?.charts?.tvl_history, "totalLiquidityUSD");
-    const stableSeries = normalizeLlamaSeries(data?.charts?.stablecoins_history, "totalCirculatingUSD");
-    const feesSeries = normalizeLlamaOverviewChart(data?.charts?.fees_history);
-    const dexSeries = normalizeLlamaOverviewChart(data?.charts?.dex_history);
+    const priceSeries = sanitizeSeries(normalizeCoinGeckoPrices(data?.charts?.price_history));
+    const tvlSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.tvl_history, "totalLiquidityUSD"), { trimLeadingZeroes:true });
+    const stableSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.stablecoins_history, "totalCirculatingUSD"), { trimLeadingZeroes:true });
+    const tvlSeries = sanitizeSeries(alignSeriesWithMetric(tvlSeriesRaw, data?.capital?.metrics?.tvl?.value), { trimLeadingZeroes:true });
+    const stableSeries = sanitizeSeries(alignSeriesWithMetric(stableSeriesRaw, data?.capital?.metrics?.stablecoins_mcap?.value), { trimLeadingZeroes:true });
+    const feesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.fees_history), { trimLeadingZeroes:true });
+    const dexSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.dex_history), { trimLeadingZeroes:true });
 
     bindComboRangeControls(priceSeries, tvlSeries, stableSeries);
     renderComboChart("overlap", priceSeries, tvlSeries, stableSeries);

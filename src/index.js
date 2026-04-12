@@ -78,8 +78,8 @@ async function fetchLiveMetrics(project) {
   const stableChains = stableChainsRes.status === "fulfilled" ? stableChainsRes.value : null;
   const feesOverview = feesOverviewRes.status === "fulfilled" ? feesOverviewRes.value : null;
   const dexOverview = dexOverviewRes.status === "fulfilled" ? dexOverviewRes.value : null;
-  const tvlHistory = tvlHistoryRes.status === "fulfilled" ? tvlHistoryRes.value : [];
-  const stableHistory = stableHistoryRes.status === "fulfilled" ? stableHistoryRes.value : [];
+  const tvlHistoryRaw = tvlHistoryRes.status === "fulfilled" ? tvlHistoryRes.value : [];
+  const stableHistoryRaw = stableHistoryRes.status === "fulfilled" ? stableHistoryRes.value : [];
   const technicalBias = technicalBiasRes.status === "fulfilled" ? technicalBiasRes.value : null;
 
   const chainNow = findChainData(chains, project.defillamaChain);
@@ -93,8 +93,12 @@ async function fetchLiveMetrics(project) {
   const totalSupply = toNumber(cgMarket?.total_supply);
   const maxSupply = toNumber(cgMarket?.max_supply);
 
+  const tvlHistory = normalizeTvlHistory(tvlHistoryRaw);
+  const stableHistory = normalizeStableHistory(stableHistoryRaw);
   const tvl = toNumber(chainNow?.tvl ?? getLastTVL(tvlHistory));
-  const stablecoins = toNumber(stableNow?.totalCirculatingUSD ?? getLastStable(stableHistory));
+  const stablecoins = toNumber(chainNow?.stablecoins ?? stableNow?.totalCirculatingUSD ?? getLastStable(stableHistory));
+  const tvlHistoryAligned = appendLatestPointIfNeeded(tvlHistory, "totalLiquidityUSD", tvl);
+  const stableHistoryAligned = appendLatestPointIfNeeded(stableHistory, "totalCirculatingUSD", stablecoins);
   const chainFees24h = toNumber(feesOverview?.total24h);
   const dexVolume24h = toNumber(dexOverview?.total24h);
 
@@ -109,8 +113,8 @@ async function fetchLiveMetrics(project) {
     },
     charts: {
       priceHistory: Array.isArray(cgChart?.prices) ? cgChart.prices : [],
-      tvlHistory: Array.isArray(tvlHistory) ? tvlHistory : [],
-      stableHistory: Array.isArray(stableHistory) ? stableHistory : [],
+      tvlHistory: tvlHistoryAligned,
+      stableHistory: stableHistoryAligned,
       feesHistory: Array.isArray(feesOverview?.totalDataChart) ? feesOverview.totalDataChart : [],
       dexHistory: Array.isArray(dexOverview?.totalDataChart) ? dexOverview.totalDataChart : [],
     },
@@ -185,6 +189,7 @@ function mergeLiveMetrics(report, live) {
   if (live.charts.feesHistory?.length) report.charts.fees_history = live.charts.feesHistory;
   if (live.charts.dexHistory?.length) report.charts.dex_history = live.charts.dexHistory;
   if (live.technicalBias) report.technical_bias = live.technicalBias;
+  sanitizeUsersBlock(report);
 }
 
 function toNumber(value){ if (value===null || value===undefined || value==="") return null; const num = Number(value); return Number.isFinite(num) ? num : null; }
@@ -207,4 +212,53 @@ function findChainData(chains, chainName){ return Array.isArray(chains) ? chains
 function findStableChainData(chains, chainKey){ const target = String(chainKey || "").toLowerCase(); return Array.isArray(chains) ? chains.find((item) => [item?.gecko_id,item?.name,item?.chain,item?.tokenSymbol].filter(Boolean).map((v)=>String(v).toLowerCase()).includes(target)) : null; }
 function getLastTVL(rows){ if(!Array.isArray(rows) || !rows.length) return null; return toNumber(rows[rows.length-1]?.totalLiquidityUSD); }
 function getLastStable(rows){ if(!Array.isArray(rows) || !rows.length) return null; const last = rows[rows.length-1]; return toNumber(last?.totalCirculatingUSD ?? last?.totalCirculating?.peggedUSD ?? last?.totalCirculating?.usd ?? null); }
+function toMillis(ts){ const num = Number(ts); if (!Number.isFinite(num)) return null; return num < 1e12 ? Math.trunc(num * 1000) : Math.trunc(num); }
+function normalizeTvlHistory(rows){
+  if (!Array.isArray(rows)) return [];
+  const map = new Map();
+  rows.forEach((row) => {
+    const date = toMillis(row?.date);
+    const value = toNumber(row?.totalLiquidityUSD);
+    if (!Number.isFinite(date) || !isValidNumber(value) || value <= 0) return;
+    map.set(date, { ...row, date: Math.floor(date / 1000), totalLiquidityUSD: value });
+  });
+  return Array.from(map.values()).sort((a, b) => a.date - b.date);
+}
+function normalizeStableHistory(rows){
+  if (!Array.isArray(rows)) return [];
+  const map = new Map();
+  rows.forEach((row) => {
+    const date = toMillis(row?.date);
+    const rawValue = row?.totalCirculatingUSD ?? row?.totalCirculating?.peggedUSD ?? row?.totalCirculating?.usd ?? row?.totalLiquidityUSD;
+    const value = toNumber(rawValue);
+    if (!Number.isFinite(date) || !isValidNumber(value) || value <= 0) return;
+    map.set(date, { ...row, date: Math.floor(date / 1000), totalCirculatingUSD: value });
+  });
+  return Array.from(map.values()).sort((a, b) => a.date - b.date);
+}
+function appendLatestPointIfNeeded(rows, key, latestValue){
+  if (!isValidNumber(latestValue)) return rows;
+  const normalized = Array.isArray(rows) ? [...rows] : [];
+  const last = normalized[normalized.length - 1];
+  const lastTs = toMillis(last?.date) ?? Date.now();
+  const lastValue = toNumber(last?.[key]);
+  if (isValidNumber(lastValue) && Math.abs(lastValue - latestValue) < 1e-6) return normalized;
+  const nowTs = Math.floor(Date.now() / 1000);
+  const nextTs = Math.max(nowTs, Math.floor(lastTs / 1000));
+  normalized.push({ ...(last || {}), date: nextTs, [key]: latestValue });
+  return normalized;
+}
+function sanitizeUsersBlock(report){
+  if (!report?.users?.metrics) return;
+  const cleanFormatted = "данные временно недоступны";
+  Object.values(report.users.metrics).forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    if (String(item.formatted || "").toLowerCase().includes("источник подключается")) item.formatted = cleanFormatted;
+    if (!item.status || item.status === "unavailable") item.status = "partial";
+    if (!item.source) item.source = "source pending";
+  });
+  if (Array.isArray(report.users.text) && report.users.text.length) {
+    report.users.text = report.users.text.map((line) => String(line).replaceAll("источник подключается", cleanFormatted));
+  }
+}
 function json(data,status=200){ return new Response(JSON.stringify(data,null,2),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"public, max-age=300"}}); }
