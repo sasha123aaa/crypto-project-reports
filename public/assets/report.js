@@ -172,20 +172,6 @@ function sanitizeSeries(series = [], { trimLeadingZeroes = false } = {}) {
   }));
 }
 
-function alignSeriesWithMetric(series = [], metricValue) {
-  const value = Number(metricValue);
-  if (!Number.isFinite(value) || value <= 0) return series;
-  if (!Array.isArray(series) || !series.length) {
-    return [{ ts: Date.now(), label: new Date().toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit" }), value }];
-  }
-  const aligned = [...series];
-  const last = aligned[aligned.length - 1];
-  if (Number.isFinite(last?.value) && Math.abs(last.value - value) < 1e-6) return aligned;
-  const nowTs = Math.max(Date.now(), Number(last?.ts) || 0);
-  aligned.push({ ts: nowTs, label: new Date(nowTs).toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit" }), value });
-  return aligned;
-}
-
 function formatAxisValue(value) {
   if (!Number.isFinite(value)) return "";
   const abs = Math.abs(value);
@@ -445,8 +431,8 @@ async function loadReport() {
     const priceSeries = sanitizeSeries(normalizeCoinGeckoPrices(data?.charts?.price_history));
     const tvlSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.tvl_history, "totalLiquidityUSD"), { trimLeadingZeroes:true });
     const stableSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.stablecoins_history, "totalCirculatingUSD"), { trimLeadingZeroes:true });
-    const tvlSeries = sanitizeSeries(alignSeriesWithMetric(tvlSeriesRaw, data?.capital?.metrics?.tvl?.value), { trimLeadingZeroes:true });
-    const stableSeries = sanitizeSeries(alignSeriesWithMetric(stableSeriesRaw, data?.capital?.metrics?.stablecoins_mcap?.value), { trimLeadingZeroes:true });
+    const tvlSeries = sanitizeSeries(tvlSeriesRaw, { trimLeadingZeroes:true });
+    const stableSeries = sanitizeSeries(stableSeriesRaw, { trimLeadingZeroes:true });
     const feesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.fees_history), { trimLeadingZeroes:true });
     const dexSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.dex_history), { trimLeadingZeroes:true });
 
