@@ -320,6 +320,10 @@ function normalizeOverviewHistory(rows){
 function mergeUsersMetrics(report, users){
   if (!report?.users?.metrics || !users) return;
   const source = users.source || users.provider || "Users provider";
+  report.users.provider = users.provider || "none";
+  report.users.status = users.status || "partial";
+  report.users.reason = users.reason || null;
+  report.users.source = source;
   const active = toNumber(users.dailyActiveAddresses24h);
   const fresh = toNumber(users.newAddresses24h);
   const tx = toNumber(users.transactions24h);

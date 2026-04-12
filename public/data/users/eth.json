@@ -1,0 +1,11 @@
+{
+  "metrics": {
+    "dailyActiveAddresses24h": 587354,
+    "newAddresses24h": 123456,
+    "transactions24h": 1045321
+  },
+  "meta": {
+    "source": "Custom users feed",
+    "updated_at": "2026-04-13T00:00:00Z"
+  }
+}

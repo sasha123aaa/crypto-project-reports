@@ -61,8 +61,9 @@ async function fetchHttpUsersMetrics(sourceConfig, { fetchImpl, toNumber }) {
     }
 
     const payload = await res.json();
-    const metrics = parseUsersMetrics(payload, sourceConfig.dataset, toNumber);
-    return withAvailability(sourceConfig, metrics, "users provider returned no numeric metrics");
+    const normalized = normalizeUsersPayload(payload);
+    const metrics = parseUsersMetrics(normalized.metricsPayload, sourceConfig.dataset, toNumber);
+    return withAvailability(sourceConfig, metrics, "users provider returned no numeric metrics", normalized.metaSource);
   } catch {
     return unavailableUsers(sourceConfig, "users provider request error");
   }
@@ -81,11 +82,25 @@ async function fetchCustomJsonUsersMetrics(sourceConfig, { fetchImpl, toNumber }
     }
 
     const payload = await res.json();
-    const metrics = parseUsersMetrics(payload, sourceConfig.dataset, toNumber);
-    return withAvailability(sourceConfig, metrics, "custom_json returned no numeric metrics");
+    const normalized = normalizeUsersPayload(payload);
+    const metrics = parseUsersMetrics(normalized.metricsPayload, sourceConfig.dataset, toNumber);
+    return withAvailability(sourceConfig, metrics, "custom_json returned no numeric metrics", normalized.metaSource);
   } catch {
     return unavailableUsers(sourceConfig, "custom_json request error");
   }
+}
+
+function normalizeUsersPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    return { metricsPayload: {}, metaSource: null };
+  }
+
+  const nestedMetrics = payload.metrics && typeof payload.metrics === "object" ? payload.metrics : null;
+  const metricsPayload = nestedMetrics || payload;
+  const rawMetaSource = payload.meta?.source;
+  const metaSource = typeof rawMetaSource === "string" && rawMetaSource.trim() ? rawMetaSource.trim() : null;
+
+  return { metricsPayload, metaSource };
 }
 
 function parseUsersMetrics(payload, dataset, toNumber) {
@@ -141,25 +156,26 @@ function readPath(payload, path) {
   return cursor;
 }
 
-function withAvailability(sourceConfig, metrics, reasonIfEmpty) {
+function withAvailability(sourceConfig, metrics, reasonIfEmpty, metaSource = null) {
   const hasAny = Object.values(metrics).some((value) => Number.isFinite(value));
-  if (!hasAny) return unavailableUsers(sourceConfig, reasonIfEmpty);
+  const source = sourceConfig.label || metaSource || defaultProviderLabel(sourceConfig.type);
+  if (!hasAny) return unavailableUsers(sourceConfig, reasonIfEmpty, source);
 
   return {
     ...metrics,
-    source: sourceConfig.label,
+    source,
     provider: sourceConfig.type,
     status: "live",
     reason: null,
   };
 }
 
-function unavailableUsers(sourceConfig, reason) {
+function unavailableUsers(sourceConfig, reason, resolvedSource = null) {
   return {
     dailyActiveAddresses24h: null,
     newAddresses24h: null,
     transactions24h: null,
-    source: sourceConfig.label,
+    source: resolvedSource || sourceConfig.label,
     provider: sourceConfig.type,
     status: "partial",
     reason,
