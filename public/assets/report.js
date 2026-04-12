@@ -404,7 +404,7 @@ async function loadReport() {
     const comboControls = [["overlap","Общий период"],["3m","3M"],["6m","6M"],["1y","1Y"],["all","ALL"]]
       .map(([v,l],i) => `<button class="range-btn ${i===0 ? "active" : ""}" data-range="${v}">${l}</button>`).join("");
 
-    app.innerHTML = `<div class="layout"><aside class="sidebar-card"><div class="eyebrow">Crypto Project Deep Dive</div><div class="project-main">${escapeHtml(data.meta.project_name)}</div><div class="project-sub">${escapeHtml(data.meta.subtitle)}</div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="small-note">Обновлено: ${new Date(data.meta.updated_at).toLocaleString("ru-RU")}</div><div class="small-note">Статус данных: ${escapeHtml(data.meta.data_status)}</div><div class="small-note">Slug: ${escapeHtml(data.meta.slug)}</div></aside><main class="content">
+    app.innerHTML = `<div class="layout"><aside class="sidebar-card"><div class="eyebrow">Crypto Project Deep Dive</div><div class="project-main">${escapeHtml(data.meta.project_name)}</div><div class="project-sub">${escapeHtml(data.meta.subtitle)}</div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="small-note">Обновлено: ${new Date(data.meta.updated_at).toLocaleString("ru-RU")}</div><div class="small-note">Slug: ${escapeHtml(data.meta.slug)}</div></aside><main class="content">
       <section class="panel"><div class="eyebrow">Первый экран</div><h1>${escapeHtml(data.hero.title)}</h1><div class="subtitle">${escapeHtml(data.hero.subtitle)}</div><p class="lead">${escapeHtml(data.hero.lead)}</p>
       <div class="hero-grid">${metricHtml("Цена", data.market.price)}${metricHtml("Рыночная капитализация", data.market.market_cap)}${metricHtml("FDV", data.market.fdv)}${metricHtml("Объем 24ч", data.market.volume_24h)}${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div>
       <div class="three-col top-gap"><div class="list-item"><strong>Главная сила</strong><br>${escapeHtml(data.hero.main_strength || "—")}</div><div class="list-item"><strong>Главный риск</strong><br>${escapeHtml(data.hero.main_risk || "—")}</div><div class="list-item"><strong>Общий статус</strong><br>${escapeHtml(data.hero.status_text || "—")}</div></div></section>
@@ -419,7 +419,6 @@ async function loadReport() {
       ${chartCard("feesChart","История сетевых комиссий","Динамика fees по DefiLlama")}
       ${chartCard("dexChart","DEX Volume","История объема DEX внутри сети")}
       <section class="panel"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div></section>
-      ${chartCard("tvlChart","TVL","История TVL по DefiLlama")}
       ${chartCard("stableChart","Stablecoins внутри сети","История стейблкоинов по DefiLlama")}
       <section class="panel"><div class="section-title">Пользователи</div>${(data.users.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Daily Active Addresses", data.users.metrics.daily_active_addresses)}${metricHtml("New Addresses", data.users.metrics.new_addresses)}${metricHtml("Transactions", data.users.metrics.transactions)}</div>${hasNoLiveUsers(data.users.metrics) ? `<div class="three-col top-gap">${buildUsersStatusCard(data.users.metrics)}</div>` : ""}</section>
       <section class="panel"><div class="section-title">Оценка</div>${(data.valuation.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Market Cap / TVL", data.valuation.metrics.market_cap_tvl)}${metricHtml("Volume / Market Cap", data.valuation.metrics.volume_market_cap)}${metricHtml("Stablecoins / TVL", data.valuation.metrics.stablecoins_tvl)}${metricHtml("Статус оценки", data.valuation.metrics.valuation_status)}</div></section>
@@ -440,7 +439,6 @@ async function loadReport() {
     renderComboChart("overlap", priceSeries, tvlSeries, stableSeries);
     createBarChart("feesChart", feesSeries, "Fees");
     createBarChart("dexChart", dexSeries, "DEX Volume");
-    createLineChart("tvlChart", [{ label:"TVL", series:tvlSeries, yAxisID:"y" }]);
     createLineChart("stableChart", [{ label:"Stablecoins", series:stableSeries, yAxisID:"y" }]);
     initTradingView(tvSymbolMap[slug] || "BINANCE:ETHUSDT");
   } catch (error) {
