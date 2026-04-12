@@ -334,11 +334,20 @@ function mergeUsersMetrics(report, users){
   const active = toNumber(users.dailyActiveAddresses24h);
   const fresh = toNumber(users.newAddresses24h);
   const tx = toNumber(users.transactions24h);
+
+  if (users.status !== "live") {
+    report.users.metrics.daily_active_addresses = partialMetric(source);
+    report.users.metrics.new_addresses = partialMetric(source);
+    report.users.metrics.transactions = partialMetric(source);
+    return;
+  }
+
   if (isValidNumber(active)) report.users.metrics.daily_active_addresses = liveMetric(active, formatCompactCount(active), source);
   if (isValidNumber(fresh)) report.users.metrics.new_addresses = liveMetric(fresh, formatCompactCount(fresh), source);
   if (isValidNumber(tx)) report.users.metrics.transactions = liveMetric(tx, formatCompactCount(tx), source);
 }
 
+function partialMetric(source){ return { value:null, formatted:"данные временно недоступны", status:"partial", source }; }
 function formatCompactCount(value){
   const num = toNumber(value);
   if (!isValidNumber(num)) return "—";

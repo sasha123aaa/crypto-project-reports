@@ -1,5 +1,11 @@
 const DEFAULT_DATASET = {
-  dailyActiveAddresses24h: ["dailyActiveAddresses24h", "daily_active_addresses_24h", "daily_active_addresses", "activeAddresses24h", "activeAddresses"],
+  dailyActiveAddresses24h: [
+    "dailyActiveAddresses24h",
+    "daily_active_addresses_24h",
+    "daily_active_addresses",
+    "activeAddresses24h",
+    "activeAddresses",
+  ],
   newAddresses24h: ["newAddresses24h", "new_addresses_24h", "new_addresses", "dailyNewAddresses"],
   transactions24h: ["transactions24h", "transactions_24h", "dailyTransactions", "txns24h"],
 };
@@ -62,7 +68,8 @@ async function fetchHttpUsersMetrics(sourceConfig, { fetchImpl, toNumber }) {
 
     const payload = await res.json();
     const metrics = parseUsersMetrics(payload, sourceConfig.dataset, toNumber);
-    return withAvailability(sourceConfig, metrics, "users provider returned no numeric metrics");
+    const source = resolveUsersSource(payload, sourceConfig.label);
+    return withAvailability(sourceConfig, metrics, source, "users provider returned no numeric metrics");
   } catch {
     return unavailableUsers(sourceConfig, "users provider request error");
   }
@@ -82,7 +89,8 @@ async function fetchCustomJsonUsersMetrics(sourceConfig, { fetchImpl, toNumber }
 
     const payload = await res.json();
     const metrics = parseUsersMetrics(payload, sourceConfig.dataset, toNumber);
-    return withAvailability(sourceConfig, metrics, "custom_json returned no numeric metrics");
+    const source = resolveUsersSource(payload, sourceConfig.label);
+    return withAvailability(sourceConfig, metrics, source, "custom_json returned no numeric metrics");
   } catch {
     return unavailableUsers(sourceConfig, "custom_json request error");
   }
@@ -90,11 +98,18 @@ async function fetchCustomJsonUsersMetrics(sourceConfig, { fetchImpl, toNumber }
 
 function parseUsersMetrics(payload, dataset, toNumber) {
   const aliases = buildDatasetAliases(dataset);
+  const metricsRoot = payload?.metrics && typeof payload.metrics === "object" ? payload.metrics : null;
   return {
-    dailyActiveAddresses24h: pickMetric(payload, aliases.dailyActiveAddresses24h, toNumber),
-    newAddresses24h: pickMetric(payload, aliases.newAddresses24h, toNumber),
-    transactions24h: pickMetric(payload, aliases.transactions24h, toNumber),
+    dailyActiveAddresses24h: pickMetric(payload, metricsRoot, aliases.dailyActiveAddresses24h, toNumber),
+    newAddresses24h: pickMetric(payload, metricsRoot, aliases.newAddresses24h, toNumber),
+    transactions24h: pickMetric(payload, metricsRoot, aliases.transactions24h, toNumber),
   };
+}
+
+function resolveUsersSource(payload, fallbackLabel) {
+  const metaSource = payload?.meta?.source;
+  if (typeof metaSource === "string" && metaSource.trim()) return metaSource.trim();
+  return fallbackLabel;
 }
 
 function buildDatasetAliases(dataset) {
@@ -121,11 +136,16 @@ function arrayify(value, fallback) {
   return fallback;
 }
 
-function pickMetric(payload, candidates, toNumber) {
+function pickMetric(payload, metricsRoot, candidates, toNumber) {
   for (const candidate of candidates) {
-    const raw = readPath(payload, candidate);
-    const parsed = toNumber(raw);
-    if (Number.isFinite(parsed)) return parsed;
+    const direct = toNumber(readPath(payload, candidate));
+    if (Number.isFinite(direct)) return direct;
+
+    const metricScoped = toNumber(readPath(metricsRoot, candidate));
+    if (Number.isFinite(metricScoped)) return metricScoped;
+
+    const explicitScoped = toNumber(readPath(payload, `metrics.${candidate}`));
+    if (Number.isFinite(explicitScoped)) return explicitScoped;
   }
   return null;
 }
@@ -141,25 +161,25 @@ function readPath(payload, path) {
   return cursor;
 }
 
-function withAvailability(sourceConfig, metrics, reasonIfEmpty) {
+function withAvailability(sourceConfig, metrics, source, reasonIfEmpty) {
   const hasAny = Object.values(metrics).some((value) => Number.isFinite(value));
-  if (!hasAny) return unavailableUsers(sourceConfig, reasonIfEmpty);
+  if (!hasAny) return unavailableUsers(sourceConfig, reasonIfEmpty, source);
 
   return {
     ...metrics,
-    source: sourceConfig.label,
+    source,
     provider: sourceConfig.type,
     status: "live",
     reason: null,
   };
 }
 
-function unavailableUsers(sourceConfig, reason) {
+function unavailableUsers(sourceConfig, reason, source = sourceConfig.label) {
   return {
     dailyActiveAddresses24h: null,
     newAddresses24h: null,
     transactions24h: null,
-    source: sourceConfig.label,
+    source,
     provider: sourceConfig.type,
     status: "partial",
     reason,
