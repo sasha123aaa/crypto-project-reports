@@ -201,7 +201,19 @@ function mergeLiveMetrics(report, live) {
   sanitizeUsersBlock(report);
 }
 
-function toNumber(value){ if (value===null || value===undefined || value==="") return null; const num = Number(value); return Number.isFinite(num) ? num : null; }
+function toNumber(value){
+  if (value===null || value===undefined || value==="") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const compact = parseHumanNumber(value);
+    if (Number.isFinite(compact)) return compact;
+    const normalized = value.replace(/,/g, "").replace(/\s+/g, "");
+    const num = Number(normalized);
+    return Number.isFinite(num) ? num : null;
+  }
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
 function isValidNumber(value){ return typeof value === "number" && Number.isFinite(value); }
 function liveMetric(value, formatted, source){ return { value, formatted, status:"live", source }; }
 function calcMetric(value, formatted){ return { value, formatted, status:"calculated", source:"calc" }; }
@@ -226,20 +238,39 @@ async function fetchTVLHistory(chain){
 async function fetchStablecoinHistory(chain){ const res = await fetch(`https://stablecoins.llama.fi/stablecoincharts/${encodeURIComponent(chain)}`); if(!res.ok) throw new Error(`DefiLlama stable history error: ${res.status}`); return res.json(); }
 async function fetchChainUsersMetrics(chain){
   const chainSlug = String(chain || "").toLowerCase();
-  const res = await fetch(`https://defillama.com/chain/${encodeURIComponent(chainSlug)}?addresses=`, {
-    headers:{
-      accept:"text/html,application/xhtml+xml,application/json",
-      "user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0",
+  const urls = [
+    `https://defillama.com/chain/${encodeURIComponent(chainSlug)}?addresses=`,
+    `https://defillama.com/chains/${encodeURIComponent(chain)}?addresses=`,
+  ];
+
+  let lastError = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers:{
+          accept:"text/html,application/xhtml+xml,application/json",
+          "user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0",
+        }
+      });
+      if (!res.ok) throw new Error(`DefiLlama users page error: ${res.status}`);
+      const html = await res.text();
+      const fromStructured = extractUsersFromNextData(html);
+      const fromFallback = extractUsersFromHtmlText(html);
+      const merged = {
+        dailyActiveAddresses24h: toNumber(fromStructured?.dailyActiveAddresses24h ?? fromFallback?.dailyActiveAddresses24h),
+        newAddresses24h: toNumber(fromStructured?.newAddresses24h ?? fromFallback?.newAddresses24h),
+        transactions24h: toNumber(fromStructured?.transactions24h ?? fromFallback?.transactions24h),
+      };
+      if (isValidNumber(merged.dailyActiveAddresses24h) || isValidNumber(merged.newAddresses24h) || isValidNumber(merged.transactions24h)) {
+        return merged;
+      }
+    } catch (error) {
+      lastError = error;
     }
-  });
-  if (!res.ok) throw new Error(`DefiLlama users page error: ${res.status}`);
-  const html = await res.text();
-  const fromNextData = extractUsersFromNextData(html);
-  return {
-    dailyActiveAddresses24h: toNumber(fromNextData?.dailyActiveAddresses24h ?? extractMetricFromHtml(html, "Active Addresses (24h)")),
-    newAddresses24h: toNumber(fromNextData?.newAddresses24h ?? extractMetricFromHtml(html, "New Addresses (24h)")),
-    transactions24h: toNumber(fromNextData?.transactions24h ?? extractMetricFromHtml(html, "Transactions (24h)")),
-  };
+  }
+
+  if (lastError) throw lastError;
+  return null;
 }
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item) => String(item.name).toLowerCase() === String(chainName).toLowerCase()) : null; }
 function findStableChainData(chains, chainKey){ const target = String(chainKey || "").toLowerCase(); return Array.isArray(chains) ? chains.find((item) => [item?.gecko_id,item?.name,item?.chain,item?.tokenSymbol].filter(Boolean).map((v)=>String(v).toLowerCase()).includes(target)) : null; }
@@ -310,6 +341,9 @@ function extractUsersFromNextData(html){
       newAddresses24h: findNumberByKeys(payload, ["newaddresses24h"]),
       transactions24h: findNumberByKeys(payload, ["transactions24h"]),
     };
+    if (!isValidNumber(found.dailyActiveAddresses24h)) found.dailyActiveAddresses24h = findNumberByLabel(payload, "active addresses (24h)");
+    if (!isValidNumber(found.newAddresses24h)) found.newAddresses24h = findNumberByLabel(payload, "new addresses (24h)");
+    if (!isValidNumber(found.transactions24h)) found.transactions24h = findNumberByLabel(payload, "transactions (24h)");
     if (isValidNumber(found.dailyActiveAddresses24h) || isValidNumber(found.newAddresses24h) || isValidNumber(found.transactions24h)) {
       return found;
     }
@@ -332,6 +366,29 @@ function findNumberByKeys(node, expectedKeys){
         const num = toNumber(typeof value === "object" ? value?.value ?? value?.current ?? value?.amount : value);
         if (isValidNumber(num)) return num;
       }
+      if (value && typeof value === "object") queue.push(value);
+    }
+  }
+  return null;
+}
+
+function findNumberByLabel(node, label){
+  if (!node || !label) return null;
+  const target = String(label).toLowerCase();
+  const queue = [node];
+  while (queue.length) {
+    const item = queue.shift();
+    if (!item || typeof item !== "object") continue;
+    if (Array.isArray(item)) {
+      queue.push(...item);
+      continue;
+    }
+    const title = String(item?.name ?? item?.title ?? item?.label ?? "").toLowerCase();
+    if (title === target || title.includes(target)) {
+      const num = toNumber(item?.value ?? item?.amount ?? item?.current ?? item?.displayValue);
+      if (isValidNumber(num)) return num;
+    }
+    for (const value of Object.values(item)) {
       if (value && typeof value === "object") queue.push(value);
     }
   }
@@ -362,6 +419,15 @@ function extractMetricFromHtml(html, label){
   const match = html.match(pattern);
   if (!match?.[1]) return null;
   return parseHumanNumber(match[1]);
+}
+
+function extractUsersFromHtmlText(html){
+  if (!html) return null;
+  return {
+    dailyActiveAddresses24h: toNumber(extractMetricFromHtml(html, "Active Addresses (24h)")),
+    newAddresses24h: toNumber(extractMetricFromHtml(html, "New Addresses (24h)")),
+    transactions24h: toNumber(extractMetricFromHtml(html, "Transactions (24h)")),
+  };
 }
 
 function parseHumanNumber(raw){
