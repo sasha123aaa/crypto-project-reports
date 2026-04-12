@@ -1,4 +1,4 @@
-const TIMEFRAMES = ["1m", "3m", "5m", "15m", "1h", "4h", "1d", "1w"];
+const TIMEFRAMES = ["1m", "3m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"];
 
 const BYBIT_INTERVAL = {
   "1m": "1",
@@ -9,6 +9,7 @@ const BYBIT_INTERVAL = {
   "4h": "240",
   "1d": "D",
   "1w": "W",
+  "1M": "M",
 };
 
 const RANGE_PARAMS = {
@@ -182,7 +183,7 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
           if (expand_len < minBars) {
             if (low < expandA) {
               if (!prev_fixed_on_expand) appendOrReplaceCurrent();
-              if (ranges.length && ranges[ranges.length - 1][4] === isUp) {
+              if (ranges.length && ranges[ranges.length - 1][4] == isUp) {
                 const last = ranges[ranges.length - 1];
                 ranges[ranges.length - 1] = [last[0], expandB_i, last[2], expandB, last[4]];
               }
@@ -293,7 +294,7 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
           if (expand_len < minBars) {
             if (high > expandA) {
               if (!prev_fixed_on_expand) appendOrReplaceCurrent();
-              if (ranges.length && ranges[ranges.length - 1][4] === isUp) {
+              if (ranges.length && ranges[ranges.length - 1][4] == isUp) {
                 const last = ranges[ranges.length - 1];
                 ranges[ranges.length - 1] = [last[0], expandB_i, last[2], expandB, last[4]];
               }
@@ -382,6 +383,13 @@ function pickRandom(items) {
 }
 
 const TRIPLE_PHRASES = {
+  all_neutral: [
+    "Во всей группе пока нет валидных диапазонов, поэтому структура остается нейтральной.",
+    "Три таймфрейма группы пока без четких диапазонов и без направленного сигнала.",
+    "По группе нет оформленной структуры, поэтому вывод пока нейтральный.",
+    "Внутри группы диапазоны еще не сформировались, явного перекоса нет.",
+    "Все интервалы группы пока остаются в нейтральной зоне без подтвержденной структуры."
+  ],
   full_bull: [
     "Вся группа таймфреймов на стороне покупателей.",
     "Структура по группе согласована вверх без явных расхождений.",
@@ -451,49 +459,70 @@ const TRIPLE_PHRASES = {
     "По группе есть движение, но без подтверждения на старшем ТФ.",
     "Старший интервал группы пока нейтрален, поэтому общий вывод остается осторожным.",
     "Контекст внутри группы еще не подтвержден, потому что старший ТФ без четкой структуры."
+  ],
+  bull_with_neutral: [
+    "Бычий контекст в группе читается, но часть интервалов пока без подтвержденного диапазона.",
+    "Внутри группы перевес скорее в сторону покупателей, хотя один из ТФ еще нейтрален.",
+    "Покупатели выглядят сильнее, но структура по группе пока не полностью оформлена.",
+    "По группе есть бычий уклон, однако часть интервалов еще не подтвердила движение.",
+    "Контекст внутри группы больше на стороне роста, хотя не все ТФ уже сформировали диапазон."
+  ],
+  bear_with_neutral: [
+    "Медвежий контекст в группе читается, но часть интервалов пока без подтвержденного диапазона.",
+    "Внутри группы перевес скорее в сторону продавцов, хотя один из ТФ еще нейтрален.",
+    "Продавцы выглядят сильнее, но структура по группе пока не полностью оформлена.",
+    "По группе есть медвежий уклон, однако часть интервалов еще не подтвердила движение.",
+    "Контекст внутри группы больше на стороне снижения, хотя не все ТФ уже сформировали диапазон."
   ]
 };
 
 const HIGHER_PHRASES = {
   higher_bull: [
-    "Дневной и недельный диапазоны подтверждают бычий старший фон.",
+    "Дневной, недельный и месячный диапазоны подтверждают бычий старший фон.",
     "Старшие ТФ остаются на стороне покупателей.",
-    "По дневке и неделе сохраняется сильный бычий контекст.",
-    "Оба старших интервала подтверждают бычью структуру.",
-    "Дневной и недельный ТФ согласованы в пользу роста."
+    "По дневке, неделе и месяцу сохраняется сильный бычий контекст.",
+    "Старшая группа интервалов согласована в пользу роста.",
+    "По старшим ТФ сохраняется уверенный бычий фон."
   ],
   higher_bear: [
-    "Дневной и недельный диапазоны подтверждают медвежий старший фон.",
+    "Дневной, недельный и месячный диапазоны подтверждают медвежий старший фон.",
     "Старшие ТФ остаются на стороне продавцов.",
-    "По дневке и неделе сохраняется сильный медвежий контекст.",
-    "Оба старших интервала подтверждают слабую структуру.",
-    "Дневной и недельный ТФ согласованы в пользу снижения."
+    "По дневке, неделе и месяцу сохраняется сильный медвежий контекст.",
+    "Старшая группа интервалов согласована в пользу снижения.",
+    "По старшим ТФ сохраняется уверенный медвежий фон."
   ],
-  daily_recovery_vs_weekly_bear: [
-    "Дневка пытается улучшиться, но недельный фон пока остается слабым.",
-    "На дневном ТФ есть восстановление, однако неделя еще не подтверждает разворот.",
-    "Локальное улучшение на дневке пока идет против более тяжелого недельного контекста.",
-    "Дневной диапазон стал сильнее, но недельный ТФ все еще удерживает слабость.",
-    "Дневка оживает, однако старший недельный фон пока не сменился."
+  higher_bull_pullback: [
+    "Старший бычий фон сохраняется, хотя более младшие старшие ТФ ушли в откат.",
+    "Месяц удерживает более сильный фон, а дневка и неделя выглядят коррекционно.",
+    "Слабость внутри старшей группы пока похожа на откат против более сильного старшего контекста.",
+    "По старшей группе идет коррекция, но главный фон пока не сломан.",
+    "Нисходящее давление есть, но старший контекст группы пока остается бычьим."
   ],
-  daily_pullback_vs_weekly_bull: [
-    "Недельный контекст остается бычьим, а дневка пока показывает коррекцию.",
-    "Старшая недельная структура сохраняется, хотя дневной ТФ ушел в откат.",
-    "По неделе фон остается сильным, а слабость дневки пока выглядит коррекционной.",
-    "Дневной ТФ корректируется, но недельный диапазон пока не сломан.",
-    "Локальный откат на дневке пока не отменяет бычий недельный контекст."
+  higher_bear_bounce: [
+    "Старший медвежий фон сохраняется, хотя более младшие старшие ТФ пытаются восстановиться.",
+    "Месяц остается слабым, а дневка и неделя пока выглядят как отскок.",
+    "Рост внутри старшей группы пока похож на восстановление против более тяжелого контекста.",
+    "По старшей группе есть отскок, но главный фон пока не изменился.",
+    "Покупатели оживились, однако старший контекст группы остается слабым."
   ],
-  higher_unconfirmed: [
-    "Старший контекст читается частично, но полноценного подтверждения пока нет.",
-    "По дневке и неделе картина остается неполной и требует подтверждения.",
-    "Старшие ТФ пока не дают цельного подтверждения структуры.",
-    "Контекст на старших интервалах есть, но он пока оформлен не полностью.",
-    "По дневке и неделе структура остается осторожной и неполной."
+  higher_mixed: [
+    "Старшие ТФ пока спорят между собой и не дают цельного сигнала.",
+    "Дневка, неделя и месяц пока не согласованы по одному направлению.",
+    "По старшей группе структура остается смешанной и переходной.",
+    "Старший контекст пока неоднороден и без чистого подтверждения.",
+    "В старшей группе нет единого перекоса, сигналы пока смешанные."
+  ],
+  higher_with_neutral: [
+    "Часть старших ТФ уже читается, но полноценного подтверждения по всей группе пока нет.",
+    "Старший контекст виден частично, однако один из ТФ остается нейтральным.",
+    "По старшей группе есть намек на направление, но структура пока неполная.",
+    "Старший фон читается не полностью, потому что часть интервалов без валидного диапазона.",
+    "Контекст на старших ТФ есть, но он пока не оформлен по всей группе."
   ],
   higher_neutral: [
-    "По дневному и недельному ТФ пока нет четкого старшего сигнала.",
+    "По дневному, недельному и месячному ТФ пока нет четкого старшего сигнала.",
     "Старшие интервалы остаются нейтральными без валидного диапазона.",
-    "Дневка и неделя пока не дают ясного долгосрочного перекоса.",
+    "Дневка, неделя и месяц пока не дают ясного долгосрочного перекоса.",
     "Старший контекст еще не оформился и остается нейтральным.",
     "По старшим ТФ структура пока размыта и без явного направления."
   ]
@@ -501,17 +530,22 @@ const HIGHER_PHRASES = {
 
 function classifyTriple(states) {
   const [low, mid, high] = states;
+  const bulls = states.filter((s) => s === "bullish").length;
+  const bears = states.filter((s) => s === "bearish").length;
+  const neutrals = states.filter((s) => s === "neutral").length;
+
+  if (neutrals === 3) return "all_neutral";
   if (high === "neutral") return "context_unconfirmed";
-  if (low === "bullish" && mid === "bullish" && high === "bullish") return "full_bull";
-  if (low === "bearish" && mid === "bearish" && high === "bearish") return "full_bear";
+
+  if (bulls === 3) return "full_bull";
+  if (bears === 3) return "full_bear";
 
   if (high === "bullish") {
     if (low === "bearish" && mid === "bearish") return "bull_correction";
     if (low === "bearish" && mid === "bullish") return "bull_recovery";
     if (low === "bullish" && mid === "bearish") return "bull_conflict";
-    if (low === "neutral" && mid === "bullish") return "bull_recovery";
-    if (low === "bearish" && mid === "neutral") return "bull_correction";
-    if (low === "neutral" && mid === "neutral") return "context_unconfirmed";
+    if (neutrals >= 1 && bulls >= 1 && bears === 0) return "bull_with_neutral";
+    if (neutrals >= 1 && bears >= 1) return "context_unconfirmed";
     return "bull_conflict";
   }
 
@@ -519,24 +553,29 @@ function classifyTriple(states) {
     if (low === "bullish" && mid === "bullish") return "bear_bounce";
     if (low === "bullish" && mid === "bearish") return "bear_pressure";
     if (low === "bearish" && mid === "bullish") return "bear_conflict";
-    if (low === "neutral" && mid === "bearish") return "bear_pressure";
-    if (low === "bullish" && mid === "neutral") return "bear_bounce";
-    if (low === "neutral" && mid === "neutral") return "context_unconfirmed";
+    if (neutrals >= 1 && bears >= 1 && bulls === 0) return "bear_with_neutral";
+    if (neutrals >= 1 && bulls >= 1) return "context_unconfirmed";
     return "bear_conflict";
   }
 
   return "mixed_neutral";
 }
 
-function classifyHigher(dayState, weekState) {
-  if (dayState === "neutral" && weekState === "neutral") return "higher_neutral";
-  if (weekState === "neutral") return "higher_unconfirmed";
-  if (dayState === "neutral") return "higher_unconfirmed";
-  if (dayState === "bullish" && weekState === "bullish") return "higher_bull";
-  if (dayState === "bearish" && weekState === "bearish") return "higher_bear";
-  if (dayState === "bullish" && weekState === "bearish") return "daily_recovery_vs_weekly_bear";
-  if (dayState === "bearish" && weekState === "bullish") return "daily_pullback_vs_weekly_bull";
-  return "higher_unconfirmed";
+function classifyHigher(states) {
+  const [dayState, weekState, monthState] = states;
+  const bulls = states.filter((s) => s === "bullish").length;
+  const bears = states.filter((s) => s === "bearish").length;
+  const neutrals = states.filter((s) => s === "neutral").length;
+
+  if (neutrals === 3) return "higher_neutral";
+  if (neutrals >= 1) return "higher_with_neutral";
+  if (bulls === 3) return "higher_bull";
+  if (bears === 3) return "higher_bear";
+
+  if (monthState === "bullish" && bears >= 1) return "higher_bull_pullback";
+  if (monthState === "bearish" && bulls >= 1) return "higher_bear_bounce";
+
+  return "higher_mixed";
 }
 
 function phraseForTriple(states) {
@@ -544,9 +583,9 @@ function phraseForTriple(states) {
   return pickRandom(TRIPLE_PHRASES[type] || TRIPLE_PHRASES.mixed_neutral);
 }
 
-function phraseForHigher(dayState, weekState) {
-  const type = classifyHigher(dayState, weekState);
-  return pickRandom(HIGHER_PHRASES[type] || HIGHER_PHRASES.higher_unconfirmed);
+function phraseForHigher(states) {
+  const type = classifyHigher(states);
+  return pickRandom(HIGHER_PHRASES[type] || HIGHER_PHRASES.higher_mixed);
 }
 
 export async function getTechnicalBias(bybitSymbol) {
@@ -592,7 +631,7 @@ export async function getTechnicalBias(bybitSymbol) {
     notes: {
       lower_tf: phraseForTriple([timeframes["1m"], timeframes["3m"], timeframes["5m"]]),
       mid_tf: phraseForTriple([timeframes["15m"], timeframes["1h"], timeframes["4h"]]),
-      higher_tf: phraseForHigher(timeframes["1d"], timeframes["1w"]),
+      higher_tf: phraseForHigher([timeframes["1d"], timeframes["1w"], timeframes["1M"]]),
     },
   };
 }
