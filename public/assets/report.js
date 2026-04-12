@@ -99,6 +99,21 @@ function hasNoLiveUsers(metrics) {
   });
 }
 
+function shouldRenderUsersBlock(report) {
+  const explicitRule = report?.meta?.features?.usersBlock;
+  if (explicitRule === true) return true;
+  if (explicitRule === false) return false;
+  return !!report?.users;
+}
+
+function usersSectionHtml(report) {
+  if (!shouldRenderUsersBlock(report)) return "";
+  const users = report?.users || {};
+  const metrics = users.metrics || {};
+  const text = Array.isArray(users.text) ? users.text : [];
+  return `<section class="panel"><div class="section-title">Пользователи</div>${text.map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Daily Active Addresses", metrics.daily_active_addresses)}${metricHtml("New Addresses", metrics.new_addresses)}${metricHtml("Transactions", metrics.transactions)}</div>${hasNoLiveUsers(metrics) ? `<div class="three-col top-gap">${buildUsersStatusCard(metrics)}</div>` : ""}</section>`;
+}
+
 function metricHtml(title, metric) {
   const help = METRIC_HELP[title]
     ? `<span class="info-wrap"><span class="info-icon">i</span><span class="tooltip">${escapeHtml(METRIC_HELP[title])}</span></span>`
@@ -420,7 +435,7 @@ async function loadReport() {
       ${chartCard("dexChart","DEX Volume","История объема DEX внутри сети")}
       <section class="panel"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div></section>
       ${chartCard("stableChart","Stablecoins внутри сети","История стейблкоинов по DefiLlama")}
-      <section class="panel"><div class="section-title">Пользователи</div>${(data.users.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Daily Active Addresses", data.users.metrics.daily_active_addresses)}${metricHtml("New Addresses", data.users.metrics.new_addresses)}${metricHtml("Transactions", data.users.metrics.transactions)}</div>${hasNoLiveUsers(data.users.metrics) ? `<div class="three-col top-gap">${buildUsersStatusCard(data.users.metrics)}</div>` : ""}</section>
+      ${usersSectionHtml(data)}
       <section class="panel"><div class="section-title">Оценка</div>${(data.valuation.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Market Cap / TVL", data.valuation.metrics.market_cap_tvl)}${metricHtml("Volume / Market Cap", data.valuation.metrics.volume_market_cap)}${metricHtml("Stablecoins / TVL", data.valuation.metrics.stablecoins_tvl)}${metricHtml("Статус оценки", data.valuation.metrics.valuation_status)}</div></section>
       <section class="panel"><div class="section-title">Риски</div><div class="list-wrap">${listHtml(data.risks.items)}</div></section>
       <section class="panel"><div class="section-title">Что отслеживать</div><div class="list-wrap">${listHtml(data.watchlist.items)}</div></section>
