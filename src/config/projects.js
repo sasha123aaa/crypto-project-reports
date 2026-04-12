@@ -10,9 +10,9 @@ export const PROJECTS = {
     defillamaChain: "Ethereum",
     stablecoinChain: "Ethereum",
     usersSource: {
-      type: "defillama",
+      type: "none",
       chain: "Ethereum",
-      label: "DefiLlama API"
+      label: "Users provider is not configured"
     },
     bybitSymbol: "ETHUSDT",
     tags: ["L1", "DeFi", "Smart Contracts"]

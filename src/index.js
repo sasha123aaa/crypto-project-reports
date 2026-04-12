@@ -114,6 +114,9 @@ async function fetchLiveMetrics(project) {
       newAddresses24h: toNumber(usersData?.newAddresses24h),
       transactions24h: toNumber(usersData?.transactions24h),
       source: usersData?.source || null,
+      provider: usersData?.provider || null,
+      status: usersData?.status || "partial",
+      reason: usersData?.reason || null,
     },
     valuation: {
       marketCapTVL: safeDivide(marketCap, tvl),
@@ -200,7 +203,7 @@ function mergeLiveMetrics(report, live) {
   if (live.charts.dexHistory?.length) report.charts.dex_history = live.charts.dexHistory;
   mergeUsersMetrics(report, live.users);
   if (live.technicalBias) report.technical_bias = live.technicalBias;
-  sanitizeUsersBlock(report);
+  sanitizeUsersBlock(report, live.users);
 }
 
 function toNumber(value){
@@ -316,7 +319,7 @@ function normalizeOverviewHistory(rows){
 }
 function mergeUsersMetrics(report, users){
   if (!report?.users?.metrics || !users) return;
-  const source = users.source || "DefiLlama API";
+  const source = users.source || users.provider || "Users provider";
   const active = toNumber(users.dailyActiveAddresses24h);
   const fresh = toNumber(users.newAddresses24h);
   const tx = toNumber(users.transactions24h);
@@ -331,14 +334,15 @@ function formatCompactCount(value){
   return new Intl.NumberFormat("ru-RU", { maximumFractionDigits:0 }).format(num);
 }
 
-function sanitizeUsersBlock(report){
+function sanitizeUsersBlock(report, usersState){
   if (!report?.users?.metrics) return;
   const cleanFormatted = "данные временно недоступны";
+  const fallbackSource = usersState?.source || usersState?.provider || usersState?.reason || "users provider not configured";
   Object.values(report.users.metrics).forEach((item) => {
     if (!item || typeof item !== "object") return;
     if (String(item.formatted || "").toLowerCase().includes("источник подключается")) item.formatted = cleanFormatted;
     if (!item.status || item.status === "unavailable") item.status = "partial";
-    if (!item.source) item.source = "source pending";
+    if (!item.source) item.source = fallbackSource;
   });
   if (Array.isArray(report.users.text) && report.users.text.length) {
     report.users.text = report.users.text.map((line) => String(line).replaceAll("источник подключается", cleanFormatted));
