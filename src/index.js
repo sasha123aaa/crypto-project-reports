@@ -25,6 +25,7 @@ async function handleHybridReportApi(request, env, url) {
   try {
     const live = await fetchLiveMetrics(project);
     mergeLiveMetrics(report, live);
+    applyBlockRenderingRules(report, project, live);
 
     const statuses = Object.values(live.debug || {});
     const hasFulfilled = statuses.includes("fulfilled");
@@ -41,6 +42,7 @@ async function handleHybridReportApi(request, env, url) {
     report.meta.updated_at = new Date().toISOString();
     report.meta.data_status = "hybrid-fallback";
     report.meta.live_error = error instanceof Error ? error.message : String(error);
+    applyBlockRenderingRules(report, project, null);
     return json(report, 200);
   }
 }
@@ -206,6 +208,15 @@ function mergeLiveMetrics(report, live) {
   sanitizeUsersBlock(report, live.users);
 }
 
+function applyBlockRenderingRules(report, project, live){
+  if (!report?.meta) return;
+  const usersState = live?.users || null;
+  report.meta.features = {
+    ...(report.meta.features || {}),
+    usersBlock: shouldRenderUsersBlock(report, project, usersState),
+  };
+}
+
 function toNumber(value){
   if (value===null || value===undefined || value==="") return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -347,5 +358,11 @@ function sanitizeUsersBlock(report, usersState){
   if (Array.isArray(report.users.text) && report.users.text.length) {
     report.users.text = report.users.text.map((line) => String(line).replaceAll("источник подключается", cleanFormatted));
   }
+}
+function shouldRenderUsersBlock(report, project, usersState){
+  if (!report?.users) return false;
+  const providerType = String(project?.usersSource?.type || "none").toLowerCase();
+  if (!providerType || providerType === "none") return false;
+  return true;
 }
 function json(data,status=200){ return new Response(JSON.stringify(data,null,2),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"public, max-age=300"}}); }
