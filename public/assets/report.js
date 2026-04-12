@@ -41,8 +41,10 @@ function injectEnhancementStyles() {
     .ta-meta-row{display:flex;gap:14px;flex-wrap:wrap;margin-top:16px}
     .ta-meta-box{min-width:220px;padding:14px 16px;border-radius:18px;border:1px solid var(--line);background:rgba(255,255,255,.03)}
     .ta-meta-value{margin-top:8px;font-size:16px;font-weight:800}
-    .bias-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:12px;margin-top:18px;margin-bottom:18px}
-    .bias-chip{padding:14px 12px;border-radius:18px;border:1px solid var(--line);background:rgba(255,255,255,.03);text-align:center;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px}
+    .ta-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:18px}
+    .ta-group{display:flex;flex-direction:column;gap:14px}
+    .ta-group-chips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .bias-chip{padding:14px 12px;border-radius:18px;border:1px solid var(--line);background:rgba(255,255,255,.03);text-align:center;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px}
     .bias-dot{width:10px;height:10px;border-radius:50%;display:inline-block;background:#9aa4ba}
     .bias-chip.bullish .bias-dot{background:#54d38a}
     .bias-chip.bearish .bias-dot{background:#ff5b7f}
@@ -69,7 +71,7 @@ function injectEnhancementStyles() {
     .range-btn.active{background:rgba(86,145,255,.14);border-color:rgba(86,145,255,.35);color:#a8c7ff}
     .chart-note{margin-top:12px;color:var(--muted);font-size:13px}
     .empty-chart{position:absolute;inset:14px;display:flex;align-items:center;justify-content:center;border:1px dashed rgba(255,255,255,.08);border-radius:16px;color:#a8b2c7;font-size:14px;text-align:center;padding:24px}
-    @media (max-width:1180px){.three-col,.bias-grid{grid-template-columns:1fr}.tv-shell{height:520px}}
+    @media (max-width:1180px){.three-col,.ta-groups,.ta-group-chips{grid-template-columns:1fr}.tv-shell{height:520px}}
   `;
   document.head.appendChild(style);
 }
@@ -233,12 +235,21 @@ function createBarChart(canvasId, series, label) {
 }
 
 function technicalBiasHtml(bias) {
-  const order = ["1m","3m","5m","15m","1h","4h","1d","1w","1M"];
-  const chips = order.map((tf) => {
-    const state = bias?.timeframes?.[tf] || "neutral";
-    return `<div class="bias-chip ${escapeHtml(state)}">${tf} <span class="bias-dot"></span></div>`;
+  const groups = [
+    { chips: ["1m","3m","5m"], note: bias?.notes?.lower_tf || "—" },
+    { chips: ["15m","1h","4h"], note: bias?.notes?.mid_tf || "—" },
+    { chips: ["1d","1w","1M"], note: bias?.notes?.higher_tf || "—" },
+  ];
+
+  const groupsHtml = groups.map((group) => {
+    const chipsHtml = group.chips.map((tf) => {
+      const state = bias?.timeframes?.[tf] || "neutral";
+      return `<div class="bias-chip ${escapeHtml(state)}">${tf} <span class="bias-dot"></span></div>`;
+    }).join("");
+    return `<div class="ta-group"><div class="ta-group-chips">${chipsHtml}</div><div class="list-item">${escapeHtml(group.note)}</div></div>`;
   }).join("");
-  return `<section class="panel"><div class="section-title">Быстрый теханализ</div><div class="section-sub">Краткая оценка структуры по ключевым таймфреймам</div><div class="ta-meta-row"><div class="ta-meta-box"><div class="metric-title">Источник</div><div class="ta-meta-value">${escapeHtml(bias?.source || "—")}</div></div><div class="ta-meta-box"><div class="metric-title">Обновлено</div><div class="ta-meta-value">${bias?.updated_at ? new Date(bias.updated_at).toLocaleString("ru-RU") : "—"}</div></div></div><div class="bias-grid">${chips}</div><div class="three-col"><div class="list-item">${escapeHtml(bias?.notes?.lower_tf || "—")}</div><div class="list-item">${escapeHtml(bias?.notes?.mid_tf || "—")}</div><div class="list-item">${escapeHtml(bias?.notes?.higher_tf || "—")}</div></div></section>`;
+
+  return `<section class="panel"><div class="section-title">Быстрый теханализ</div><div class="section-sub">Краткая оценка структуры по ключевым таймфреймам</div><div class="ta-meta-row"><div class="ta-meta-box"><div class="metric-title">Источник</div><div class="ta-meta-value">${escapeHtml(bias?.source || "—")}</div></div><div class="ta-meta-box"><div class="metric-title">Обновлено</div><div class="ta-meta-value">${bias?.updated_at ? new Date(bias.updated_at).toLocaleString("ru-RU") : "—"}</div></div></div><div class="ta-groups">${groupsHtml}</div></section>`;
 }
 
 function buildCoverageHtml(data) {
