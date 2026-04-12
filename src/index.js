@@ -68,10 +68,11 @@ async function fetchLiveMetrics(project) {
     project.defillamaChain ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
     project.defillamaChain ? fetchTVLHistory(project.defillamaChain) : Promise.resolve([]),
     project.stablecoinChain ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve([]),
+    project.defillamaChain ? fetchChainUsersMetrics(project.defillamaChain) : Promise.resolve(null),
     getTechnicalBias(project.bybitSymbol),
   ]);
 
-  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,feesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,technicalBiasRes] = results;
+  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,feesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes] = results;
   const cgMarket = cgMarketRes.status === "fulfilled" ? cgMarketRes.value : null;
   const cgChart = cgChartRes.status === "fulfilled" ? cgChartRes.value : null;
   const chains = chainsRes.status === "fulfilled" ? chainsRes.value : null;
@@ -80,6 +81,7 @@ async function fetchLiveMetrics(project) {
   const dexOverview = dexOverviewRes.status === "fulfilled" ? dexOverviewRes.value : null;
   const tvlHistoryRaw = tvlHistoryRes.status === "fulfilled" ? tvlHistoryRes.value : [];
   const stableHistoryRaw = stableHistoryRes.status === "fulfilled" ? stableHistoryRes.value : [];
+  const usersData = usersRes.status === "fulfilled" ? usersRes.value : null;
   const technicalBias = technicalBiasRes.status === "fulfilled" ? technicalBiasRes.value : null;
 
   const chainNow = findChainData(chains, project.defillamaChain);
@@ -97,8 +99,8 @@ async function fetchLiveMetrics(project) {
   const stableHistory = normalizeStableHistory(stableHistoryRaw);
   const tvl = toNumber(chainNow?.tvl ?? getLastTVL(tvlHistory));
   const stablecoins = toNumber(chainNow?.stablecoins ?? stableNow?.totalCirculatingUSD ?? getLastStable(stableHistory));
-  const tvlHistoryAligned = appendLatestPointIfNeeded(tvlHistory, "totalLiquidityUSD", tvl);
-  const stableHistoryAligned = appendLatestPointIfNeeded(stableHistory, "totalCirculatingUSD", stablecoins);
+  const feesHistory = normalizeOverviewHistory(feesOverview?.totalDataChart);
+  const dexHistory = normalizeOverviewHistory(dexOverview?.totalDataChart);
   const chainFees24h = toNumber(feesOverview?.total24h);
   const dexVolume24h = toNumber(dexOverview?.total24h);
 
@@ -106,6 +108,11 @@ async function fetchLiveMetrics(project) {
     market: { price, marketCap, fdv, volume24h, circulatingSupply, totalSupply, maxSupply },
     capital: { tvl, stablecoins },
     financials: { chainFees24h, dexVolume24h },
+    users: {
+      dailyActiveAddresses24h: toNumber(usersData?.dailyActiveAddresses24h),
+      newAddresses24h: toNumber(usersData?.newAddresses24h),
+      transactions24h: toNumber(usersData?.transactions24h),
+    },
     valuation: {
       marketCapTVL: safeDivide(marketCap, tvl),
       volumeMarketCap: safePercent(volume24h, marketCap),
@@ -113,10 +120,10 @@ async function fetchLiveMetrics(project) {
     },
     charts: {
       priceHistory: Array.isArray(cgChart?.prices) ? cgChart.prices : [],
-      tvlHistory: tvlHistoryAligned,
-      stableHistory: stableHistoryAligned,
-      feesHistory: Array.isArray(feesOverview?.totalDataChart) ? feesOverview.totalDataChart : [],
-      dexHistory: Array.isArray(dexOverview?.totalDataChart) ? dexOverview.totalDataChart : [],
+      tvlHistory,
+      stableHistory,
+      feesHistory,
+      dexHistory,
     },
     technicalBias,
     debug: {
@@ -128,6 +135,7 @@ async function fetchLiveMetrics(project) {
       dexOverview: dexOverviewRes.status,
       tvlHistory: tvlHistoryRes.status,
       stableHistory: stableHistoryRes.status,
+      users: usersRes.status,
       technicalBias: technicalBiasRes.status,
     },
   };
@@ -188,6 +196,7 @@ function mergeLiveMetrics(report, live) {
   if (live.charts.stableHistory?.length) report.charts.stablecoins_history = live.charts.stableHistory;
   if (live.charts.feesHistory?.length) report.charts.fees_history = live.charts.feesHistory;
   if (live.charts.dexHistory?.length) report.charts.dex_history = live.charts.dexHistory;
+  mergeUsersMetrics(report, live.users);
   if (live.technicalBias) report.technical_bias = live.technicalBias;
   sanitizeUsersBlock(report);
 }
@@ -206,8 +215,26 @@ async function fetchDefiLlamaChains(){ const res = await fetch("https://api.llam
 async function fetchStablecoinChains(){ const res = await fetch("https://stablecoins.llama.fi/stablecoinchains"); if(!res.ok) throw new Error(`DefiLlama stable chains error: ${res.status}`); return res.json(); }
 async function fetchFeesOverview(chain){ const res = await fetch(`https://api.llama.fi/overview/fees/${encodeURIComponent(chain)}?excludeTotalDataChart=false&excludeTotalDataChartBreakdown=true&dataType=dailyFees`); if(!res.ok) throw new Error(`DefiLlama fees error: ${res.status}`); return res.json(); }
 async function fetchDexOverview(chain){ const res = await fetch(`https://api.llama.fi/overview/dexs/${encodeURIComponent(chain)}?excludeTotalDataChart=false&excludeTotalDataChartBreakdown=true&dataType=dailyVolume`); if(!res.ok) throw new Error(`DefiLlama dex error: ${res.status}`); return res.json(); }
-async function fetchTVLHistory(chain){ const res = await fetch(`https://api.llama.fi/charts/${encodeURIComponent(chain)}`); if(!res.ok) throw new Error(`DefiLlama TVL history error: ${res.status}`); return res.json(); }
+async function fetchTVLHistory(chain){
+  const chainSlug = String(chain || "").toLowerCase();
+  const primary = await fetch(`https://api.llama.fi/v2/historicalChainTvl/${encodeURIComponent(chainSlug)}`);
+  if (primary.ok) return primary.json();
+  const fallback = await fetch(`https://api.llama.fi/charts/${encodeURIComponent(chain)}`);
+  if (!fallback.ok) throw new Error(`DefiLlama TVL history error: ${primary.status}/${fallback.status}`);
+  return fallback.json();
+}
 async function fetchStablecoinHistory(chain){ const res = await fetch(`https://stablecoins.llama.fi/stablecoincharts/${encodeURIComponent(chain)}`); if(!res.ok) throw new Error(`DefiLlama stable history error: ${res.status}`); return res.json(); }
+async function fetchChainUsersMetrics(chain){
+  const chainSlug = String(chain || "").toLowerCase();
+  const res = await fetch(`https://defillama.com/chain/${encodeURIComponent(chainSlug)}?addresses=`, { headers:{ accept:"text/html" } });
+  if (!res.ok) throw new Error(`DefiLlama users page error: ${res.status}`);
+  const html = await res.text();
+  return {
+    dailyActiveAddresses24h: extractMetricFromHtml(html, "Active Addresses (24h)"),
+    newAddresses24h: extractMetricFromHtml(html, "New Addresses (24h)"),
+    transactions24h: extractMetricFromHtml(html, "Transactions (24h)"),
+  };
+}
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item) => String(item.name).toLowerCase() === String(chainName).toLowerCase()) : null; }
 function findStableChainData(chains, chainKey){ const target = String(chainKey || "").toLowerCase(); return Array.isArray(chains) ? chains.find((item) => [item?.gecko_id,item?.name,item?.chain,item?.tokenSymbol].filter(Boolean).map((v)=>String(v).toLowerCase()).includes(target)) : null; }
 function getLastTVL(rows){ if(!Array.isArray(rows) || !rows.length) return null; return toNumber(rows[rows.length-1]?.totalLiquidityUSD); }
@@ -218,7 +245,7 @@ function normalizeTvlHistory(rows){
   const map = new Map();
   rows.forEach((row) => {
     const date = toMillis(row?.date);
-    const value = toNumber(row?.totalLiquidityUSD);
+    const value = toNumber(row?.totalLiquidityUSD ?? row?.tvl);
     if (!Number.isFinite(date) || !isValidNumber(value) || value <= 0) return;
     map.set(date, { ...row, date: Math.floor(date / 1000), totalLiquidityUSD: value });
   });
@@ -236,17 +263,68 @@ function normalizeStableHistory(rows){
   });
   return Array.from(map.values()).sort((a, b) => a.date - b.date);
 }
-function appendLatestPointIfNeeded(rows, key, latestValue){
-  if (!isValidNumber(latestValue)) return rows;
-  const normalized = Array.isArray(rows) ? [...rows] : [];
-  const last = normalized[normalized.length - 1];
-  const lastTs = toMillis(last?.date) ?? Date.now();
-  const lastValue = toNumber(last?.[key]);
-  if (isValidNumber(lastValue) && Math.abs(lastValue - latestValue) < 1e-6) return normalized;
-  const nowTs = Math.floor(Date.now() / 1000);
-  const nextTs = Math.max(nowTs, Math.floor(lastTs / 1000));
-  normalized.push({ ...(last || {}), date: nextTs, [key]: latestValue });
-  return normalized;
+function normalizeOverviewHistory(rows){
+  if (!Array.isArray(rows)) return [];
+  const map = new Map();
+  rows.forEach((row) => {
+    const ts = Array.isArray(row) ? toMillis(row[0]) : toMillis(row?.date);
+    const value = Array.isArray(row) ? toNumber(row[1]) : toNumber(row?.value ?? row?.total);
+    if (!Number.isFinite(ts) || !isValidNumber(value) || value <= 0) return;
+    map.set(ts, [Math.floor(ts / 1000), value]);
+  });
+  const sorted = Array.from(map.values()).sort((a, b) => a[0] - b[0]);
+  const firstValidIndex = sorted.findIndex(([, value]) => value > 0);
+  if (firstValidIndex < 0) return [];
+  return sorted.slice(firstValidIndex);
+}
+
+function mergeUsersMetrics(report, users){
+  if (!report?.users?.metrics || !users) return;
+  const source = "DefiLlama";
+  const active = toNumber(users.dailyActiveAddresses24h);
+  const fresh = toNumber(users.newAddresses24h);
+  const tx = toNumber(users.transactions24h);
+  if (isValidNumber(active)) report.users.metrics.daily_active_addresses = liveMetric(active, formatCompactCount(active), source);
+  if (isValidNumber(fresh)) report.users.metrics.new_addresses = liveMetric(fresh, formatCompactCount(fresh), source);
+  if (isValidNumber(tx)) report.users.metrics.transactions = liveMetric(tx, formatCompactCount(tx), source);
+}
+
+function formatCompactCount(value){
+  const num = toNumber(value);
+  if (!isValidNumber(num)) return "—";
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits:0 }).format(num);
+}
+
+function extractMetricFromHtml(html, label){
+  if (!html || !label) return null;
+  const escaped = escapeRegExp(label);
+  const pattern = new RegExp(`${escaped}\\s*([0-9][0-9.,\\s]*[kKmMbB]?)`, "i");
+  const match = html.match(pattern);
+  if (!match?.[1]) return null;
+  return parseHumanNumber(match[1]);
+}
+
+function parseHumanNumber(raw){
+  if (raw === null || raw === undefined) return null;
+  const value = String(raw).trim().replace(/\s+/g, "");
+  if (!value) return null;
+  const suffix = value.slice(-1).toLowerCase();
+  let multiplier = 1;
+  let core = value;
+  if (suffix === "k" || suffix === "m" || suffix === "b") {
+    core = value.slice(0, -1);
+    if (suffix === "k") multiplier = 1e3;
+    if (suffix === "m") multiplier = 1e6;
+    if (suffix === "b") multiplier = 1e9;
+  }
+  const normalized = core.replace(/,/g, "");
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed * multiplier;
+}
+
+function escapeRegExp(value){
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function sanitizeUsersBlock(report){
   if (!report?.users?.metrics) return;
