@@ -1,4 +1,5 @@
 import { getProjectBySlug } from "./config/projects.js";
+import { getTechnicalBias } from "./adapters/bybit.js";
 
 export default {
   async fetch(request, env) {
@@ -67,9 +68,10 @@ async function fetchLiveMetrics(project) {
     project.defillamaChain ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
     project.defillamaChain ? fetchTVLHistory(project.defillamaChain) : Promise.resolve([]),
     project.stablecoinChain ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve([]),
+    getTechnicalBias(project.bybitSymbol),
   ]);
 
-  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,feesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes] = results;
+  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,feesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,technicalBiasRes] = results;
   const cgMarket = cgMarketRes.status === "fulfilled" ? cgMarketRes.value : null;
   const cgChart = cgChartRes.status === "fulfilled" ? cgChartRes.value : null;
   const chains = chainsRes.status === "fulfilled" ? chainsRes.value : null;
@@ -78,6 +80,7 @@ async function fetchLiveMetrics(project) {
   const dexOverview = dexOverviewRes.status === "fulfilled" ? dexOverviewRes.value : null;
   const tvlHistory = tvlHistoryRes.status === "fulfilled" ? tvlHistoryRes.value : [];
   const stableHistory = stableHistoryRes.status === "fulfilled" ? stableHistoryRes.value : [];
+  const technicalBias = technicalBiasRes.status === "fulfilled" ? technicalBiasRes.value : null;
 
   const chainNow = findChainData(chains, project.defillamaChain);
   const stableNow = findStableChainData(stableChains, project.stablecoinChain);
@@ -111,6 +114,7 @@ async function fetchLiveMetrics(project) {
       feesHistory: Array.isArray(feesOverview?.totalDataChart) ? feesOverview.totalDataChart : [],
       dexHistory: Array.isArray(dexOverview?.totalDataChart) ? dexOverview.totalDataChart : [],
     },
+    technicalBias,
     debug: {
       cgMarket: cgMarketRes.status,
       cgChart: cgChartRes.status,
@@ -120,6 +124,7 @@ async function fetchLiveMetrics(project) {
       dexOverview: dexOverviewRes.status,
       tvlHistory: tvlHistoryRes.status,
       stableHistory: stableHistoryRes.status,
+      technicalBias: technicalBiasRes.status,
     },
   };
 }
@@ -179,6 +184,7 @@ function mergeLiveMetrics(report, live) {
   if (live.charts.stableHistory?.length) report.charts.stablecoins_history = live.charts.stableHistory;
   if (live.charts.feesHistory?.length) report.charts.fees_history = live.charts.feesHistory;
   if (live.charts.dexHistory?.length) report.charts.dex_history = live.charts.dexHistory;
+  if (live.technicalBias) report.technical_bias = live.technicalBias;
 }
 
 function toNumber(value){ if (value===null || value===undefined || value==="") return null; const num = Number(value); return Number.isFinite(num) ? num : null; }
