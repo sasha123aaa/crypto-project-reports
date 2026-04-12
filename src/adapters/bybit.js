@@ -19,15 +19,12 @@ const RANGE_PARAMS = {
 
 function parseBybitKlineRow(row) {
   if (!Array.isArray(row) || row.length < 5) return null;
-
   const time = Number(row[0]);
   const open = Number(row[1]);
   const high = Number(row[2]);
   const low = Number(row[3]);
   const close = Number(row[4]);
-
   if (![time, open, high, low, close].every(Number.isFinite)) return null;
-
   return { time, open, high, low, close };
 }
 
@@ -39,10 +36,8 @@ function distanceToRange(price, low, high) {
 
 function nearestRangeToPrice(ranges, price) {
   if (!Array.isArray(ranges) || !ranges.length || !Number.isFinite(price)) return null;
-
   let best = null;
   let bestDist = Number.POSITIVE_INFINITY;
-
   for (const range of ranges) {
     if (!Array.isArray(range) || range.length < 5) continue;
     const low = Number(range[2]);
@@ -53,11 +48,9 @@ function nearestRangeToPrice(ranges, price) {
       best = range;
     }
   }
-
   return best;
 }
 
-// Точная копия логики из оригинального HTML с минимальной адаптацией под модуль.
 export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects = 20, minBars = 7) {
   let ranges = [];
   let previewRange = null;
@@ -73,32 +66,17 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
   let prev_fixed_on_expand = false;
   let override_A_i = null;
 
-  if (!Array.isArray(candles) || candles.length < minBars) {
-    return { ranges: [], previewRange: null };
-  }
+  if (!Array.isArray(candles) || candles.length < minBars) return { ranges: [], previewRange: null };
 
   function appendOrReplaceCurrent() {
     if (currA_i === null || currB_i === null) return;
-
     const bypassMinbars = (override_A_i !== null && currA_i === override_A_i);
-    if (!bypassMinbars && ((currB_i - currA_i + 1) < minBars)) {
-      return;
-    }
-
+    if (!bypassMinbars && ((currB_i - currA_i + 1) < minBars)) return;
     const item = [currA_i, currB_i, currA, currB, isUp];
-    if (ranges.length && ranges[ranges.length - 1][0] === currA_i) {
-      ranges[ranges.length - 1] = item;
-    } else {
-      ranges.push(item);
-    }
-
-    if (ranges.length > maxRects) {
-      ranges = ranges.slice(ranges.length - maxRects);
-    }
-
-    if (bypassMinbars) {
-      override_A_i = null;
-    }
+    if (ranges.length && ranges[ranges.length - 1][0] === currA_i) ranges[ranges.length - 1] = item;
+    else ranges.push(item);
+    if (ranges.length > maxRects) ranges = ranges.slice(ranges.length - maxRects);
+    if (bypassMinbars) override_A_i = null;
   }
 
   const len = candles.length;
@@ -176,7 +154,6 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
         if (!in_expand_mode && candles[i - 1].high > currB) {
           appendOrReplaceCurrent();
           prev_fixed_on_expand = true;
-
           const subStart = currB_i + 1;
           const subEnd = i - 1;
           if (subEnd >= subStart) {
@@ -188,7 +165,6 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
                 minLow_i = j;
               }
             }
-
             expandA_i = minLow_i;
             expandA = candles[expandA_i].low;
             expandB = candles[i - 1].high;
@@ -201,23 +177,15 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
             expandB = candles[i - 1].high;
             expandB_i = i - 1;
           }
-
           expand_len = expandB_i - expandA_i + 1;
 
           if (expand_len < minBars) {
             if (low < expandA) {
-              if (!prev_fixed_on_expand) {
-                appendOrReplaceCurrent();
-              }
-
+              if (!prev_fixed_on_expand) appendOrReplaceCurrent();
               if (ranges.length && ranges[ranges.length - 1][4] === isUp) {
                 const last = ranges[ranges.length - 1];
-                const a_i = last[0];
-                const a_p = last[2];
-                const d = last[4];
-                ranges[ranges.length - 1] = [a_i, expandB_i, a_p, expandB, d];
+                ranges[ranges.length - 1] = [last[0], expandB_i, last[2], expandB, last[4]];
               }
-
               currB = expandB;
               currB_i = expandB_i;
               in_expand_mode = false;
@@ -228,10 +196,7 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
 
           const corrLevelNext = expandB - (expandB - expandA) * correctionPct;
           if (low <= corrLevelNext) {
-            if (!prev_fixed_on_expand) {
-              appendOrReplaceCurrent();
-            }
-
+            if (!prev_fixed_on_expand) appendOrReplaceCurrent();
             currA = expandA;
             currA_i = expandA_i;
             currB = expandB;
@@ -300,7 +265,6 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
         if (!in_expand_mode && candles[i - 1].low < currB) {
           appendOrReplaceCurrent();
           prev_fixed_on_expand = true;
-
           const subStart = currB_i + 1;
           const subEnd = i - 1;
           if (subEnd >= subStart) {
@@ -312,7 +276,6 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
                 maxHigh_i = j;
               }
             }
-
             expandA_i = maxHigh_i;
             expandA = candles[expandA_i].high;
             expandB = candles[i - 1].low;
@@ -325,23 +288,15 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
             expandB = candles[i - 1].low;
             expandB_i = i - 1;
           }
-
           expand_len = expandB_i - expandA_i + 1;
 
           if (expand_len < minBars) {
             if (high > expandA) {
-              if (!prev_fixed_on_expand) {
-                appendOrReplaceCurrent();
-              }
-
+              if (!prev_fixed_on_expand) appendOrReplaceCurrent();
               if (ranges.length && ranges[ranges.length - 1][4] === isUp) {
                 const last = ranges[ranges.length - 1];
-                const a_i = last[0];
-                const a_p = last[2];
-                const d = last[4];
-                ranges[ranges.length - 1] = [a_i, expandB_i, a_p, expandB, d];
+                ranges[ranges.length - 1] = [last[0], expandB_i, last[2], expandB, last[4]];
               }
-
               currB = expandB;
               currB_i = expandB_i;
               in_expand_mode = false;
@@ -352,10 +307,7 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
 
           const corrLevelNext = expandB + (expandA - expandB) * correctionPct;
           if (high >= corrLevelNext) {
-            if (!prev_fixed_on_expand) {
-              appendOrReplaceCurrent();
-            }
-
+            if (!prev_fixed_on_expand) appendOrReplaceCurrent();
             currA = expandA;
             currA_i = expandA_i;
             currB = expandB;
@@ -404,19 +356,12 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
 async function fetchBybitCandles(symbol, timeframe) {
   const interval = BYBIT_INTERVAL[timeframe];
   if (!interval) return [];
-
   const url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=500`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Bybit kline HTTP ${res.status}`);
-
   const json = await res.json();
   const list = Array.isArray(json?.result?.list) ? json.result.list : [];
-
-  return list
-    .slice()
-    .reverse()
-    .map(parseBybitKlineRow)
-    .filter(Boolean);
+  return list.slice().reverse().map(parseBybitKlineRow).filter(Boolean);
 }
 
 function stateFromRange(range) {
@@ -425,25 +370,183 @@ function stateFromRange(range) {
 }
 
 function stateFromResult(result, candles) {
-  if (result?.previewRange) {
-    return stateFromRange(result.previewRange);
-  }
-
+  if (result?.previewRange) return stateFromRange(result.previewRange);
   const currentPrice = candles?.length ? Number(candles[candles.length - 1].close) : NaN;
   const nearest = nearestRangeToPrice(result?.ranges || [], currentPrice);
   return stateFromRange(nearest);
 }
 
-function summarizeGroup(states) {
-  const score = states.reduce((acc, state) => {
-    if (state === "bullish") return acc + 1;
-    if (state === "bearish") return acc - 1;
-    return acc;
-  }, 0);
+function pickRandom(items) {
+  if (!Array.isArray(items) || !items.length) return "";
+  return items[Math.floor(Math.random() * items.length)];
+}
 
-  if (score >= 2) return "Преобладает bullish-смещение по активным диапазонам.";
-  if (score <= -2) return "Преобладает bearish-смещение по активным диапазонам.";
-  return "Сигналы смешанные: активные диапазоны без явного перекоса.";
+const TRIPLE_PHRASES = {
+  full_bull: [
+    "Вся группа таймфреймов на стороне покупателей.",
+    "Структура по группе согласована вверх без явных расхождений.",
+    "Покупатели удерживают контроль на всей тройке ТФ.",
+    "По группе сохраняется чистый бычий перевес.",
+    "Все интервалы внутри группы подтверждают рост."
+  ],
+  full_bear: [
+    "Вся группа таймфреймов на стороне продавцов.",
+    "Структура по группе согласована вниз без явных расхождений.",
+    "Продавцы удерживают контроль на всей тройке ТФ.",
+    "По группе сохраняется чистый медвежий перевес.",
+    "Все интервалы внутри группы подтверждают снижение."
+  ],
+  bull_correction: [
+    "На младших ТФ идет коррекция, но старший интервал группы сохраняет бычий контекст.",
+    "Локальная слабость пока выглядит как откат внутри бычьей структуры.",
+    "Давление на младших интервалах есть, но старший ТФ группы остается на стороне покупателей.",
+    "Внутри группы идет коррекция, пока без слома бычьего диапазона на старшем ТФ.",
+    "Снижение на младших ТФ пока читается как коррекционное движение в бычьем фоне."
+  ],
+  bear_bounce: [
+    "На младших ТФ идет отскок, но старший интервал группы пока остается слабым.",
+    "Рост внутри группы пока выглядит как восстановление в более медвежьем контексте.",
+    "Покупатели активны локально, но старший ТФ группы еще не подтвердил разворот.",
+    "Внутри группы есть отскок вверх, но старший диапазон пока не на стороне роста.",
+    "Локальное улучшение есть, однако старший ТФ группы все еще выглядит слабее."
+  ],
+  bull_recovery: [
+    "Старший и средний ТФ группы поддерживают покупателей, младший уже выглядит второстепенно.",
+    "Бычий контекст внутри группы сохраняется и постепенно выравнивается.",
+    "Покупатели удерживают более важные ТФ группы, а младший шум пока не ломает структуру.",
+    "По группе сохраняется бычий уклон, несмотря на локальную слабость в самом младшем ТФ.",
+    "Контекст в пользу покупателей остается сильнее на более значимых ТФ группы."
+  ],
+  bear_pressure: [
+    "Старший и средний ТФ группы остаются на стороне продавцов, а младший рост пока второстепенен.",
+    "Медвежий контекст внутри группы сохраняется и не сломан локальным отскоком.",
+    "Продавцы удерживают более значимые ТФ группы, несмотря на слабый локальный рост.",
+    "По группе сохраняется давление вниз, даже если младший ТФ пытается восстановиться.",
+    "Основная структура в группе остается медвежьей, а младший импульс пока не меняет картину."
+  ],
+  bull_conflict: [
+    "Бычий старший контекст сохраняется, но внутри группы пока остается конфликт сигналов.",
+    "Старший ТФ группы удерживает рост, хотя средний интервал пока спорит с движением.",
+    "По группе сохраняется бычий фон, но подтверждение внутри структуры пока неполное.",
+    "Структура внутри группы неоднородна, однако старший ТФ все еще держит бычий контекст.",
+    "Внутри группы есть расхождение, но старший диапазон пока остается на стороне покупателей."
+  ],
+  bear_conflict: [
+    "Медвежий старший контекст сохраняется, но внутри группы пока остается конфликт сигналов.",
+    "Старший ТФ группы удерживает слабость, хотя средний интервал пока спорит с движением.",
+    "По группе сохраняется медвежий фон, но подтверждение внутри структуры пока неполное.",
+    "Структура внутри группы неоднородна, однако старший ТФ все еще держит медвежий контекст.",
+    "Внутри группы есть расхождение, но старший диапазон пока остается на стороне продавцов."
+  ],
+  mixed_neutral: [
+    "Сигналы по группе смешанные, явного перекоса пока нет.",
+    "Внутри группы диапазоны спорят между собой и не дают чистого перевеса.",
+    "Структура по группе остается смешанной без явной доминирующей стороны.",
+    "По группе пока нет цельного подтверждения ни роста, ни снижения.",
+    "Состояние внутри группы остается переходным и неоднозначным."
+  ],
+  context_unconfirmed: [
+    "Старший ТФ группы пока без валидного диапазона, поэтому сигнал остается неполным.",
+    "Младшие интервалы активны, но старший контекст внутри группы еще не оформился.",
+    "По группе есть движение, но без подтверждения на старшем ТФ.",
+    "Старший интервал группы пока нейтрален, поэтому общий вывод остается осторожным.",
+    "Контекст внутри группы еще не подтвержден, потому что старший ТФ без четкой структуры."
+  ]
+};
+
+const HIGHER_PHRASES = {
+  higher_bull: [
+    "Дневной и недельный диапазоны подтверждают бычий старший фон.",
+    "Старшие ТФ остаются на стороне покупателей.",
+    "По дневке и неделе сохраняется сильный бычий контекст.",
+    "Оба старших интервала подтверждают бычью структуру.",
+    "Дневной и недельный ТФ согласованы в пользу роста."
+  ],
+  higher_bear: [
+    "Дневной и недельный диапазоны подтверждают медвежий старший фон.",
+    "Старшие ТФ остаются на стороне продавцов.",
+    "По дневке и неделе сохраняется сильный медвежий контекст.",
+    "Оба старших интервала подтверждают слабую структуру.",
+    "Дневной и недельный ТФ согласованы в пользу снижения."
+  ],
+  daily_recovery_vs_weekly_bear: [
+    "Дневка пытается улучшиться, но недельный фон пока остается слабым.",
+    "На дневном ТФ есть восстановление, однако неделя еще не подтверждает разворот.",
+    "Локальное улучшение на дневке пока идет против более тяжелого недельного контекста.",
+    "Дневной диапазон стал сильнее, но недельный ТФ все еще удерживает слабость.",
+    "Дневка оживает, однако старший недельный фон пока не сменился."
+  ],
+  daily_pullback_vs_weekly_bull: [
+    "Недельный контекст остается бычьим, а дневка пока показывает коррекцию.",
+    "Старшая недельная структура сохраняется, хотя дневной ТФ ушел в откат.",
+    "По неделе фон остается сильным, а слабость дневки пока выглядит коррекционной.",
+    "Дневной ТФ корректируется, но недельный диапазон пока не сломан.",
+    "Локальный откат на дневке пока не отменяет бычий недельный контекст."
+  ],
+  higher_unconfirmed: [
+    "Старший контекст читается частично, но полноценного подтверждения пока нет.",
+    "По дневке и неделе картина остается неполной и требует подтверждения.",
+    "Старшие ТФ пока не дают цельного подтверждения структуры.",
+    "Контекст на старших интервалах есть, но он пока оформлен не полностью.",
+    "По дневке и неделе структура остается осторожной и неполной."
+  ],
+  higher_neutral: [
+    "По дневному и недельному ТФ пока нет четкого старшего сигнала.",
+    "Старшие интервалы остаются нейтральными без валидного диапазона.",
+    "Дневка и неделя пока не дают ясного долгосрочного перекоса.",
+    "Старший контекст еще не оформился и остается нейтральным.",
+    "По старшим ТФ структура пока размыта и без явного направления."
+  ]
+};
+
+function classifyTriple(states) {
+  const [low, mid, high] = states;
+  if (high === "neutral") return "context_unconfirmed";
+  if (low === "bullish" && mid === "bullish" && high === "bullish") return "full_bull";
+  if (low === "bearish" && mid === "bearish" && high === "bearish") return "full_bear";
+
+  if (high === "bullish") {
+    if (low === "bearish" && mid === "bearish") return "bull_correction";
+    if (low === "bearish" && mid === "bullish") return "bull_recovery";
+    if (low === "bullish" && mid === "bearish") return "bull_conflict";
+    if (low === "neutral" && mid === "bullish") return "bull_recovery";
+    if (low === "bearish" && mid === "neutral") return "bull_correction";
+    if (low === "neutral" && mid === "neutral") return "context_unconfirmed";
+    return "bull_conflict";
+  }
+
+  if (high === "bearish") {
+    if (low === "bullish" && mid === "bullish") return "bear_bounce";
+    if (low === "bullish" && mid === "bearish") return "bear_pressure";
+    if (low === "bearish" && mid === "bullish") return "bear_conflict";
+    if (low === "neutral" && mid === "bearish") return "bear_pressure";
+    if (low === "bullish" && mid === "neutral") return "bear_bounce";
+    if (low === "neutral" && mid === "neutral") return "context_unconfirmed";
+    return "bear_conflict";
+  }
+
+  return "mixed_neutral";
+}
+
+function classifyHigher(dayState, weekState) {
+  if (dayState === "neutral" && weekState === "neutral") return "higher_neutral";
+  if (weekState === "neutral") return "higher_unconfirmed";
+  if (dayState === "neutral") return "higher_unconfirmed";
+  if (dayState === "bullish" && weekState === "bullish") return "higher_bull";
+  if (dayState === "bearish" && weekState === "bearish") return "higher_bear";
+  if (dayState === "bullish" && weekState === "bearish") return "daily_recovery_vs_weekly_bear";
+  if (dayState === "bearish" && weekState === "bullish") return "daily_pullback_vs_weekly_bull";
+  return "higher_unconfirmed";
+}
+
+function phraseForTriple(states) {
+  const type = classifyTriple(states);
+  return pickRandom(TRIPLE_PHRASES[type] || TRIPLE_PHRASES.mixed_neutral);
+}
+
+function phraseForHigher(dayState, weekState) {
+  const type = classifyHigher(dayState, weekState);
+  return pickRandom(HIGHER_PHRASES[type] || HIGHER_PHRASES.higher_unconfirmed);
 }
 
 export async function getTechnicalBias(bybitSymbol) {
@@ -457,9 +560,9 @@ export async function getTechnicalBias(bybitSymbol) {
       symbol: null,
       timeframes,
       notes: {
-        lower_tf: "Символ проекта не задан, применен neutral fallback.",
-        mid_tf: "Символ проекта не задан, применен neutral fallback.",
-        higher_tf: "Символ проекта не задан, применен neutral fallback.",
+        lower_tf: "Символ проекта не задан, поэтому младшая группа остается нейтральной.",
+        mid_tf: "Символ проекта не задан, поэтому средняя группа остается нейтральной.",
+        higher_tf: "Символ проекта не задан, поэтому старший контекст не определен.",
       },
     };
   }
@@ -487,9 +590,9 @@ export async function getTechnicalBias(bybitSymbol) {
     symbol,
     timeframes,
     notes: {
-      lower_tf: summarizeGroup([timeframes["1m"], timeframes["3m"], timeframes["5m"]]),
-      mid_tf: summarizeGroup([timeframes["15m"], timeframes["1h"], timeframes["4h"]]),
-      higher_tf: summarizeGroup([timeframes["1d"], timeframes["1w"]]),
+      lower_tf: phraseForTriple([timeframes["1m"], timeframes["3m"], timeframes["5m"]]),
+      mid_tf: phraseForTriple([timeframes["15m"], timeframes["1h"], timeframes["4h"]]),
+      higher_tf: phraseForHigher(timeframes["1d"], timeframes["1w"]),
     },
   };
 }
