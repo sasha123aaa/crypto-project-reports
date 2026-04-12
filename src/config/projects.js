@@ -9,6 +9,11 @@ export const PROJECTS = {
     coingeckoId: "ethereum",
     defillamaChain: "Ethereum",
     stablecoinChain: "Ethereum",
+    usersSource: {
+      type: "defillama",
+      chain: "Ethereum",
+      label: "DefiLlama API"
+    },
     bybitSymbol: "ETHUSDT",
     tags: ["L1", "DeFi", "Smart Contracts"]
   }

@@ -1,5 +1,6 @@
 import { getProjectBySlug } from "./config/projects.js";
 import { getTechnicalBias } from "./adapters/bybit.js";
+import { fetchUsersMetrics } from "./lib/users-source.js";
 
 export default {
   async fetch(request, env) {
@@ -68,7 +69,7 @@ async function fetchLiveMetrics(project) {
     project.defillamaChain ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
     project.defillamaChain ? fetchTVLHistory(project.defillamaChain) : Promise.resolve([]),
     project.stablecoinChain ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve([]),
-    project.defillamaChain ? fetchChainUsersMetrics(project.defillamaChain) : Promise.resolve(null),
+    fetchUsersMetrics(project, { toNumber }),
     getTechnicalBias(project.bybitSymbol),
   ]);
 
@@ -112,6 +113,7 @@ async function fetchLiveMetrics(project) {
       dailyActiveAddresses24h: toNumber(usersData?.dailyActiveAddresses24h),
       newAddresses24h: toNumber(usersData?.newAddresses24h),
       transactions24h: toNumber(usersData?.transactions24h),
+      source: usersData?.source || null,
     },
     valuation: {
       marketCapTVL: safeDivide(marketCap, tvl),
@@ -220,6 +222,24 @@ function calcMetric(value, formatted){ return { value, formatted, status:"calcul
 function safeDivide(a,b){ if (!isValidNumber(a) || !isValidNumber(b) || b===0) return null; return a/b; }
 function safePercent(a,b){ if (!isValidNumber(a) || !isValidNumber(b) || b===0) return null; return (a/b)*100; }
 function formatMoney(value){ const num = toNumber(value); if (!isValidNumber(num)) return "—"; const abs = Math.abs(num); if (abs>=1e12) return `$${(num/1e12).toFixed(2)}T`; if (abs>=1e9) return `$${(num/1e9).toFixed(2)}B`; if (abs>=1e6) return `$${(num/1e6).toFixed(2)}M`; if (abs>=1e3) return `$${(num/1e3).toFixed(2)}K`; return `$${num.toFixed(2)}`; }
+function parseHumanNumber(raw){
+  if (raw === null || raw === undefined) return null;
+  const value = String(raw).trim().replace(/\s+/g, "");
+  if (!value) return null;
+  const suffix = value.slice(-1).toLowerCase();
+  let multiplier = 1;
+  let core = value;
+  if (suffix === "k" || suffix === "m" || suffix === "b") {
+    core = value.slice(0, -1);
+    if (suffix === "k") multiplier = 1e3;
+    if (suffix === "m") multiplier = 1e6;
+    if (suffix === "b") multiplier = 1e9;
+  }
+  const normalized = core.replace(/,/g, "");
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed * multiplier;
+}
 
 async function fetchCoinGeckoMarket(id){ const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(id)}&price_change_percentage=7d`,{headers:{accept:"application/json,text/plain,*/*","user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0"}}); if(!res.ok) throw new Error(`CoinGecko market error: ${res.status}`); const data = await res.json(); return data?.[0] || null; }
 async function fetchCoinGeckoChart(id,days=365){ const res = await fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}&interval=daily`,{headers:{accept:"application/json,text/plain,*/*","user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0"}}); if(!res.ok) throw new Error(`CoinGecko chart error: ${res.status}`); return res.json(); }
@@ -236,42 +256,6 @@ async function fetchTVLHistory(chain){
   return fallback.json();
 }
 async function fetchStablecoinHistory(chain){ const res = await fetch(`https://stablecoins.llama.fi/stablecoincharts/${encodeURIComponent(chain)}`); if(!res.ok) throw new Error(`DefiLlama stable history error: ${res.status}`); return res.json(); }
-async function fetchChainUsersMetrics(chain){
-  const chainSlug = String(chain || "").toLowerCase();
-  const urls = [
-    `https://defillama.com/chain/${encodeURIComponent(chainSlug)}?addresses=`,
-    `https://defillama.com/chains/${encodeURIComponent(chain)}?addresses=`,
-  ];
-
-  let lastError = null;
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, {
-        headers:{
-          accept:"text/html,application/xhtml+xml,application/json",
-          "user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0",
-        }
-      });
-      if (!res.ok) throw new Error(`DefiLlama users page error: ${res.status}`);
-      const html = await res.text();
-      const fromStructured = extractUsersFromNextData(html);
-      const fromFallback = extractUsersFromHtmlText(html);
-      const merged = {
-        dailyActiveAddresses24h: toNumber(fromStructured?.dailyActiveAddresses24h ?? fromFallback?.dailyActiveAddresses24h),
-        newAddresses24h: toNumber(fromStructured?.newAddresses24h ?? fromFallback?.newAddresses24h),
-        transactions24h: toNumber(fromStructured?.transactions24h ?? fromFallback?.transactions24h),
-      };
-      if (isValidNumber(merged.dailyActiveAddresses24h) || isValidNumber(merged.newAddresses24h) || isValidNumber(merged.transactions24h)) {
-        return merged;
-      }
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  if (lastError) throw lastError;
-  return null;
-}
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item) => String(item.name).toLowerCase() === String(chainName).toLowerCase()) : null; }
 function findStableChainData(chains, chainKey){ const target = String(chainKey || "").toLowerCase(); return Array.isArray(chains) ? chains.find((item) => [item?.gecko_id,item?.name,item?.chain,item?.tokenSymbol].filter(Boolean).map((v)=>String(v).toLowerCase()).includes(target)) : null; }
 function extractStablecoinsCurrent(chainNow, stableNow){
@@ -330,74 +314,9 @@ function normalizeOverviewHistory(rows){
   if (firstValidIndex < 0) return [];
   return sorted.slice(firstValidIndex);
 }
-function extractUsersFromNextData(html){
-  if (!html) return null;
-  const match = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
-  if (!match?.[1]) return null;
-  try {
-    const payload = JSON.parse(match[1]);
-    const found = {
-      dailyActiveAddresses24h: findNumberByKeys(payload, ["activeaddresses24h", "dailyactiveaddresses24h"]),
-      newAddresses24h: findNumberByKeys(payload, ["newaddresses24h"]),
-      transactions24h: findNumberByKeys(payload, ["transactions24h"]),
-    };
-    if (!isValidNumber(found.dailyActiveAddresses24h)) found.dailyActiveAddresses24h = findNumberByLabel(payload, "active addresses (24h)");
-    if (!isValidNumber(found.newAddresses24h)) found.newAddresses24h = findNumberByLabel(payload, "new addresses (24h)");
-    if (!isValidNumber(found.transactions24h)) found.transactions24h = findNumberByLabel(payload, "transactions (24h)");
-    if (isValidNumber(found.dailyActiveAddresses24h) || isValidNumber(found.newAddresses24h) || isValidNumber(found.transactions24h)) {
-      return found;
-    }
-  } catch {}
-  return null;
-}
-function findNumberByKeys(node, expectedKeys){
-  if (!node) return null;
-  const queue = [node];
-  const target = new Set((expectedKeys || []).map((x) => String(x).toLowerCase()));
-  while (queue.length) {
-    const item = queue.shift();
-    if (!item || typeof item !== "object") continue;
-    if (Array.isArray(item)) {
-      queue.push(...item);
-      continue;
-    }
-    for (const [key, value] of Object.entries(item)) {
-      if (target.has(String(key).toLowerCase())) {
-        const num = toNumber(typeof value === "object" ? value?.value ?? value?.current ?? value?.amount : value);
-        if (isValidNumber(num)) return num;
-      }
-      if (value && typeof value === "object") queue.push(value);
-    }
-  }
-  return null;
-}
-
-function findNumberByLabel(node, label){
-  if (!node || !label) return null;
-  const target = String(label).toLowerCase();
-  const queue = [node];
-  while (queue.length) {
-    const item = queue.shift();
-    if (!item || typeof item !== "object") continue;
-    if (Array.isArray(item)) {
-      queue.push(...item);
-      continue;
-    }
-    const title = String(item?.name ?? item?.title ?? item?.label ?? "").toLowerCase();
-    if (title === target || title.includes(target)) {
-      const num = toNumber(item?.value ?? item?.amount ?? item?.current ?? item?.displayValue);
-      if (isValidNumber(num)) return num;
-    }
-    for (const value of Object.values(item)) {
-      if (value && typeof value === "object") queue.push(value);
-    }
-  }
-  return null;
-}
-
 function mergeUsersMetrics(report, users){
   if (!report?.users?.metrics || !users) return;
-  const source = "DefiLlama";
+  const source = users.source || "DefiLlama API";
   const active = toNumber(users.dailyActiveAddresses24h);
   const fresh = toNumber(users.newAddresses24h);
   const tx = toNumber(users.transactions24h);
@@ -412,46 +331,6 @@ function formatCompactCount(value){
   return new Intl.NumberFormat("ru-RU", { maximumFractionDigits:0 }).format(num);
 }
 
-function extractMetricFromHtml(html, label){
-  if (!html || !label) return null;
-  const escaped = escapeRegExp(label);
-  const pattern = new RegExp(`${escaped}\\s*([0-9][0-9.,\\s]*[kKmMbB]?)`, "i");
-  const match = html.match(pattern);
-  if (!match?.[1]) return null;
-  return parseHumanNumber(match[1]);
-}
-
-function extractUsersFromHtmlText(html){
-  if (!html) return null;
-  return {
-    dailyActiveAddresses24h: toNumber(extractMetricFromHtml(html, "Active Addresses (24h)")),
-    newAddresses24h: toNumber(extractMetricFromHtml(html, "New Addresses (24h)")),
-    transactions24h: toNumber(extractMetricFromHtml(html, "Transactions (24h)")),
-  };
-}
-
-function parseHumanNumber(raw){
-  if (raw === null || raw === undefined) return null;
-  const value = String(raw).trim().replace(/\s+/g, "");
-  if (!value) return null;
-  const suffix = value.slice(-1).toLowerCase();
-  let multiplier = 1;
-  let core = value;
-  if (suffix === "k" || suffix === "m" || suffix === "b") {
-    core = value.slice(0, -1);
-    if (suffix === "k") multiplier = 1e3;
-    if (suffix === "m") multiplier = 1e6;
-    if (suffix === "b") multiplier = 1e9;
-  }
-  const normalized = core.replace(/,/g, "");
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed)) return null;
-  return parsed * multiplier;
-}
-
-function escapeRegExp(value){
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 function sanitizeUsersBlock(report){
   if (!report?.users?.metrics) return;
   const cleanFormatted = "данные временно недоступны";
