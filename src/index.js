@@ -12,6 +12,9 @@ export default {
   },
 };
 
+const COINGECKO_MARKET_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
+const coinGeckoMarketSnapshots = new Map();
+
 async function handleHybridReportApi(request, env, url) {
   const slug = url.pathname.replace("/api/report/", "").replace(/\/$/, "");
   const project = getProjectBySlug(slug);
@@ -82,6 +85,16 @@ async function fetchLiveMetrics(project) {
 
   const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,feesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes] = results;
   const cgMarket = cgMarketRes.status === "fulfilled" ? cgMarketRes.value : null;
+  const cachedCoinGeckoMarket = getCoinGeckoMarketSnapshot(project.coingeckoId);
+  const hasFreshCoinGeckoMarket = hasAnyCoinGeckoMarketValue(cgMarket);
+  const hasCachedCoinGeckoMarket = hasAnyCoinGeckoMarketValue(cachedCoinGeckoMarket);
+  const effectiveCoinGeckoMarket = hasFreshCoinGeckoMarket
+    ? cgMarket
+    : (hasCachedCoinGeckoMarket ? cachedCoinGeckoMarket : null);
+  const marketMetricsMode = hasFreshCoinGeckoMarket
+    ? "live_fresh"
+    : (hasCachedCoinGeckoMarket ? "live_cached_fallback" : "manual_static_fallback");
+  if (hasFreshCoinGeckoMarket) setCoinGeckoMarketSnapshot(project.coingeckoId, cgMarket);
   const cgChart = cgChartRes.status === "fulfilled" ? cgChartRes.value : null;
   const chains = chainsRes.status === "fulfilled" ? chainsRes.value : null;
   const stableChains = stableChainsRes.status === "fulfilled" ? stableChainsRes.value : null;
@@ -95,13 +108,13 @@ async function fetchLiveMetrics(project) {
   const chainNow = findChainData(chains, project.defillamaChain);
   const stableNow = findStableChainData(stableChains, project.stablecoinChain);
 
-  const price = toNumber(cgMarket?.current_price);
-  const marketCap = toNumber(cgMarket?.market_cap);
-  const fdv = toNumber(cgMarket?.fully_diluted_valuation);
-  const volume24h = toNumber(cgMarket?.total_volume);
-  const circulatingSupply = toNumber(cgMarket?.circulating_supply);
-  const totalSupply = toNumber(cgMarket?.total_supply);
-  const maxSupply = toNumber(cgMarket?.max_supply);
+  const price = toNumber(effectiveCoinGeckoMarket?.current_price);
+  const marketCap = toNumber(effectiveCoinGeckoMarket?.market_cap);
+  const fdv = toNumber(effectiveCoinGeckoMarket?.fully_diluted_valuation);
+  const volume24h = toNumber(effectiveCoinGeckoMarket?.total_volume);
+  const circulatingSupply = toNumber(effectiveCoinGeckoMarket?.circulating_supply);
+  const totalSupply = toNumber(effectiveCoinGeckoMarket?.total_supply);
+  const maxSupply = toNumber(effectiveCoinGeckoMarket?.max_supply);
   const cgMarketError = parsePromiseRejection(cgMarketRes.reason);
 
   const tvlHistory = normalizeTvlHistory(tvlHistoryRaw);
@@ -141,6 +154,7 @@ async function fetchLiveMetrics(project) {
     technicalBias,
     debug: {
       cgMarket: cgMarketRes.status,
+      marketMetricsMode,
       cgChart: cgChartRes.status,
       chains: chainsRes.status,
       stableChains: stableChainsRes.status,
@@ -153,8 +167,32 @@ async function fetchLiveMetrics(project) {
     },
     debugReasons: {
       cgMarket: cgMarketError,
+      cgMarketFallback: {
+        usedCachedSnapshot: marketMetricsMode === "live_cached_fallback",
+        snapshotTtlMs: COINGECKO_MARKET_SNAPSHOT_TTL_MS,
+      },
     },
   };
+}
+
+function setCoinGeckoMarketSnapshot(id, marketData) {
+  if (!id || !hasAnyCoinGeckoMarketValue(marketData)) return;
+  coinGeckoMarketSnapshots.set(String(id), {
+    marketData,
+    updatedAt: Date.now(),
+  });
+}
+
+function getCoinGeckoMarketSnapshot(id) {
+  if (!id) return null;
+  const key = String(id);
+  const snapshot = coinGeckoMarketSnapshots.get(key);
+  if (!snapshot) return null;
+  if ((Date.now() - snapshot.updatedAt) > COINGECKO_MARKET_SNAPSHOT_TTL_MS) {
+    coinGeckoMarketSnapshots.delete(key);
+    return null;
+  }
+  return snapshot.marketData;
 }
 
 function mergeLiveMetrics(report, live) {
