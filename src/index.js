@@ -30,6 +30,7 @@ async function handleHybridReportApi(request, env, url) {
     const statuses = Object.values(live.debug || {});
     const hasFulfilled = statuses.includes("fulfilled");
     const hasRejected = statuses.includes("rejected");
+    report.meta = report.meta || {};
     report.meta.updated_at = new Date().toISOString();
     report.meta.live_debug = live.debug || {};
 
@@ -37,13 +38,16 @@ async function handleHybridReportApi(request, env, url) {
     else if (hasFulfilled) report.meta.data_status = "hybrid-live";
     else report.meta.data_status = "hybrid-fallback";
 
-    return json(report, 200);
+    report.meta.generated_at = new Date().toISOString();
+    return json(report, 200, { cacheControl: resolveReportCacheControl(report.meta.data_status) });
   } catch (error) {
+    report.meta = report.meta || {};
     report.meta.updated_at = new Date().toISOString();
     report.meta.data_status = "hybrid-fallback";
     report.meta.live_error = error instanceof Error ? error.message : String(error);
+    report.meta.generated_at = new Date().toISOString();
     applyBlockRenderingRules(report, project, null);
-    return json(report, 200);
+    return json(report, 200, { cacheControl: resolveReportCacheControl(report.meta.data_status) });
   }
 }
 
@@ -374,4 +378,9 @@ function shouldRenderUsersBlock(report, project, usersState){
   if (!providerType || providerType === "none") return false;
   return true;
 }
-function json(data,status=200){ return new Response(JSON.stringify(data,null,2),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"public, max-age=300"}}); }
+function resolveReportCacheControl(dataStatus){
+  if (dataStatus === "hybrid-live") return "public, max-age=60";
+  if (dataStatus === "hybrid-partial-live") return "public, max-age=15";
+  return "no-cache, must-revalidate";
+}
+function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ return new Response(JSON.stringify(data,null,2),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":cacheControl}}); }
