@@ -33,6 +33,7 @@ async function handleHybridReportApi(request, env, url) {
     report.meta = report.meta || {};
     report.meta.updated_at = new Date().toISOString();
     report.meta.live_debug = live.debug || {};
+    report.meta.live_debug_reasons = live.debugReasons || {};
 
     if (hasFulfilled && hasRejected) report.meta.data_status = "hybrid-partial-live";
     else if (hasFulfilled) report.meta.data_status = "hybrid-live";
@@ -101,6 +102,7 @@ async function fetchLiveMetrics(project) {
   const circulatingSupply = toNumber(cgMarket?.circulating_supply);
   const totalSupply = toNumber(cgMarket?.total_supply);
   const maxSupply = toNumber(cgMarket?.max_supply);
+  const cgMarketError = parsePromiseRejection(cgMarketRes.reason);
 
   const tvlHistory = normalizeTvlHistory(tvlHistoryRaw);
   const stableHistory = normalizeStableHistory(stableHistoryRaw);
@@ -148,6 +150,9 @@ async function fetchLiveMetrics(project) {
       stableHistory: stableHistoryRes.status,
       users: usersRes.status,
       technicalBias: technicalBiasRes.status,
+    },
+    debugReasons: {
+      cgMarket: cgMarketError,
     },
   };
 }
@@ -259,7 +264,102 @@ function parseHumanNumber(raw){
   return parsed * multiplier;
 }
 
-async function fetchCoinGeckoMarket(id){ const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(id)}&price_change_percentage=7d`,{headers:{accept:"application/json,text/plain,*/*","user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0"}}); if(!res.ok) throw new Error(`CoinGecko market error: ${res.status}`); const data = await res.json(); return data?.[0] || null; }
+class CoinGeckoMarketError extends Error {
+  constructor(type, details = {}) {
+    super(`CoinGecko market error: ${type}`);
+    this.name = "CoinGeckoMarketError";
+    this.type = type;
+    this.details = details;
+  }
+}
+async function fetchCoinGeckoMarket(id){
+  const primaryUrl = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(id)}&price_change_percentage=7d`;
+  let primary;
+  try {
+    primary = await fetchJsonWithTimeout(primaryUrl, 9000);
+  } catch (error) {
+    if (error instanceof CoinGeckoMarketError && error.type === "timeout") {
+      const fallback = await fetchCoinGeckoMarketFallback(id);
+      if (fallback) return fallback;
+    }
+    throw error;
+  }
+  if (!primary.ok) {
+    const fallback = await fetchCoinGeckoMarketFallback(id);
+    if (fallback) return fallback;
+    throw new CoinGeckoMarketError("status_code", { endpoint: "coins/markets", status: primary.status, fallback: "coins/{id}" });
+  }
+  if (!Array.isArray(primary.data)) {
+    const fallback = await fetchCoinGeckoMarketFallback(id);
+    if (fallback) return fallback;
+    throw new CoinGeckoMarketError("bad_payload", { endpoint: "coins/markets", payloadType: typeof primary.data, fallback: "coins/{id}" });
+  }
+
+  const marketRow = primary.data[0];
+  if (marketRow && hasAnyCoinGeckoMarketValue(marketRow)) return marketRow;
+  if (!marketRow) {
+    const fallback = await fetchCoinGeckoMarketFallback(id);
+    if (fallback) return fallback;
+    throw new CoinGeckoMarketError("empty_array", { endpoint: "coins/markets", fallback: "coins/{id}" });
+  }
+
+  const fallback = await fetchCoinGeckoMarketFallback(id);
+  if (fallback) return fallback;
+  throw new CoinGeckoMarketError("bad_payload", { endpoint: "coins/markets", reason: "missing_market_fields", fallback: "coins/{id}" });
+}
+async function fetchCoinGeckoMarketFallback(id) {
+  const fallbackUrl = `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}?localization=false&tickers=false&community_data=false&developer_data=false&sparkline=false`;
+  const fallback = await fetchJsonWithTimeout(fallbackUrl, 9000);
+  if (!fallback.ok) throw new CoinGeckoMarketError("status_code", { endpoint: "coins/{id}", status: fallback.status });
+  const marketData = fallback.data?.market_data;
+  if (!marketData || typeof marketData !== "object") throw new CoinGeckoMarketError("bad_payload", { endpoint: "coins/{id}", reason: "missing_market_data" });
+
+  const normalized = {
+    current_price: marketData.current_price?.usd,
+    market_cap: marketData.market_cap?.usd,
+    fully_diluted_valuation: marketData.fully_diluted_valuation?.usd,
+    total_volume: marketData.total_volume?.usd,
+    circulating_supply: marketData.circulating_supply,
+    total_supply: marketData.total_supply,
+    max_supply: marketData.max_supply,
+  };
+  if (!hasAnyCoinGeckoMarketValue(normalized)) return null;
+  return normalized;
+}
+function hasAnyCoinGeckoMarketValue(row) {
+  return ["current_price","market_cap","fully_diluted_valuation","total_volume","circulating_supply","total_supply","max_supply"]
+    .some((key) => isValidNumber(toNumber(row?.[key])));
+}
+async function fetchJsonWithTimeout(url, timeoutMs = 9000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      headers:{accept:"application/json,text/plain,*/*","user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0"},
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => null);
+    return { ok: response.ok, status: response.status, data };
+  } catch (error) {
+    if (error?.name === "AbortError") throw new CoinGeckoMarketError("timeout", { timeoutMs, url });
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+function parsePromiseRejection(reason) {
+  if (!reason) return null;
+  if (reason instanceof CoinGeckoMarketError) {
+    return {
+      type: reason.type,
+      ...reason.details,
+    };
+  }
+  return {
+    type: "unknown_error",
+    message: reason instanceof Error ? reason.message : String(reason),
+  };
+}
 async function fetchCoinGeckoChart(id,days=365){ const res = await fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}&interval=daily`,{headers:{accept:"application/json,text/plain,*/*","user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0"}}); if(!res.ok) throw new Error(`CoinGecko chart error: ${res.status}`); return res.json(); }
 async function fetchDefiLlamaChains(){ const res = await fetch("https://api.llama.fi/v2/chains"); if(!res.ok) throw new Error(`DefiLlama chains error: ${res.status}`); return res.json(); }
 async function fetchStablecoinChains(){ const res = await fetch("https://stablecoins.llama.fi/stablecoinchains"); if(!res.ok) throw new Error(`DefiLlama stable chains error: ${res.status}`); return res.json(); }
