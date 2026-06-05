@@ -18,13 +18,15 @@ const METRIC_HELP = {
   "Circulating Supply": "Количество монет, которые реально находятся в обращении.",
   "Total Supply": "Общее текущее предложение монет.",
   "Max Supply": "Максимально возможное предложение, если оно существует.",
+  "Net Issuance": "Чистое изменение предложения после выпуска новых монет и сжигания.",
+  "Burn Mechanism": "Механизм сжигания или изъятия части предложения из оборота.",
+  "Market Buyback": "Наличие или отсутствие классического выкупа токена с рынка.",
   "Daily Active Addresses": "Количество активных адресов за день.",
   "New Addresses": "Количество новых адресов за период.",
   "Transactions": "Количество транзакций за период.",
   "Статус оценки": "Краткая качественная оценка текущей стадии актива."
 };
 
-let comboChartInstance = null;
 
 function injectEnhancementStyles() {
   if (document.getElementById("report-enhancement-styles")) return;
@@ -111,7 +113,7 @@ function usersSectionHtml(report) {
   const users = report?.users || {};
   const metrics = users.metrics || {};
   const text = Array.isArray(users.text) ? users.text : [];
-  return `<section class="panel"><div class="section-title">Пользователи</div>${text.map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Daily Active Addresses", metrics.daily_active_addresses)}${metricHtml("New Addresses", metrics.new_addresses)}${metricHtml("Transactions", metrics.transactions)}</div>${hasNoLiveUsers(metrics) ? `<div class="three-col top-gap">${buildUsersStatusCard(metrics)}</div>` : ""}</section>`;
+  return `<section class="panel"><div class="section-title">${escapeHtml(users.title || "Активность пользователей")}</div>${text.map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Daily Active Addresses", metrics.daily_active_addresses)}${metricHtml("New Addresses", metrics.new_addresses)}${metricHtml("Transactions", metrics.transactions)}</div>${hasNoLiveUsers(metrics) ? `<div class="three-col top-gap">${buildUsersStatusCard(metrics)}</div>` : ""}</section>`;
 }
 
 function metricHtml(title, metric) {
@@ -121,8 +123,29 @@ function metricHtml(title, metric) {
   return `<div class="metric-box"><div class="metric-top-row"><div class="metric-title">${escapeHtml(title)} ${help}</div>${statusChip(metric?.status || "unknown")}</div><div class="metric-value">${escapeHtml(metric?.formatted || "—")}</div><div class="metric-status-line">${escapeHtml(metric?.source || "—")}</div></div>`;
 }
 
+function optionalMetricHtml(title, metric) {
+  return metric ? metricHtml(title, metric) : "";
+}
+
 function listHtml(items = []) {
   return items.map((item) => `<div class="list-item">${escapeHtml(item)}</div>`).join("");
+}
+
+function explanationListHtml(items = []) {
+  if (!Array.isArray(items) || !items.length) return "";
+  return `<div class="list-wrap top-gap">${items.map((item) => `<div class="list-item"><strong>${escapeHtml(item.title || "Метрика")}</strong><br>${escapeHtml(item.text || "—")}</div>`).join("")}</div>`;
+}
+
+function insightHtml(block = {}) {
+  const conclusion = block?.conclusion;
+  if (!conclusion) return "";
+  return `<div class="list-item top-gap"><strong>Общий вывод</strong><br>${escapeHtml(conclusion)}</div>`;
+}
+
+function insightPanelHtml(block = {}) {
+  const conclusion = block?.conclusion;
+  if (!conclusion) return "";
+  return `<section class="panel compact-panel"><div class="status-banner-row"><div><div class="status-banner-title">Вывод по данным</div><div class="status-banner-text">${escapeHtml(conclusion)}</div></div></div></section>`;
 }
 
 function chartCard(id, title, subtitle = "", controlsHtml = "", note = "") {
@@ -131,15 +154,6 @@ function chartCard(id, title, subtitle = "", controlsHtml = "", note = "") {
 
 function tradingViewCard() {
   return `<section class="panel"><div class="section-title">Живой график TradingView</div><div class="section-sub">Интерактивный график для детального просмотра цены и структуры рынка</div><div class="tv-shell"><div id="tv-widget" style="width:100%;height:100%;"></div></div></section>`;
-}
-
-function normalizeCoinGeckoPrices(prices = []) {
-  return (prices || []).map((row) => {
-    const ts = Array.isArray(row) ? Number(row[0]) : null;
-    const value = Array.isArray(row) ? Number(row[1]) : null;
-    if (!Number.isFinite(ts) || !Number.isFinite(value)) return null;
-    return { ts, label: new Date(ts).toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit" }), value };
-  }).filter(Boolean);
 }
 
 function normalizeLlamaSeries(rows = [], key) {
@@ -340,68 +354,6 @@ async function initTradingView(symbol) {
   }
 }
 
-function getOverlapBounds(seriesList = []) {
-  const nonEmpty = seriesList.filter((s) => Array.isArray(s) && s.length);
-  if (!nonEmpty.length) return null;
-  const minTs = Math.max(...nonEmpty.map((s) => s[0].ts));
-  const maxTs = Math.min(...nonEmpty.map((s) => s[s.length - 1].ts));
-  if (!Number.isFinite(minTs) || !Number.isFinite(maxTs) || minTs >= maxTs) return null;
-  return { minTs, maxTs };
-}
-
-function filterSeriesByRange(series = [], rangeKey, fallbackBounds = null) {
-  if (!Array.isArray(series) || !series.length) return [];
-  let endTs = series[series.length - 1].ts;
-  let startTs = series[0].ts;
-  if (rangeKey === "overlap" && fallbackBounds) {
-    startTs = fallbackBounds.minTs; endTs = fallbackBounds.maxTs;
-  } else if (rangeKey === "3m") startTs = endTs - 90 * 24 * 60 * 60 * 1000;
-  else if (rangeKey === "6m") startTs = endTs - 180 * 24 * 60 * 60 * 1000;
-  else if (rangeKey === "1y") startTs = endTs - 365 * 24 * 60 * 60 * 1000;
-  const filtered = series.filter((p) => p.ts >= startTs && p.ts <= endTs);
-  return filtered.length ? filtered : series;
-}
-
-function toIndexedSeries(series = []) {
-  if (!Array.isArray(series) || !series.length) return [];
-  const first = series.find((x) => Number.isFinite(x?.value) && x.value !== 0);
-  if (!first) return [];
-  return series.map((point) => ({ ...point, value:(point.value / first.value) * 100 }));
-}
-
-function renderComboChart(rangeKey, priceSeries, tvlSeries, stableSeries) {
-  const overlap = getOverlapBounds([priceSeries, tvlSeries, stableSeries].filter((s) => s.length));
-  const priceFiltered = filterSeriesByRange(priceSeries, rangeKey, overlap);
-  const tvlFiltered = filterSeriesByRange(tvlSeries, rangeKey, overlap);
-  const stableFiltered = filterSeriesByRange(stableSeries, rangeKey, overlap);
-
-  const datasets = [
-    { label:"Цена = 100", series:toIndexedSeries(priceFiltered), yAxisID:"y" },
-    { label:"TVL = 100", series:toIndexedSeries(tvlFiltered), yAxisID:"y" },
-    { label:"Stablecoins = 100", series:toIndexedSeries(stableFiltered), yAxisID:"y" }
-  ].filter((x) => x.series.length);
-
-  if (comboChartInstance) {
-    comboChartInstance.destroy();
-    comboChartInstance = null;
-  }
-  if (!datasets.length) {
-    showChartEmpty("comboChart", "Нет общего набора данных для сравнения.");
-    return;
-  }
-  comboChartInstance = createLineChart("comboChart", datasets);
-}
-
-function bindComboRangeControls(priceSeries, tvlSeries, stableSeries) {
-  document.querySelectorAll("[data-range]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("[data-range]").forEach((x) => x.classList.remove("active"));
-      btn.classList.add("active");
-      renderComboChart(btn.dataset.range, priceSeries, tvlSeries, stableSeries);
-    });
-  });
-}
-
 async function loadReport() {
   injectEnhancementStyles();
   const slug = getSlug();
@@ -416,33 +368,23 @@ async function loadReport() {
     }
 
     const tvSymbolMap = { eth:"BINANCE:ETHUSDT", sol:"BINANCE:SOLUSDT", link:"BINANCE:LINKUSDT" };
-    const comboControls = [["overlap","Общий период"],["3m","3M"],["6m","6M"],["1y","1Y"],["all","ALL"]]
-      .map(([v,l],i) => `<button class="range-btn ${i===0 ? "active" : ""}" data-range="${v}">${l}</button>`).join("");
-
     app.innerHTML = `<div class="layout"><aside class="sidebar-card"><div class="eyebrow">Crypto Project Deep Dive</div><div class="project-main">${escapeHtml(data.meta.project_name)}</div><div class="project-sub">${escapeHtml(data.meta.subtitle)}</div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="small-note">Обновлено: ${new Date(data.meta.updated_at).toLocaleString("ru-RU")}</div><div class="small-note">Slug: ${escapeHtml(data.meta.slug)}</div></aside><main class="content">
-      <section class="panel"><div class="eyebrow">Первый экран</div><h1>${escapeHtml(data.hero.title)}</h1><div class="subtitle">${escapeHtml(data.hero.subtitle)}</div><p class="lead">${escapeHtml(data.hero.lead)}</p>
+      <section class="panel"><h1>${escapeHtml(data.hero.title)}</h1>${data.hero.subtitle ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}<p class="lead">${escapeHtml(data.hero.lead)}</p>
       <div class="hero-grid">${metricHtml("Цена", data.market.price)}${metricHtml("Рыночная капитализация", data.market.market_cap)}${metricHtml("FDV", data.market.fdv)}${metricHtml("Объем 24ч", data.market.volume_24h)}${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div>
       <div class="three-col top-gap"><div class="list-item"><strong>Главная сила</strong><br>${escapeHtml(data.hero.main_strength || "—")}</div><div class="list-item"><strong>Главный риск</strong><br>${escapeHtml(data.hero.main_risk || "—")}</div><div class="list-item"><strong>Общий статус</strong><br>${escapeHtml(data.hero.status_text || "—")}</div></div></section>
       ${tradingViewCard()}
-      ${chartCard("comboChart","Сравнение динамики экосистемы","Все линии нормализованы к 100 внутри выбранного периода.",comboControls,"По умолчанию показан только общий период пересечения серий, чтобы график не искажал картину.")}
       ${technicalBiasHtml(data.technical_bias)}
       <section class="panel"><div class="section-title">Executive Summary</div><div class="list-wrap">${listHtml(data.executive_summary.items)}</div></section>
-      <section class="panel"><div class="section-title">Быстрый профиль</div><div class="columns-4"><div><h3>Сильные стороны</h3>${listHtml(data.profile.strengths)}</div><div><h3>Слабые стороны</h3>${listHtml(data.profile.weaknesses)}</div><div><h3>Риски</h3>${listHtml(data.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(data.profile.watch)}</div></div></section>
-      <section class="panel"><div class="section-title">${escapeHtml(data.about.title)}</div>${(data.about.paragraphs || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}</section>
-      <section class="panel"><div class="section-title">Токеномика</div>${(data.tokenomics.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Market Cap", data.tokenomics.metrics.market_cap)}${metricHtml("FDV", data.tokenomics.metrics.fdv)}${metricHtml("Circulating Supply", data.tokenomics.metrics.circulating_supply)}${metricHtml("Total Supply", data.tokenomics.metrics.total_supply)}${metricHtml("Max Supply", data.tokenomics.metrics.max_supply)}</div></section>
-      <section class="panel"><div class="section-title">Финансы</div>${(data.financials.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Chain Fees 24h", data.financials.metrics.chain_fees_24h)}${metricHtml("DEX Volume 24h", data.financials.metrics.dex_volume_24h)}${metricHtml("Volume / Market Cap", data.financials.metrics.volume_market_cap)}</div></section>
-      ${chartCard("feesChart","История сетевых комиссий","Динамика fees по DefiLlama")}
-      ${chartCard("dexChart","DEX Volume","История объема DEX внутри сети")}
-      <section class="panel"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div></section>
-      ${chartCard("stableChart","Stablecoins внутри сети","История стейблкоинов по DefiLlama")}
+      <section class="panel"><div class="section-title">Токеномика</div>${(data.tokenomics.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Market Cap", data.tokenomics.metrics.market_cap)}${metricHtml("FDV", data.tokenomics.metrics.fdv)}${metricHtml("Circulating Supply", data.tokenomics.metrics.circulating_supply)}${metricHtml("Total Supply", data.tokenomics.metrics.total_supply)}${metricHtml("Max Supply", data.tokenomics.metrics.max_supply)}${optionalMetricHtml("Net Issuance", data.tokenomics.metrics.net_issuance)}${optionalMetricHtml("Burn Mechanism", data.tokenomics.metrics.burn_mechanism)}${optionalMetricHtml("Market Buyback", data.tokenomics.metrics.market_buyback)}</div>${insightHtml(data.tokenomics)}</section>
+      <section class="panel"><div class="section-title">Финансы</div>${(data.financials.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Chain Fees 24h", data.financials.metrics.chain_fees_24h)}${metricHtml("DEX Volume 24h", data.financials.metrics.dex_volume_24h)}${metricHtml("Volume / Market Cap", data.financials.metrics.volume_market_cap)}</div>${explanationListHtml(data.financials.metric_explanations)}${insightHtml(data.financials)}</section>
+      ${chartCard("feesChart","История сетевых комиссий",data.fees_block?.subtitle || "Показывает сумму комиссий, которые пользователи платят сети за транзакции и смарт-контракты.","",data.fees_block?.note || "Для ETH этот блок отражает денежную нагрузку сети: при росте комиссий спрос на блокспейс выше, при снижении — активность или стоимость транзакций ниже.")}${insightPanelHtml(data.fees_block)}
+      ${chartCard("dexChart","DEX Volume",data.dex_block?.subtitle || "Показывает объем торгов на децентрализованных биржах внутри сети.","",data.dex_block?.note || "Рост DEX Volume означает больше торговой активности внутри экосистемы; падение указывает на охлаждение on-chain оборота.")}${insightPanelHtml(data.dex_block)}
+      <section class="panel"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div>${insightHtml(data.capital)}<div class="chart-shell top-gap" id="tvlChart-wrap"><canvas id="tvlChart"></canvas></div></section>
+      ${chartCard("stableChart","Stablecoins внутри сети",data.stablecoins_block?.subtitle || "Показывает объем стейблкоинов, размещенных внутри сети.","",data.stablecoins_block?.note || "Стейблкоины отражают расчетную ликвидность: чем выше и стабильнее показатель, тем больше сеть используется для платежей, DeFi и оборота капитала.")}${insightPanelHtml(data.stablecoins_block)}
       ${usersSectionHtml(data)}
-      <section class="panel"><div class="section-title">Оценка</div>${(data.valuation.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Market Cap / TVL", data.valuation.metrics.market_cap_tvl)}${metricHtml("Volume / Market Cap", data.valuation.metrics.volume_market_cap)}${metricHtml("Stablecoins / TVL", data.valuation.metrics.stablecoins_tvl)}${metricHtml("Статус оценки", data.valuation.metrics.valuation_status)}</div></section>
-      <section class="panel"><div class="section-title">Риски</div><div class="list-wrap">${listHtml(data.risks.items)}</div></section>
-      <section class="panel"><div class="section-title">Что отслеживать</div><div class="list-wrap">${listHtml(data.watchlist.items)}</div></section>
-      <section class="panel"><div class="section-title">${escapeHtml(data.final_verdict.title)}</div><div class="subtitle">${escapeHtml(data.final_verdict.subtitle)}</div>${(data.final_verdict.paragraphs || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}</section>
+      <section class="panel"><div class="section-title">Быстрый профиль</div><div class="columns-4"><div><h3>Сильные стороны</h3>${listHtml(data.profile.strengths)}</div><div><h3>Слабые стороны</h3>${listHtml(data.profile.weaknesses)}</div><div><h3>Риски</h3>${listHtml(data.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(data.profile.watch)}</div></div></section>
     </main></div>`;
 
-    const priceSeries = sanitizeSeries(normalizeCoinGeckoPrices(data?.charts?.price_history));
     const tvlSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.tvl_history, "totalLiquidityUSD"), { trimLeadingZeroes:true });
     const stableSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.stablecoins_history, "totalCirculatingUSD"), { trimLeadingZeroes:true });
     const tvlSeries = sanitizeSeries(tvlSeriesRaw, { trimLeadingZeroes:true });
@@ -450,10 +392,9 @@ async function loadReport() {
     const feesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.fees_history), { trimLeadingZeroes:true });
     const dexSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.dex_history), { trimLeadingZeroes:true });
 
-    bindComboRangeControls(priceSeries, tvlSeries, stableSeries);
-    renderComboChart("overlap", priceSeries, tvlSeries, stableSeries);
     createBarChart("feesChart", feesSeries, "Fees");
     createBarChart("dexChart", dexSeries, "DEX Volume");
+    createLineChart("tvlChart", [{ label:"TVL", series:tvlSeries, yAxisID:"y" }]);
     createLineChart("stableChart", [{ label:"Stablecoins", series:stableSeries, yAxisID:"y" }]);
     initTradingView(tvSymbolMap[slug] || "BINANCE:ETHUSDT");
   } catch (error) {
