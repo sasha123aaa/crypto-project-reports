@@ -1,6 +1,7 @@
 const JSON_HEADERS = { accept: "application/json,text/plain,*/*", "user-agent": "Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0" };
 
 export async function fetchDefiLlamaChains(){ const res=await fetch("https://api.llama.fi/v2/chains"); if(!res.ok) throw new Error(`DefiLlama chains error: ${res.status}`); return res.json(); }
+export async function fetchDefiLlamaProtocols(){ const res=await fetch("https://api.llama.fi/protocols"); if(!res.ok) throw new Error(`DefiLlama protocols error: ${res.status}`); return res.json(); }
 export async function fetchDefiLlamaTVLHistory(chainName){ const res=await fetch(`https://api.llama.fi/charts/${encodeURIComponent(chainName)}`); if(!res.ok) throw new Error(`DefiLlama TVL history error: ${res.status}`); return res.json(); }
 export async function fetchStablecoinHistory(chainKey){ const res=await fetch(`https://stablecoins.llama.fi/stablecoincharts/${encodeURIComponent(chainKey)}`, { headers:JSON_HEADERS }); if(!res.ok) throw new Error(`DefiLlama stable history error: ${res.status}`); return res.json(); }
 

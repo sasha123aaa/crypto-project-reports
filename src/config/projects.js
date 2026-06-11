@@ -202,8 +202,19 @@ export const PROJECT_PROFILE_EXAMPLES = Object.freeze({
   },
 });
 
+export function normalizeProjectInput(input) {
+  return String(input || "").trim().toLowerCase();
+}
+
+export function getRegisteredProject(input) {
+  const normalized = normalizeProjectInput(input);
+  if (!normalized) return null;
+  return Object.values(PROJECTS).find((project) => [project.slug, project.ticker, project.coingeckoId]
+    .some((value) => normalizeProjectInput(value) === normalized)) || null;
+}
+
 export function getProjectBySlug(slug) {
-  return PROJECTS[slug?.toLowerCase()] || null;
+  return PROJECTS[normalizeProjectInput(slug)] || null;
 }
 
 export function getProjectProfile(project) {

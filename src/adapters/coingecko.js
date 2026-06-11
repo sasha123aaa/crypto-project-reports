@@ -234,3 +234,19 @@ function errorMessage(error) { return error instanceof Error ? error.message : S
 function readTag(xml, tag) { const escaped = tag.replace(":", "\\:"); return xml.match(new RegExp(`<(?:[\\w-]+:)?${escaped}[^>]*>([\\s\\S]*?)<\\/(?:[\\w-]+:)?${escaped}>`, "i"))?.[1] || ""; }
 function cleanXml(value) { return decodeEntities(String(value || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim(); }
 function decodeEntities(value) { return value.replace(/&#(x?[0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code.replace(/^x/i, ""), /^x/i.test(code) ? 16 : 10))).replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&apos;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " "); }
+
+export async function searchCoinGeckoProjects(input) {
+  const url = `${BASE_URL}/search?query=${encodeURIComponent(input)}`;
+  const res = await fetch(url, { headers:HEADERS });
+  if (!res.ok) throw new Error(`CoinGecko search error: ${res.status}`);
+  const payload = await res.json();
+  return Array.isArray(payload?.coins) ? payload.coins : [];
+}
+
+export async function fetchCoinGeckoProject(coingeckoId) {
+  const params = "localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false";
+  const url = `${BASE_URL}/coins/${encodeURIComponent(coingeckoId)}?${params}`;
+  const res = await fetch(url, { headers:HEADERS });
+  if (!res.ok) throw new Error(`CoinGecko project error: ${res.status}`);
+  return res.json();
+}

@@ -1,4 +1,6 @@
-import { getProjectBySlug, getSectionSelection } from "./config/projects.js";
+import { getSectionSelection } from "./config/projects.js";
+import { resolveProject } from "./lib/project-resolution.js";
+import { buildReport } from "./lib/build-report.js";
 import { applySectionSelection, isSectionSelected } from "./lib/section-selection.js";
 import { getTechnicalBias } from "./adapters/bybit.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
@@ -21,14 +23,24 @@ const COINGECKO_MARKET_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 const coinGeckoMarketSnapshots = new Map();
 
 async function handleHybridReportApi(request, env, url) {
-  const slug = url.pathname.replace("/api/report/", "").replace(/\/$/, "");
-  const project = getProjectBySlug(slug);
-  if (!slug) return json({ error: "Missing report slug" }, 400);
-  if (!project) return json({ error: "Unknown project slug", slug }, 404);
+  const input = url.pathname.replace("/api/report/", "").replace(/\/$/, "");
+  if (!input) return json({ error: "Missing report slug or ticker" }, 400);
 
+  let project;
+  try {
+    project = await resolveProject(input);
+  } catch (error) {
+    return json({ error:"Project resolution failed", input, reason:error instanceof Error ? error.message : String(error) }, 502);
+  }
+  if (!project) return json({ error: "Unknown project slug or ticker", input }, 404);
+  if (project.resolution?.mode === "runtime") return handleRuntimeReport(project);
+
+  const slug = project.slug;
   const staticJson = await loadStaticReportJson(request, env, slug);
   if (!staticJson.ok) return staticJson.response;
   const report = staticJson.data;
+  report.meta = report.meta || {};
+  report.meta.project_resolution = project.resolution;
   applySectionSelection(report, project);
 
   try {
@@ -62,6 +74,20 @@ async function handleHybridReportApi(request, env, url) {
     applySectionSelection(report, project);
     applyBlockRenderingRules(report, project, null);
     return json(report, 200, { cacheControl: resolveReportCacheControl(report.meta.data_status) });
+  }
+}
+
+
+async function handleRuntimeReport(project) {
+  try {
+    const report = await buildReport(project);
+    report.meta = report.meta || {};
+    report.meta.project_resolution = project.resolution;
+    report.meta.data_status = "runtime-partial";
+    report.meta.generated_at = new Date().toISOString();
+    return json(report, 200, { cacheControl:resolveReportCacheControl(report.meta.data_status) });
+  } catch (error) {
+    return json({ error:"Runtime report build failed", ticker:project.ticker, reason:error instanceof Error ? error.message : String(error) }, 502);
   }
 }
 
