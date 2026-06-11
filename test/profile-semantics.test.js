@@ -18,7 +18,6 @@ test("infra hero KPI priorities preserve ETH-style capital metrics", () => {
   assert.deepEqual(keys, ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins"]);
 });
 
-
 test("hero KPI selection promotes available category metrics over unavailable placeholders", () => {
   const report = baseReport();
   report.capital.metrics.tvl = { value:null, formatted:"—", status:"unavailable", source:"test" };
@@ -58,4 +57,29 @@ test("curated ETH copy is preserved while profile-aware KPIs and verdict are att
   assert.deepEqual(report.profile.strengths, ["Curated strength"]);
   assert.equal(report.hero.kpis.length, 6);
   assert.match(report.final_verdict.subtitle, /Инфраструктура/);
+});
+
+test("runtime utility valuation avoids ETH-like TVL framing and fake maturity status", () => {
+  const report = baseReport();
+  report.valuation = {
+    text:["Generic fundamental text"],
+    metrics:{ valuation_status:{ value:null, formatted:"зрелый актив", status:"manual", source:"analyst" } },
+  };
+
+  applyProfileAwareSemantics(report, PROJECT_PROFILE_EXAMPLES.utility);
+
+  assert.match(report.valuation.text.join(" "), /utility-токена/i);
+  assert.match(report.valuation.text.join(" "), /Market Cap \/ TVL/);
+  assert.equal(report.valuation.metrics.valuation_status.status, "unavailable");
+  assert.equal(report.valuation.metrics.valuation_status.formatted, "—");
+});
+
+test("curated ETH valuation copy and status are preserved", () => {
+  const report = baseReport();
+  report.valuation = { text:["Curated valuation"], metrics:{ valuation_status:{ formatted:"curated", status:"manual" } } };
+
+  applyProfileAwareSemantics(report, PROJECTS.eth, { preserveCurated:true });
+
+  assert.deepEqual(report.valuation.text, ["Curated valuation"]);
+  assert.equal(report.valuation.metrics.valuation_status.formatted, "curated");
 });

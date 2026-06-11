@@ -70,7 +70,7 @@ test("runtime utility selection includes valuation but hides empty capital and f
   const selection = applySectionSelection(runtimeReport(), project);
 
   assert.deepEqual(selection.enabledSections, ["market", "tokenomics", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"]);
-  assert.equal(selection.sections.tvl_and_capital.status, "disabled_by_missing_data");
+  assert.equal(selection.sections.tvl_and_capital.status, "disabled_by_profile");
   assert.equal(selection.sections.financials.status, "disabled_by_missing_data");
 });
 
@@ -83,4 +83,15 @@ test("runtime infra selection only exposes capability-backed sections with real 
   for (const section of ["tvl_and_capital", "financials", "users_and_activity"]) {
     assert.equal(selection.sections[section].status, "disabled_by_missing_data");
   }
+});
+
+test("runtime utility selection rejects protocol TVL even when a discovery match supplies it", () => {
+  const report = runtimeReport();
+  report.capital.metrics.tvl = metric(10_000_000);
+  const preferred = ["market", "tokenomics", "tvl_and_capital", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"];
+  const project = runtimeProject("utility", { hasTokenomics:true, hasTvl:true, hasLiquidityData:true, hasNarrativeNews:true }, preferred);
+  const selection = applySectionSelection(report, project);
+
+  assert.equal(selection.sections.tvl_and_capital.status, "disabled_by_profile");
+  assert.ok(!selection.enabledSections.includes("tvl_and_capital"));
 });
