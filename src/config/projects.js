@@ -18,6 +18,9 @@ export const PROJECTS = {
     coingeckoId: "ethereum",
     defillamaChain: "Ethereum",
     stablecoinChain: "Ethereum",
+    rwaChain: "Ethereum",
+    newsFeeds: [{ url: "https://blog.ethereum.org/feed.xml", source: "Ethereum Foundation Blog" }],
+    reportOptions: { hideExecutiveSummary: true, compactTokenomics: true, integratedFinancials: true },
     usersSource: {
       type: "none",
       chain: "Ethereum",
