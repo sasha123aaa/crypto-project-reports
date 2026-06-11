@@ -1,3 +1,5 @@
+import { getNewsFeeds } from "../config/projects.js";
+
 const BASE_URL="https://api.coingecko.com/api/v3";
 const HEADERS={accept:"application/json,text/plain,*/*","user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0"};
 export async function fetchCoinGeckoMarket(coingeckoId){
@@ -14,8 +16,12 @@ export async function fetchCoinGeckoChart(coingeckoId,days=365){
 }
 
 export async function fetchProjectNews(project, { limit = 5, days = 45 } = {}) {
-  const feeds = (Array.isArray(project?.newsFeeds) ? project.newsFeeds : [])
-    .map((feed, index) => ({ ...feed, priority: Number.isFinite(feed?.priority) ? feed.priority : index + 1 }))
+  const feeds = getNewsFeeds(project)
+    .map((feed, index) => ({
+      ...feed,
+      layer: feed.layer || "project",
+      priority: Number.isFinite(feed?.priority) ? feed.priority : index + 1,
+    }))
     .sort((a, b) => a.priority - b.priority);
   const updated_at = new Date().toISOString();
   if (!feeds.length) return unavailableNews("News feeds are not configured", updated_at, []);
@@ -23,6 +29,7 @@ export async function fetchProjectNews(project, { limit = 5, days = 45 } = {}) {
   const settled = await Promise.allSettled(feeds.map(fetchNewsFeed));
   const debug = settled.map((result, index) => ({
     source: feeds[index]?.source || `News source ${index + 1}`,
+    layer: feeds[index]?.layer || "project",
     ok: result.status === "fulfilled",
     status: result.status === "fulfilled" ? "ok" : "failed",
     item_count: result.status === "fulfilled" ? result.value.length : 0,
@@ -36,7 +43,7 @@ export async function fetchProjectNews(project, { limit = 5, days = 45 } = {}) {
       const timestamp = Date.parse(item.date);
       return Number.isFinite(timestamp) && timestamp >= cutoff && timestamp <= Date.now() + 86400000;
     });
-  const items = selectDiverseNews(deduplicateNews(candidates), feeds, limit);
+  const items = selectDiverseNews(deduplicateNews(candidates), feeds, limit, project);
   const successfulSources = debug.filter((entry) => entry.ok).map((entry) => entry.source);
   const source_summary = successfulSources.length
     ? `${successfulSources.join(", ")} · ${items.length} news items from the last ${days} days`
@@ -52,45 +59,80 @@ export async function fetchProjectNews(project, { limit = 5, days = 45 } = {}) {
   };
 }
 
-export function selectDiverseNews(items, feeds = [], limit = 5) {
+export function selectDiverseNews(items, feeds = [], limit = 5, project = {}) {
   const feedMeta = new Map(feeds.map((feed, index) => [feed.source, {
     priority: Number.isFinite(feed.priority) ? feed.priority : index + 1,
     audience: feed.audience || (/research/i.test(feed.source || "") ? "research" : "client"),
+    layer: feed.layer || "project",
   }]));
-  const ranked = [...items].sort((a, b) => newsRank(b, feedMeta) - newsRank(a, feedMeta) || byNewest(a, b));
+  const keywords = projectNewsKeywords(project);
+  const ranked = [...items].sort((a, b) => newsRank(b, feedMeta, keywords) - newsRank(a, feedMeta, keywords) || byNewest(a, b));
   const selected = [];
-  const usedSources = new Set();
-  const researchLimit = ranked.some((item) => (feedMeta.get(item.source)?.audience || "client") !== "research") ? 1 : limit;
+  const nonResearchExists = ranked.some((item) => metaFor(item, feedMeta).audience !== "research");
+  const researchLimit = nonResearchExists ? 1 : limit;
 
+  const eligibleByResearch = (item) => metaFor(item, feedMeta).audience !== "research"
+    || selected.filter((entry) => metaFor(entry, feedMeta).audience === "research").length < researchLimit;
   const canSelect = (item) => {
-    const researchCount = selected.filter((entry) => (feedMeta.get(entry.source)?.audience || "client") === "research").length;
-    return (feedMeta.get(item.source)?.audience || "client") !== "research" || researchCount < researchLimit;
+    if (selected.includes(item) || !eligibleByResearch(item)) return false;
+    const lastTwo = selected.slice(-2);
+    if (lastTwo.length < 2 || !lastTwo.every((entry) => entry.source === item.source)) return true;
+    return !ranked.some((candidate) => !selected.includes(candidate) && candidate.source !== item.source && eligibleByResearch(candidate));
   };
-  const take = (item) => { selected.push(item); usedSources.add(item.source); };
+  const takeUniqueSources = (pool, target) => {
+    const used = new Set(selected.map((item) => item.source));
+    for (const item of pool) {
+      if (selected.length >= limit || target <= 0) break;
+      if (used.has(item.source) || !canSelect(item)) continue;
+      selected.push(item); used.add(item.source); target -= 1;
+    }
+  };
 
-  // First fill the visible feed with the strongest client-facing update from each source.
-  ranked.filter((item) => (feedMeta.get(item.source)?.audience || "client") !== "research")
-    .forEach((item) => { if (selected.length < limit && !usedSources.has(item.source)) take(item); });
-  // Research stays visible as a useful lower-priority perspective, but cannot dominate top five.
-  ranked.filter((item) => (feedMeta.get(item.source)?.audience || "client") === "research")
-    .forEach((item) => { if (selected.length < limit && !usedSources.has(item.source) && canSelect(item)) take(item); });
+  const projectClient = ranked.filter((item) => metaFor(item, feedMeta).layer === "project" && metaFor(item, feedMeta).audience !== "research");
+  const universal = ranked.filter((item) => metaFor(item, feedMeta).layer === "universal");
+  const projectTarget = universal.length ? Math.ceil(limit * 0.6) : limit;
+  const universalTarget = projectClient.length ? Math.max(1, limit - projectTarget) : limit;
+
+  // Prefer project updates, then deliberately reserve space for the universal market layer.
+  takeUniqueSources(projectClient, projectTarget);
+  takeUniqueSources(universal, universalTarget);
+  // Research is useful context, but it is kept to one item while client-facing news exists.
+  takeUniqueSources(ranked.filter((item) => metaFor(item, feedMeta).audience === "research"), 1);
 
   for (const item of ranked) {
     if (selected.length >= limit) break;
-    if (selected.includes(item) || !canSelect(item)) continue;
-    const lastSource = selected.at(-1)?.source;
-    if (item.source === lastSource && ranked.some((candidate) => !selected.includes(candidate) && candidate.source !== lastSource && canSelect(candidate))) continue;
-    take(item);
+    if (canSelect(item)) selected.push(item);
   }
   return selected.slice(0, limit);
 }
 
-function newsRank(item, feedMeta) {
-  const meta = feedMeta.get(item.source) || { priority: 99, audience: "client" };
+function metaFor(item, feedMeta) {
+  return feedMeta.get(item.source) || { priority: 99, audience: "client", layer: "universal" };
+}
+
+function newsRank(item, feedMeta, keywords) {
+  const meta = metaFor(item, feedMeta);
   const ageDays = Math.max(0, (Date.now() - Date.parse(item.date)) / 86400000);
   const freshness = Math.max(0, 45 - ageDays) * 4;
   const clientRelevance = meta.audience === "research" ? 0 : 120;
-  return freshness + clientRelevance - meta.priority * 8 + Math.min(String(item.snippet || "").length, 160) / 8;
+  const projectLayer = meta.layer === "project" ? 160 : 0;
+  const topicRelevance = meta.layer === "universal" ? topicMatchCount(item, keywords) * 45 : 0;
+  return freshness + clientRelevance + projectLayer + topicRelevance - meta.priority * 8 + Math.min(String(item.snippet || "").length, 160) / 8;
+}
+
+function projectNewsKeywords(project) {
+  return [...new Set([
+    ...(Array.isArray(project?.newsKeywords) ? project.newsKeywords : []),
+    project?.name,
+    project?.ticker,
+    project?.slug,
+  ].filter(Boolean).map((value) => normalizeTitle(value)).filter(Boolean))];
+}
+
+function topicMatchCount(item, keywords) {
+  if (!keywords.length) return 0;
+  const text = ` ${normalizeTitle(`${item.title || ""} ${item.snippet || ""}`)} `;
+  return keywords.filter((keyword) => text.includes(` ${keyword} `)).length;
 }
 
 export async function fetchNewsFeed(feed) {

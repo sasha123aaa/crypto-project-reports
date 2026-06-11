@@ -7,6 +7,17 @@ const USERS_SOURCE_EXAMPLES = {
   },
 };
 
+// Keep this layer limited to stable, publisher-backed public feeds.
+export const UNIVERSAL_NEWS_FEEDS = [
+  {
+    url: "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    source: "CoinDesk",
+    priority: 20,
+    audience: "market",
+    layer: "universal",
+  },
+];
+
 export const PROJECTS = {
   eth: {
     slug: "eth",
@@ -19,7 +30,8 @@ export const PROJECTS = {
     defillamaChain: "Ethereum",
     stablecoinChain: "Ethereum",
     rwaChain: "Ethereum",
-    newsFeeds: [
+    newsKeywords: ["ethereum", "ether", "eth"],
+    projectNewsFeeds: [
       { url: "https://blog.ethereum.org/feed.xml", source: "Ethereum Blog", priority: 1, audience: "official" },
       { url: "https://weekinethereumnews.com/feed/", source: "Week in Ethereum News", priority: 2, audience: "ecosystem" },
       { url: "https://medium.com/feed/ethereum-cat-herders", source: "Ethereum Cat Herders", priority: 3, audience: "ecosystem" },
@@ -42,4 +54,12 @@ export function getProjectBySlug(slug) {
 
 export function getUsersSourceExamples() {
   return USERS_SOURCE_EXAMPLES;
+}
+
+export function getNewsFeeds(project) {
+  if (Array.isArray(project?.newsFeeds)) return project.newsFeeds;
+  return [
+    ...UNIVERSAL_NEWS_FEEDS,
+    ...(Array.isArray(project?.projectNewsFeeds) ? project.projectNewsFeeds : []).map((feed) => ({ ...feed, layer: feed.layer || "project" })),
+  ];
 }

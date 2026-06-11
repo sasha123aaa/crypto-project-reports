@@ -95,3 +95,66 @@ test("selectDiverseNews limits research to one item when client sources are avai
   ], 5);
   assert.equal(selected.filter((item) => item.source === "Ethereum Research").length, 1);
 });
+
+test("fetchProjectNews merges universal and project-specific feed layers", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => new Response(`<rss><channel><item><title>${url.includes("coindesk") ? "Ethereum market update" : "Official Ethereum update"}</title><link>${url}/item</link><pubDate>${recent}</pubDate><description>Fresh summary</description></item></channel></rss>`, { status:200 });
+  try {
+    const news = await fetchProjectNews({
+      name:"Ethereum",
+      ticker:"ETH",
+      slug:"eth",
+      projectNewsFeeds:[{ url:"https://project.test/rss", source:"Project Blog", priority:1, audience:"official" }],
+    }, { limit:5 });
+    assert.deepEqual(new Set(news.items.map((item) => item.source)), new Set(["Project Blog", "CoinDesk"]));
+    assert.deepEqual(news.debug.sources.map(({ source, layer }) => ({ source, layer })), [
+      { source:"Project Blog", layer:"project" },
+      { source:"CoinDesk", layer:"universal" },
+    ]);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("fetchProjectNews can build a feed from universal sources without project feeds", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(`<rss><channel><item><title>General crypto market update</title><link>https://coindesk.test/item</link><pubDate>${recent}</pubDate><description>Fresh summary</description></item></channel></rss>`, { status:200 });
+  try {
+    const news = await fetchProjectNews({ name:"New Coin", ticker:"NEW", slug:"new" });
+    assert.equal(news.status, "live");
+    assert.equal(news.items[0].source, "CoinDesk");
+    assert.equal(news.debug.sources[0].layer, "universal");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("selectDiverseNews reserves room for universal news when project updates exist", () => {
+  const date = now.toISOString();
+  const selected = selectDiverseNews([
+    { title:"Official one", url:"https://p.test/1", date, source:"Project Blog" },
+    { title:"Official two", url:"https://p.test/2", date, source:"Project Blog" },
+    { title:"Ecosystem", url:"https://e.test/1", date, source:"Ecosystem" },
+    { title:"Coin market update", url:"https://u.test/1", date, source:"CoinDesk" },
+  ], [
+    { source:"Project Blog", layer:"project", priority:1, audience:"official" },
+    { source:"Ecosystem", layer:"project", priority:2, audience:"ecosystem" },
+    { source:"CoinDesk", layer:"universal", priority:20, audience:"market" },
+  ], 4, { name:"Coin", ticker:"COIN" });
+  assert.ok(selected.some((item) => item.source === "CoinDesk"));
+  assert.ok(selected.some((item) => item.source === "Project Blog"));
+});
+
+test("selectDiverseNews can fill from one universal source when no alternative exists", () => {
+  const date = now.toISOString();
+  const items = Array.from({ length:5 }, (_, index) => ({ title:`Market ${index}`, url:`https://u.test/${index}`, date, source:"CoinDesk" }));
+  const selected = selectDiverseNews(items, [{ source:"CoinDesk", layer:"universal", priority:20, audience:"market" }], 5, { ticker:"NEW" });
+  assert.equal(selected.length, 5);
+});
+
+test("fetchProjectNews excludes stale feed items", async () => {
+  const originalFetch = globalThis.fetch;
+  const stale = new Date(now.getTime() - 90 * 86400000).toUTCString();
+  globalThis.fetch = async () => new Response(`<rss><channel><item><title>Old update</title><link>https://old.test/item</link><pubDate>${stale}</pubDate></item></channel></rss>`, { status:200 });
+  try {
+    const news = await fetchProjectNews({ newsFeeds:[{ url:"https://old.test/rss", source:"Old Feed" }] });
+    assert.equal(news.status, "partial");
+    assert.deepEqual(news.items, []);
+  } finally { globalThis.fetch = originalFetch; }
+});
