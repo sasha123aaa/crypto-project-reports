@@ -142,9 +142,12 @@ function formatShortDate(value) {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("ru-RU", { day:"2-digit", month:"short", year:"numeric" }).format(date) : "";
 }
+const CHART_RANGES = ["1M", "3M", "6M", "YTD", "1Y", "ALL"];
+const DEFAULT_CHART_RANGE = "ALL";
+
 function compactChartHtml(id, label, caption) {
-  const ranges = ["1M", "3M", "6M", "YTD", "1Y", "ALL"];
-  return `<div class="integrated-chart" id="${id}-card"><div class="chart-label"><span>${escapeHtml(label)}</span><span class="chart-range" id="${id}-range-label">1Y</span></div><div class="chart-range-controls" aria-label="Диапазон ${escapeHtml(label)}">${ranges.map((range) => `<button class="range-btn${range === "1Y" ? " active" : ""}" type="button" data-chart="${id}" data-range="${range}">${range}</button>`).join("")}</div><div class="chart-shell" id="${id}-wrap"><canvas id="${id}"></canvas></div><div class="chart-navigator" id="${id}-navigator"><div class="navigator-track"></div><input class="navigator-input navigator-start" type="range" min="0" max="1" value="0" aria-label="Начало диапазона ${escapeHtml(label)}"><input class="navigator-input navigator-end" type="range" min="0" max="1" value="1" aria-label="Конец диапазона ${escapeHtml(label)}"></div><div class="chart-caption">${escapeHtml(caption)}</div></div>`;
+  const ranges = CHART_RANGES;
+  return `<div class="integrated-chart" id="${id}-card"><div class="chart-label"><span>${escapeHtml(label)}</span><span class="chart-range" id="${id}-range-label">${DEFAULT_CHART_RANGE}</span></div><div class="chart-range-controls" aria-label="Диапазон ${escapeHtml(label)}">${ranges.map((range) => `<button class="range-btn${range === DEFAULT_CHART_RANGE ? " active" : ""}" type="button" data-chart="${id}" data-range="${range}">${range}</button>`).join("")}</div><div class="chart-shell" id="${id}-wrap"><canvas id="${id}"></canvas></div><div class="chart-navigator" id="${id}-navigator"><div class="navigator-track"></div><input class="navigator-input navigator-start" type="range" min="0" max="1" value="0" aria-label="Начало диапазона ${escapeHtml(label)}"><input class="navigator-input navigator-end" type="range" min="0" max="1" value="1" aria-label="Конец диапазона ${escapeHtml(label)}"></div><div class="chart-caption">${escapeHtml(caption)}</div></div>`;
 }
 function ethereumIconHtml(ticker) {
   if (String(ticker).toUpperCase() !== "ETH") return `<span class="hero-token-fallback">${escapeHtml(ticker || "")}</span>`;
@@ -154,7 +157,7 @@ function newsHtml(news = {}) {
   const items = Array.isArray(news.items) ? news.items : [];
   const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span>${escapeHtml(formatShortDate(item.date))}</span><span>${escapeHtml(item.source || news.source || "Источник")}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">Свежие новости временно недоступны</div>`;
   const freshness = news.updated_at ? `Обновлено ${new Date(news.updated_at).toLocaleString("ru-RU")}` : "Live-лента";
-  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Свежие официальные и ecosystem-обновления · ${escapeHtml(freshness)}</div>${body}</section>`;
+  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Свежие новости проекта и крипторынка · ${escapeHtml(freshness)}</div>${body}</section>`;
 }
 
 function listHtml(items = []) {
@@ -342,7 +345,7 @@ function createDashboardChart(canvasId, series, label, { color = "#65a0ff" } = {
     render(start, end);
   };
   startInput?.addEventListener("input", onNavigatorInput); endInput?.addEventListener("input", onNavigatorInput);
-  applyPreset("1Y");
+  applyPreset(DEFAULT_CHART_RANGE);
   return chart;
 }
 
