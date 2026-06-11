@@ -142,13 +142,18 @@ function formatShortDate(value) {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("ru-RU", { day:"2-digit", month:"short", year:"numeric" }).format(date) : "";
 }
-function compactChartHtml(id, caption) {
-  return `<div class="integrated-chart"><div class="chart-shell" id="${id}-wrap"><canvas id="${id}"></canvas></div><div class="chart-caption">${escapeHtml(caption)}</div></div>`;
+function compactChartHtml(id, label, caption) {
+  return `<div class="integrated-chart"><div class="chart-label"><span>${escapeHtml(label)}</span><span class="chart-range">Вся история</span></div><div class="chart-shell" id="${id}-wrap"><canvas id="${id}"></canvas></div><div class="chart-caption">${escapeHtml(caption)}</div></div>`;
+}
+function ethereumIconHtml(ticker) {
+  if (String(ticker).toUpperCase() !== "ETH") return `<span class="hero-token-fallback">${escapeHtml(ticker || "")}</span>`;
+  return `<span class="eth-icon" aria-label="Ethereum"><svg viewBox="0 0 256 417" role="img" aria-hidden="true"><path class="eth-top-left" d="M127.9 0L125.1 9.5v274.2l2.8 2.8 127.9-75.6z"/><path class="eth-top-right" d="M127.9 0L0 210.9l127.9 75.6V154.1z"/><path class="eth-bottom-left" d="M127.9 310.7l-1.6 1.9v98.2l1.6 4.7 128-180.3z"/><path class="eth-bottom-right" d="M127.9 415.5V310.7L0 235.2z"/><path class="eth-center-left" d="M127.9 286.5l127.9-75.6-127.9-56.8z"/><path class="eth-center-right" d="M0 210.9l127.9 75.6V154.1z"/></svg></span>`;
 }
 function newsHtml(news = {}) {
   const items = Array.isArray(news.items) ? news.items : [];
   const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span>${escapeHtml(formatShortDate(item.date))}</span><span>${escapeHtml(item.source || news.source || "Источник")}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">Свежие новости временно недоступны</div>`;
-  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Показываются 5 самых свежих событий за последние 30 дней</div>${body}</section>`;
+  const freshness = news.updated_at ? `Обновлено ${new Date(news.updated_at).toLocaleString("ru-RU")}` : "Live-лента";
+  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Свежие официальные и ecosystem-обновления · ${escapeHtml(freshness)}</div>${body}</section>`;
 }
 
 function listHtml(items = []) {
@@ -257,67 +262,39 @@ function mergeSeriesByTimestamp(datasets) {
   const tsSet = new Set();
   datasets.forEach((dataset) => (dataset.series || []).forEach((point) => { if (Number.isFinite(point.ts)) tsSet.add(point.ts); }));
   const timestamps = Array.from(tsSet).sort((a, b) => a - b);
-  const labels = timestamps.map((ts) => new Date(ts).toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit" }));
-  const prepared = datasets.filter((dataset) => dataset.series?.length).map((dataset) => {
+  const prepared = datasets.filter((dataset) => dataset.series?.length).map((dataset, index) => {
     const map = new Map(dataset.series.map((point) => [point.ts, point.value]));
-    return { label: dataset.label, data: timestamps.map((ts) => map.has(ts) ? map.get(ts) : null), borderWidth:2, tension:.25, pointRadius:0, spanGaps:true, fill:false, yAxisID:dataset.yAxisID || "y", hidden:!!dataset.hidden };
+    const color = dataset.color || (index ? "#8bb4ff" : "#65a0ff");
+    return { label: dataset.label, data: timestamps.map((ts) => map.has(ts) ? map.get(ts) : null), borderColor:color, backgroundColor:`${color}24`, borderWidth:2, tension:.2, pointRadius:0, pointHoverRadius:4, pointHitRadius:12, spanGaps:true, fill:"origin", yAxisID:dataset.yAxisID || "y", hidden:!!dataset.hidden };
   });
-  return { labels, prepared };
+  return { timestamps, prepared };
 }
 
-function createLineChart(canvasId, datasets) {
-  const el = document.getElementById(canvasId);
-  if (!el || !datasets?.length) return null;
-  const { labels, prepared } = mergeSeriesByTimestamp(datasets);
-  if (!prepared.length || !labels.length) {
-    showChartEmpty(canvasId, "Данные для графика пока не подтянулись.");
-    return null;
-  }
-  clearChartEmpty(canvasId);
-  return new Chart(el, {
-    type: "line",
-    data: { labels, datasets: prepared },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { intersect: false, mode: "index" },
-      plugins: {
-        legend: { display: true, labels: { color:"#dce6ff" } },
-        tooltip: { callbacks: { label(context) { return context.parsed.y == null ? `${context.dataset.label}: —` : `${context.dataset.label}: ${formatAxisValue(context.parsed.y)}`; } } }
-      },
-      scales: {
-        x: { ticks: { color:"#a8b2c7", maxTicksLimit:8 }, grid: { color:"rgba(255,255,255,.06)" } },
-        y: { position:"left", ticks: { color:"#a8b2c7", callback(value){ return formatAxisValue(Number(value)); } }, grid: { color:"rgba(255,255,255,.06)" } },
-        y1: { display: prepared.some((x) => x.yAxisID === "y1"), position:"right", ticks: { color:"#a8b2c7", callback(value){ return formatAxisValue(Number(value)); } }, grid: { drawOnChartArea:false } }
-      }
-    }
-  });
+function timelineLabel(ts, compact = false) {
+  const date = new Date(ts);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ru-RU", compact ? { month:"short", year:"2-digit" } : { year:"numeric" }).format(date);
 }
 
-function createBarChart(canvasId, series, label) {
-  const el = document.getElementById(canvasId);
-  if (!el) return null;
-  if (!series?.length) {
-    showChartEmpty(canvasId, "Данные для графика пока не подтянулись.");
-    return null;
-  }
-  clearChartEmpty(canvasId);
-  return new Chart(el, {
-    type: "bar",
-    data: { labels: series.map((x) => x.label), datasets: [{ label, data: series.map((x) => x.value), borderWidth:0 }] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color:"#dce6ff" } },
-        tooltip: { callbacks: { label(context){ return context.parsed.y == null ? `${label}: —` : `${label}: ${formatAxisValue(context.parsed.y)}`; } } }
-      },
-      scales: {
-        x: { ticks:{ color:"#a8b2c7", maxTicksLimit:8 }, grid:{ color:"rgba(255,255,255,.04)" } },
-        y: { ticks:{ color:"#a8b2c7", callback(value){ return formatAxisValue(Number(value)); } }, grid:{ color:"rgba(255,255,255,.06)" } }
-      }
+function dashboardChartOptions(timestamps) {
+  return {
+    responsive:true, maintainAspectRatio:false, animation:{ duration:500 }, interaction:{ intersect:false, mode:"index" },
+    layout:{ padding:{ top:8, right:8, bottom:2, left:2 } },
+    plugins:{ legend:{ display:false }, tooltip:{ backgroundColor:"rgba(13,17,25,.96)", borderColor:"rgba(134,172,255,.28)", borderWidth:1, padding:12, titleColor:"#a8b2c7", bodyColor:"#f4f7ff", displayColors:false, callbacks:{ title(items){ return items.length ? new Date(timestamps[items[0].dataIndex]).toLocaleDateString("ru-RU", { day:"numeric", month:"long", year:"numeric" }) : ""; }, label(context){ return context.parsed.y == null ? `${context.dataset.label}: —` : `${context.dataset.label}: $${formatAxisValue(context.parsed.y)}`; } } } },
+    scales:{
+      x:{ offset:false, ticks:{ color:"#8490a7", maxTicksLimit:7, maxRotation:0, autoSkip:true, callback(value){ const ts=timestamps[Number(value)]; const years=(timestamps.at(-1)-timestamps[0])/31557600000; return timelineLabel(ts, years < 2); } }, grid:{ display:false }, border:{ display:false } },
+      y:{ beginAtZero:true, grace:"6%", ticks:{ color:"#8490a7", maxTicksLimit:5, padding:10, callback(value){ return `$${formatAxisValue(Number(value))}`; } }, grid:{ color:"rgba(255,255,255,.055)", drawTicks:false }, border:{ display:false } }
     }
-  });
+  };
+}
+
+function createDashboardChart(canvasId, series, label, { color = "#65a0ff" } = {}) {
+  const el = document.getElementById(canvasId);
+  if (!el || !series?.length) { showChartEmpty(canvasId, "Данные для графика пока не подтянулись."); return null; }
+  const { timestamps, prepared } = mergeSeriesByTimestamp([{ label, series, color }]);
+  if (!prepared.length || !timestamps.length) { showChartEmpty(canvasId, "Данные для графика пока не подтянулись."); return null; }
+  clearChartEmpty(canvasId);
+  return new Chart(el, { type:"line", data:{ labels:timestamps, datasets:prepared }, options:dashboardChartOptions(timestamps) });
 }
 
 function technicalBiasHtml(bias) {
@@ -384,7 +361,7 @@ async function loadReport() {
   const app = document.getElementById("app");
 
   try {
-    const res = await fetch(`/api/report/${slug}`);
+    const res = await fetch(`/api/report/${slug}`, { cache:"no-store", headers:{ "cache-control":"no-cache" } });
     const data = await res.json();
     if (!res.ok) {
       app.innerHTML = `<div class="error-box">Ошибка: ${escapeHtml(data.error || "не удалось загрузить отчет")}</div>`;
@@ -393,15 +370,15 @@ async function loadReport() {
 
     const tvSymbolMap = { eth:"BINANCE:ETHUSDT", sol:"BINANCE:SOLUSDT", link:"BINANCE:LINKUSDT" };
     app.innerHTML = `<div class="layout"><aside class="sidebar-card"><div class="eyebrow">Crypto Project Deep Dive</div><div class="project-main">${escapeHtml(data.meta.project_name)}</div><div class="project-sub">${escapeHtml(data.meta.subtitle)}</div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="small-note">Обновлено: ${new Date(data.meta.updated_at).toLocaleString("ru-RU")}</div><div class="small-note">Slug: ${escapeHtml(data.meta.slug)}</div></aside><main class="content">
-      <section class="panel hero-overview"><div class="hero-heading"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><div class="hero-ticker">${escapeHtml(data.meta.ticker || "")}</div></div>${data.hero.subtitle ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}<p class="lead">${escapeHtml(data.hero.lead)}</p>
+      <section class="panel hero-overview"><div class="hero-heading">${ethereumIconHtml(data.meta.ticker)}<div class="hero-identity"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><div class="hero-meta">${escapeHtml(data.meta.ticker || "")} · live network report</div></div></div>${data.hero.subtitle ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}<p class="lead">${escapeHtml(data.hero.lead)}</p>
       <div class="hero-grid">${metricHtml("Цена", data.market.price)}${metricHtml("Рыночная капитализация", data.market.market_cap)}${metricHtml("FDV", data.market.fdv)}${metricHtml("Объем 24ч", data.market.volume_24h)}${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div>
       <div class="three-col top-gap"><div class="list-item"><strong>Главная сила</strong><br>${escapeHtml(data.hero.main_strength || "—")}</div><div class="list-item"><strong>Главный риск</strong><br>${escapeHtml(data.hero.main_risk || "—")}</div><div class="list-item"><strong>Общий статус</strong><br>${escapeHtml(data.hero.status_text || "—")}</div></div></section>
       ${tradingViewCard()}
       ${technicalBiasHtml(data.technical_bias)}
       ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel"><div class="section-title">Executive Summary</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
       <section class="panel section-flow"><div class="section-title">Токеномика</div><div class="section-sub">Баланс предложения, выпуска и сжигания ETH</div><div class="hero-grid">${metricHtml("Market Cap", data.tokenomics.metrics.market_cap)}${metricHtml("FDV", data.tokenomics.metrics.fdv)}${metricHtml("Circulating Supply", data.tokenomics.metrics.circulating_supply)}${metricHtml("Total Supply", data.tokenomics.metrics.total_supply)}${metricHtml("Max Supply", data.tokenomics.metrics.max_supply)}${optionalMetricHtml("Net Issuance", data.tokenomics.metrics.net_issuance)}${optionalMetricHtml("Burn Mechanism", data.tokenomics.metrics.burn_mechanism)}${optionalMetricHtml("Market Buyback", data.tokenomics.metrics.market_buyback)}</div>${insightHtml(data.tokenomics)}</section>
-      <section class="panel section-flow"><div class="section-title">Финансы</div>${(data.financials.text || []).slice(0, 2).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid finance-kpis">${metricHtml("Chain Fees 24h", data.financials.metrics.chain_fees_24h)}${metricHtml("DEX Volume 24h", data.financials.metrics.dex_volume_24h)}${metricHtml("Объем 24ч / капитализация", data.financials.metrics.volume_market_cap)}</div><div class="chart-stack">${compactChartHtml("feesChart", data.fees_block?.note || "Комиссии отражают спрос на блокспейс и денежную нагрузку сети.")}${compactChartHtml("dexChart", data.dex_block?.note || "DEX-оборот отражает глубину on-chain торговой активности.")}</div>${insightHtml(data.financials)}</section>
-      <section class="panel section-flow capital-section"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).slice(0, 1).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid capital-kpis">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}${metricHtml("RWA Active Mcap", data.capital.metrics.rwa_active_mcap)}</div><div class="capital-charts">${compactChartHtml("tvlChart", "TVL показывает капитал, размещенный в DeFi-слое экосистемы.")}${compactChartHtml("stableChart", data.stablecoins_block?.note || "Стейблкоины показывают расчетную ликвидность внутри сети.")}</div>${insightHtml(data.capital)}</section>
+      <section class="panel section-flow"><div class="section-title">Финансы</div>${(data.financials.text || []).slice(0, 2).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid finance-kpis">${metricHtml("Chain Fees 24h", data.financials.metrics.chain_fees_24h)}${metricHtml("DEX Volume 24h", data.financials.metrics.dex_volume_24h)}${metricHtml("Объем 24ч / капитализация", data.financials.metrics.volume_market_cap)}</div><div class="chart-stack">${compactChartHtml("feesChart", "Сетевые комиссии", data.fees_block?.note || "Спрос на блокспейс")}${compactChartHtml("dexChart", "DEX-оборот", data.dex_block?.note || "Глубина on-chain торговой активности")}</div>${insightHtml(data.financials)}</section>
+      <section class="panel section-flow capital-section"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).slice(0, 1).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid capital-kpis">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}${metricHtml("RWA Active Mcap", data.capital.metrics.rwa_active_mcap)}</div><div class="capital-charts">${compactChartHtml("tvlChart", "TVL", "Капитал в DeFi-слое")}${compactChartHtml("stableChart", "Stablecoins", data.stablecoins_block?.note || "Расчетная ликвидность внутри сети")}</div>${insightHtml(data.capital)}</section>
       ${usersSectionHtml(data)}
       <section class="panel"><div class="section-title">Резюме</div><div class="columns-4 profile-grid"><div><h3>Сильные стороны</h3>${listHtml(data.profile.strengths)}</div><div><h3>Слабые стороны</h3>${listHtml(data.profile.weaknesses)}</div><div><h3>Риски</h3>${listHtml(data.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(data.profile.watch)}</div></div></section>
       ${newsHtml(data.news)}
@@ -414,10 +391,10 @@ async function loadReport() {
     const feesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.fees_history), { trimLeadingZeroes:true });
     const dexSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.dex_history), { trimLeadingZeroes:true });
 
-    createBarChart("feesChart", feesSeries, "Fees");
-    createBarChart("dexChart", dexSeries, "DEX Volume");
-    createLineChart("tvlChart", [{ label:"TVL", series:tvlSeries, yAxisID:"y" }]);
-    createLineChart("stableChart", [{ label:"Stablecoins", series:stableSeries, yAxisID:"y" }]);
+    createDashboardChart("feesChart", feesSeries, "Fees", { color:"#a78bfa" });
+    createDashboardChart("dexChart", dexSeries, "DEX Volume", { color:"#60a5fa" });
+    createDashboardChart("tvlChart", tvlSeries, "TVL", { color:"#65a0ff" });
+    createDashboardChart("stableChart", stableSeries, "Stablecoins", { color:"#55d6a5" });
     initTradingView(tvSymbolMap[slug] || "BINANCE:ETHUSDT");
   } catch (error) {
     app.innerHTML = `<div class="error-box">Ошибка загрузки: ${escapeHtml(error.message)}</div>`;

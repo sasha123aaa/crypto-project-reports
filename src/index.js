@@ -569,8 +569,6 @@ function shouldRenderUsersBlock(report, project, usersState){
   return true;
 }
 function resolveReportCacheControl(dataStatus){
-  if (dataStatus === "hybrid-live") return "public, max-age=60";
-  if (dataStatus === "hybrid-partial-live") return "public, max-age=15";
-  return "no-cache, must-revalidate";
+  return "no-store, max-age=0";
 }
 function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ return new Response(JSON.stringify(data,null,2),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":cacheControl}}); }
