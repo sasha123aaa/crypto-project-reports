@@ -5,6 +5,7 @@ import { getUsersFallbackText } from "./fallbacks.js";
 import { fetchCoinGeckoMarket, fetchCoinGeckoChart } from "../adapters/coingecko.js";
 import { fetchDefiLlamaChains, fetchDefiLlamaTVLHistory, fetchStablecoinHistory, fetchStablecoinChains, fetchAppFeesOverview, fetchChainFeesOverview, fetchDexOverview, normalizeStablecoinHistory, stablecoinMcapUsd } from "../adapters/defillama.js";
 import { getTechnicalBias } from "../adapters/bybit.js";
+import { getProjectProfile } from "../config/projects.js";
 
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item)=>String(item.name).toLowerCase()===String(chainName).toLowerCase()) : null; }
 function findStableChainData(chains, chainKey){ return Array.isArray(chains) ? chains.find((item)=>String(item.gecko_id || item.name || "").toLowerCase()===String(chainKey).toLowerCase()) : null; }
@@ -56,7 +57,7 @@ export async function buildReport(project){
   const stablecoinsToTVL = calcStablecoinsToTVL(stablecoinsMcap, tvl);
 
   return {
-    meta:{ slug:project.slug, project_name:project.name, ticker:project.ticker, subtitle:project.subtitle, categories:project.categories, project_type:project.projectType, report_version:"v1.0", updated_at:new Date().toISOString(), data_status:"partial" },
+    meta:{ slug:project.slug, project_name:project.name, ticker:project.ticker, subtitle:project.subtitle, categories:project.categories, project_type:project.projectType, project_profile:getProjectProfile(project), report_version:"v1.0", updated_at:new Date().toISOString(), data_status:"partial" },
     hero:{ title:`${project.name} как базовая инфраструктура рынка`, subtitle:"Сильный фундаментал, зрелость актива и главный вопрос — удержание ценности внутри экосистемы.", lead:`${project.name} остается важным активом для инфраструктурного слоя крипторынка. Главная задача отчета — показать не только рыночный размер, но и качество экономики сети, капитала и пользовательской активности.`, main_strength:"Сильная инфраструктурная позиция, масштаб экосистемы и высокая ликвидность.", main_risk:"Часть ценности может уходить в смежные уровни экосистемы, а не оставаться напрямую в токене.", status_text:"Сильный фундаментал, но дальнейший тезис должен подтверждаться живой экономикой сети." },
     market:{
       price: metric(price, formatMoney(price), price!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "CoinGecko"),
