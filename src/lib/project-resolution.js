@@ -6,8 +6,7 @@ import {
   getRegisteredProject,
   normalizeProjectInput,
 } from "../config/projects.js";
-import { fetchCoinGeckoProject, searchCoinGeckoProjects } from "../adapters/coingecko.js";
-import { fetchDefiLlamaChains, fetchDefiLlamaProtocols, fetchStablecoinChains, stablecoinMcapUsd } from "../adapters/defillama.js";
+import { stablecoinMcapUsd } from "../adapters/defillama.js";
 
 const CATEGORY_PROFILES = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: ANALYSIS_PROFILES.L1_INFRA,
@@ -19,38 +18,9 @@ const CATEGORY_PROFILES = Object.freeze({
 
 const BASE_SECTIONS = ["market", "tokenomics", "narrative_and_news", "risks", "final_summary"];
 
-function normalizeKey(value) {
-  return normalizeProjectInput(value).replace(/[^a-z0-9]/g, "");
-}
-
-function exactMatch(values, targets) {
-  const normalizedTargets = new Set(targets.map(normalizeKey).filter(Boolean));
-  return values.some((value) => normalizedTargets.has(normalizeKey(value)));
-}
-
 function finitePositive(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0;
-}
-
-function chooseCoinGeckoMatch(input, coins = []) {
-  const key = normalizeKey(input);
-  const exact = coins.filter((coin) => exactMatch([coin.id, coin.symbol, coin.name], [key]));
-  return [...exact].sort((a, b) => (a.market_cap_rank || Number.MAX_SAFE_INTEGER) - (b.market_cap_rank || Number.MAX_SAFE_INTEGER))[0] || null;
-}
-
-function findChain(rows, coin) {
-  return Array.isArray(rows) ? rows.find((row) => exactMatch(
-    [row?.name, row?.gecko_id, row?.tokenSymbol],
-    [coin?.id, coin?.symbol, coin?.name],
-  )) || null : null;
-}
-
-function findProtocol(rows, coin) {
-  return Array.isArray(rows) ? rows.find((row) => exactMatch(
-    [row?.gecko_id, row?.symbol, row?.name, row?.slug],
-    [coin?.id, coin?.symbol, coin?.name],
-  )) || null : null;
 }
 
 function inferMeme(categories = []) {
@@ -120,29 +90,43 @@ export function buildRuntimeProjectConfig(input, discovery) {
   };
 }
 
-const DEFAULT_DISCOVERY = { searchCoinGeckoProjects, fetchCoinGeckoProject, fetchDefiLlamaChains, fetchStablecoinChains, fetchDefiLlamaProtocols };
+export function buildRuntimeProjectSkeleton(input) {
+  const slug = normalizeProjectInput(input);
+  if (!slug) return null;
 
-export async function resolveProject(input, discovery = DEFAULT_DISCOVERY) {
+  const ticker = slug.toUpperCase();
+  return {
+    slug,
+    name: ticker,
+    ticker,
+    subtitle: `${ticker} • runtime project`,
+    projectType: "runtime",
+    categories: [],
+    resolution: {
+      mode: "runtime",
+      source: "fallback",
+      input: String(input ?? "").trim(),
+      normalized: { slug, ticker },
+    },
+  };
+}
+
+export async function resolveProject(input) {
   const normalized = normalizeProjectInput(input);
   if (!normalized) return null;
 
   const registered = getRegisteredProject(normalized);
-  if (registered) return { ...registered, resolution:{ mode:"registered", input:normalized } };
+  if (registered) {
+    return {
+      ...registered,
+      resolution: {
+        mode: "registered",
+        source: "curated",
+        input: String(input ?? "").trim(),
+        normalized: { slug:registered.slug, ticker:registered.ticker },
+      },
+    };
+  }
 
-  const coins = await discovery.searchCoinGeckoProjects(normalized);
-  const coin = chooseCoinGeckoMatch(normalized, coins);
-  if (!coin) return null;
-
-  const [detailsResult, chainsResult, stablecoinsResult, protocolsResult] = await Promise.allSettled([
-    discovery.fetchCoinGeckoProject(coin.id),
-    discovery.fetchDefiLlamaChains(),
-    discovery.fetchStablecoinChains(),
-    discovery.fetchDefiLlamaProtocols(),
-  ]);
-  const coinDetails = detailsResult.status === "fulfilled" ? detailsResult.value : {};
-  const chain = findChain(chainsResult.status === "fulfilled" ? chainsResult.value : [], coin);
-  const stablecoinChain = findChain(stablecoinsResult.status === "fulfilled" ? stablecoinsResult.value : [], coin);
-  const protocol = chain ? null : findProtocol(protocolsResult.status === "fulfilled" ? protocolsResult.value : [], coin);
-
-  return buildRuntimeProjectConfig(normalized, { coin, coinDetails, chain, stablecoinChain, protocol });
+  return buildRuntimeProjectSkeleton(input);
 }
