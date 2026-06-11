@@ -36,7 +36,7 @@ export async function fetchProjectNews(project, { limit = 5, days = 30 } = {}) {
       const timestamp = Date.parse(item.date);
       return Number.isFinite(timestamp) && timestamp >= cutoff && timestamp <= Date.now() + 86400000;
     });
-  const items = deduplicateNews(candidates).sort(byNewest).slice(0, limit);
+  const items = selectDiverseNews(deduplicateNews(candidates), feeds, limit);
   const successfulSources = debug.filter((entry) => entry.ok).map((entry) => entry.source);
   const source_summary = successfulSources.length
     ? `${successfulSources.join(", ")} · ${items.length} news items from the last ${days} days`
@@ -50,6 +50,27 @@ export async function fetchProjectNews(project, { limit = 5, days = 30 } = {}) {
     updated_at,
     debug: { sources: debug },
   };
+}
+
+export function selectDiverseNews(items, feeds = [], limit = 5) {
+  const priorities = new Map(feeds.map((feed, index) => [feed.source, Number.isFinite(feed.priority) ? feed.priority : index + 1]));
+  const remaining = [...items].sort((a, b) => (priorities.get(a.source) || 99) - (priorities.get(b.source) || 99) || byNewest(a, b));
+  const selected = [];
+  const sourceCounts = new Map();
+
+  while (selected.length < limit && remaining.length) {
+    const lastSource = selected.at(-1)?.source;
+    const previousSource = selected.at(-2)?.source;
+    const unseenSources = [...new Set(remaining.filter((item) => item.source !== lastSource && (sourceCounts.get(item.source) || 0) === 0).map((item) => item.source))]
+      .sort((a, b) => remaining.filter((item) => item.source === b).length - remaining.filter((item) => item.source === a).length || (priorities.get(a) || 99) - (priorities.get(b) || 99));
+    const diverseIndex = unseenSources.length ? remaining.findIndex((item) => item.source === unseenSources[0]) : -1;
+    const nonRepeatIndex = remaining.findIndex((item) => !(item.source === lastSource && item.source === previousSource));
+    const index = diverseIndex >= 0 ? diverseIndex : (nonRepeatIndex >= 0 ? nonRepeatIndex : 0);
+    const [item] = remaining.splice(index, 1);
+    selected.push(item);
+    sourceCounts.set(item.source, (sourceCounts.get(item.source) || 0) + 1);
+  }
+  return selected;
 }
 
 export async function fetchNewsFeed(feed) {

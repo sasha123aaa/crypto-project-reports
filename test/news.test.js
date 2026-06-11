@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deduplicateNews, fetchProjectNews, parseFeedItem } from "../src/adapters/coingecko.js";
+import { deduplicateNews, fetchProjectNews, parseFeedItem, selectDiverseNews } from "../src/adapters/coingecko.js";
 
 const now = new Date();
 const recent = new Date(now.getTime() - 2 * 86400000).toUTCString();
@@ -46,4 +46,23 @@ test("fetchProjectNews returns unavailable when every source fails", async () =>
     assert.equal(news.debug.sources[0].status, "failed");
     assert.ok(news.updated_at);
   } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test("selectDiverseNews mixes available sources before repeating one source", () => {
+  const date = now.toISOString();
+  const items = [
+    { title:"Research 1", url:"https://r.test/1", date, source:"Ethereum Research" },
+    { title:"Research 2", url:"https://r.test/2", date, source:"Ethereum Research" },
+    { title:"Research 3", url:"https://r.test/3", date, source:"Ethereum Research" },
+    { title:"Official update", url:"https://o.test/1", date, source:"Ethereum Blog" },
+    { title:"Ecosystem update", url:"https://e.test/1", date, source:"Consensys News" },
+  ];
+  const selected = selectDiverseNews(items, [
+    { source:"Ethereum Blog", priority:1 },
+    { source:"Consensys News", priority:2 },
+    { source:"Ethereum Research", priority:3 },
+  ], 5);
+  assert.deepEqual(new Set(selected.slice(0, 3).map((item) => item.source)), new Set(["Ethereum Blog", "Consensys News", "Ethereum Research"]));
+  assert.ok(selected.every((item, index) => index < 2 || !(item.source === selected[index - 1].source && item.source === selected[index - 2].source)));
 });

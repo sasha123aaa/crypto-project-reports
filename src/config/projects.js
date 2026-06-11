@@ -20,8 +20,9 @@ export const PROJECTS = {
     stablecoinChain: "Ethereum",
     rwaChain: "Ethereum",
     newsFeeds: [
-      { url: "https://blog.ethereum.org/feed.xml", source: "Ethereum Foundation Blog", priority: 1 },
-      { url: "https://ethresear.ch/latest.rss", source: "Ethereum Research", priority: 2 },
+      { url: "https://blog.ethereum.org/feed.xml", source: "Ethereum Blog", priority: 1 },
+      { url: "https://feeds.feedburner.com/ConsenSys", source: "Consensys News", priority: 2 },
+      { url: "https://ethresear.ch/latest.rss", source: "Ethereum Research", priority: 3 },
     ],
     reportOptions: { hideExecutiveSummary: true, compactTokenomics: true, integratedFinancials: true },
     usersSource: {

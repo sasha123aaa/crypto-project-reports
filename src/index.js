@@ -180,6 +180,7 @@ async function fetchLiveMetrics(project) {
         usedCachedSnapshot: marketMetricsMode === "live_cached_fallback",
         snapshotTtlMs: COINGECKO_MARKET_SNAPSHOT_TTL_MS,
       },
+      rwa: rwaRes.status === "fulfilled" ? rwa?.debug || null : rwaRes.reason?.debug || parsePromiseRejection(rwaRes.reason),
     },
   };
 }
@@ -207,10 +208,13 @@ function buildFinancialSummary(live) {
 function buildCapitalSummary(live) {
   const tvl = trendState(seriesTrend(live?.charts?.tvlHistory, 14), 3);
   const stable = trendState(seriesTrend(live?.charts?.stableHistory, 14), 3);
-  if (tvl === "unknown") return "Данных по динамике TVL недостаточно для уверенного вывода. Текущий размер капитала следует оценивать вместе со стабильностью ликвидности и последующими потоками.";
-  if (tvl === "up" && stable !== "down") return "Капитал в экосистеме расширяется, а расчетная ликвидность не противоречит этому движению. Такая связка поддерживает тезис об устойчивом притоке средств.";
-  if (tvl === "down") return "TVL указывает на отток капитала, поэтому приоритетом остается подтверждение стабилизации и разворота потоков. Стабильная ликвидность смягчает риск, но не заменяет восстановление TVL.";
-  return "TVL остается относительно стабильным без выраженного направления потоков. Для усиления оценки нужен последовательный рост капитала при сохранении глубокой расчетной ликвидности.";
+  const rwa = isValidNumber(live?.capital?.rwaActiveMcap)
+    ? ` Активные RWA объемом ${formatMoney(live.capital.rwaActiveMcap)} дополняют картину глубиной токенизированных реальных активов.`
+    : " Данные по активным RWA сейчас недоступны, поэтому глубина токенизированных реальных активов не включена в итоговую оценку.";
+  if (tvl === "unknown") return `Данных по динамике TVL недостаточно для уверенного вывода. Размер DeFi-капитала следует оценивать вместе с расчетной ликвидностью стейблкоинов и последующими потоками.${rwa}`;
+  if (tvl === "up" && stable !== "down") return `DeFi-капитал расширяется, а расчетная ликвидность стейблкоинов поддерживает это движение. Такая связка укрепляет общую капитализацию экосистемы.${rwa}`;
+  if (tvl === "down") return `TVL указывает на отток DeFi-капитала; стабильная расчетная ликвидность смягчает риск, но не заменяет восстановление потоков.${rwa}`;
+  return `DeFi-капитал остается относительно стабильным без выраженного направления, при этом стейблкоины поддерживают расчетную ликвидность сети.${rwa}`;
 }
 
 function setCoinGeckoMarketSnapshot(id, marketData) {
