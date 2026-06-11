@@ -17,8 +17,8 @@ export async function buildReport(project){
   const initialSelection = getSectionSelection(project);
   const selected = (section) => isSectionSelected(initialSelection, section);
   const [cgMarket,cgChart,chains,tvlHistory,stableHistory,stableChains,appFees,chainFees,dex,ta,news] = await Promise.allSettled([
-    fetchCoinGeckoMarket(project.coingeckoId),
-    fetchCoinGeckoChart(project.coingeckoId,365),
+    project.coingeckoId ? fetchCoinGeckoMarket(project.coingeckoId) : Promise.resolve(null),
+    project.coingeckoId ? fetchCoinGeckoChart(project.coingeckoId,365) : Promise.resolve(null),
     project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaChains() : Promise.resolve(null),
     project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaTVLHistory(project.defillamaChain) : Promise.resolve(null),
     project.stablecoinChain && selected("stablecoins") ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve(null),
