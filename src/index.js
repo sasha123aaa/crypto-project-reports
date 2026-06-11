@@ -77,7 +77,8 @@ async function fetchLiveMetrics(project) {
     fetchCoinGeckoChart(project.coingeckoId),
     project.defillamaChain ? fetchDefiLlamaChains() : Promise.resolve(null),
     project.stablecoinChain ? fetchStablecoinChains() : Promise.resolve(null),
-    project.defillamaChain ? fetchFeesOverview(project.defillamaChain) : Promise.resolve(null),
+    project.defillamaChain ? fetchAppFeesOverview(project.defillamaChain) : Promise.resolve(null),
+    project.defillamaChain ? fetchChainFeesOverview(project.defillamaChain) : Promise.resolve(null),
     project.defillamaChain ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
     project.defillamaChain ? fetchTVLHistory(project.defillamaChain) : Promise.resolve([]),
     project.stablecoinChain ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve([]),
@@ -87,7 +88,7 @@ async function fetchLiveMetrics(project) {
     fetchProjectNews(project),
   ]);
 
-  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,feesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes,rwaRes,newsRes] = results;
+  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,appFeesOverviewRes,chainFeesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes,rwaRes,newsRes] = results;
   const cgMarket = cgMarketRes.status === "fulfilled" ? cgMarketRes.value : null;
   const cachedCoinGeckoMarket = getCoinGeckoMarketSnapshot(project.coingeckoId);
   const hasFreshCoinGeckoMarket = hasAnyCoinGeckoMarketValue(cgMarket);
@@ -102,7 +103,8 @@ async function fetchLiveMetrics(project) {
   const cgChart = cgChartRes.status === "fulfilled" ? cgChartRes.value : null;
   const chains = chainsRes.status === "fulfilled" ? chainsRes.value : null;
   const stableChains = stableChainsRes.status === "fulfilled" ? stableChainsRes.value : null;
-  const feesOverview = feesOverviewRes.status === "fulfilled" ? feesOverviewRes.value : null;
+  const appFeesOverview = appFeesOverviewRes.status === "fulfilled" ? appFeesOverviewRes.value : null;
+  const chainFeesOverview = chainFeesOverviewRes.status === "fulfilled" ? chainFeesOverviewRes.value : null;
   const dexOverview = dexOverviewRes.status === "fulfilled" ? dexOverviewRes.value : null;
   const tvlHistoryRaw = tvlHistoryRes.status === "fulfilled" ? tvlHistoryRes.value : [];
   const stableHistoryRaw = stableHistoryRes.status === "fulfilled" ? stableHistoryRes.value : [];
@@ -127,9 +129,10 @@ async function fetchLiveMetrics(project) {
   const stableHistory = normalizeStableHistory(stableHistoryRaw);
   const tvl = toNumber(chainNow?.tvl ?? getLastTVL(tvlHistory));
   const stablecoins = toNumber(extractStablecoinsCurrent(chainNow, stableNow) ?? getLastStable(stableHistory));
-  const feesHistory = normalizeOverviewHistory(feesOverview?.totalDataChart);
+  const appFeesHistory = normalizeOverviewHistory(appFeesOverview?.totalDataChart);
+  const chainFeesHistory = normalizeOverviewHistory(chainFeesOverview?.totalDataChart);
   const dexHistory = normalizeOverviewHistory(dexOverview?.totalDataChart);
-  const chainFees24h = toNumber(feesOverview?.total24h);
+  const chainFees24h = toNumber(chainFeesOverview?.total24h);
   const dexVolume24h = toNumber(dexOverview?.total24h);
 
   return {
@@ -154,7 +157,8 @@ async function fetchLiveMetrics(project) {
       priceHistory: Array.isArray(cgChart?.prices) ? cgChart.prices : [],
       tvlHistory,
       stableHistory,
-      feesHistory,
+      appFeesHistory,
+      chainFeesHistory,
       dexHistory,
     },
     technicalBias,
@@ -165,7 +169,8 @@ async function fetchLiveMetrics(project) {
       cgChart: cgChartRes.status,
       chains: chainsRes.status,
       stableChains: stableChainsRes.status,
-      feesOverview: feesOverviewRes.status,
+      appFeesOverview: appFeesOverviewRes.status,
+      chainFeesOverview: chainFeesOverviewRes.status,
       dexOverview: dexOverviewRes.status,
       tvlHistory: tvlHistoryRes.status,
       stableHistory: stableHistoryRes.status,
@@ -195,15 +200,16 @@ function seriesTrend(rows, window = 7) {
 }
 function trendState(value, threshold = 5) { if (!isValidNumber(value)) return "unknown"; if (value >= threshold) return "up"; if (value <= -threshold) return "down"; return "flat"; }
 function buildFinancialSummary(live) {
-  const fees = trendState(seriesTrend(live?.charts?.feesHistory));
+  const appFees = trendState(seriesTrend(live?.charts?.appFeesHistory));
+  const chainFees = trendState(seriesTrend(live?.charts?.chainFeesHistory));
   const dex = trendState(seriesTrend(live?.charts?.dexHistory));
   const ratio = live?.valuation?.volumeMarketCap;
   const liquidity = isValidNumber(ratio) ? ` Суточный торговый объем составляет ${ratio.toFixed(1)}% капитализации и дополняет оценку ликвидности.` : " Данных по отношению объема к капитализации недостаточно, поэтому оценка ликвидности остается осторожной.";
-  if (fees === "unknown" || dex === "unknown") return `Доступных рядов недостаточно для уверенной оценки денежной активности. Вывод следует считать предварительным до восстановления данных по комиссиям и DEX-обороту.${liquidity}`;
-  if (fees === "up" && dex === "up") return `Комиссии и DEX-оборот растут согласованно, указывая на усиление спроса на блокспейс и on-chain ликвидность.${liquidity}`;
-  if (fees === "down" && dex === "down") return `Комиссии и DEX-оборот одновременно снижаются, поэтому качество текущей денежной активности требует осторожной оценки.${liquidity}`;
-  if (fees !== dex && (fees === "up" || dex === "up") && (fees === "down" || dex === "down")) return `Комиссии и DEX-оборот движутся разнонаправленно: активность сохраняется, но пока не формирует единый сильный сигнал.${liquidity}`;
-  return `Комиссии и DEX-оборот остаются без согласованного сильного импульса. Для улучшения оценки нужен устойчивый совместный рост обеих метрик.${liquidity}`;
+  if (appFees === "unknown" || chainFees === "unknown" || dex === "unknown") return `Доступных рядов недостаточно для уверенной оценки денежной активности. Вывод следует считать предварительным до восстановления данных по комиссиям и DEX-обороту.${liquidity}`;
+  if (appFees === "up" && chainFees === "up" && dex === "up") return `Комиссии приложений, сетевые комиссии и DEX-оборот растут согласованно, указывая на усиление спроса на блокспейс и on-chain ликвидность.${liquidity}`;
+  if (appFees === "down" && chainFees === "down" && dex === "down") return `Комиссии приложений, сетевые комиссии и DEX-оборот одновременно снижаются, поэтому качество текущей денежной активности требует осторожной оценки.${liquidity}`;
+  if (new Set([appFees, chainFees, dex]).size > 1 && [appFees, chainFees, dex].includes("up") && [appFees, chainFees, dex].includes("down")) return `Комиссии приложений, сетевые комиссии и DEX-оборот движутся разнонаправленно: активность сохраняется, но пока не формирует единый сильный сигнал.${liquidity}`;
+  return `Комиссии приложений, сетевые комиссии и DEX-оборот остаются без согласованного сильного импульса. Для улучшения оценки нужен устойчивый совместный рост обеих метрик.${liquidity}`;
 }
 function buildCapitalSummary(live) {
   const tvl = trendState(seriesTrend(live?.charts?.tvlHistory, 14), 3);
@@ -293,7 +299,8 @@ function mergeLiveMetrics(report, live) {
   if (live.charts.priceHistory?.length) report.charts.price_history = live.charts.priceHistory;
   if (live.charts.tvlHistory?.length) report.charts.tvl_history = live.charts.tvlHistory;
   if (live.charts.stableHistory?.length) report.charts.stablecoins_history = live.charts.stableHistory;
-  if (live.charts.feesHistory?.length) report.charts.fees_history = live.charts.feesHistory;
+  if (live.charts.appFeesHistory?.length) report.charts.app_fees_history = live.charts.appFeesHistory;
+  if (live.charts.chainFeesHistory?.length) report.charts.chain_fees_history = live.charts.chainFeesHistory;
   if (live.charts.dexHistory?.length) report.charts.dex_history = live.charts.dexHistory;
   mergeUsersMetrics(report, live.users);
   if (live.technicalBias) report.technical_bias = live.technicalBias;
@@ -453,7 +460,8 @@ function parsePromiseRejection(reason) {
 async function fetchCoinGeckoChart(id,days=365){ const res = await fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}&interval=daily`,{headers:{accept:"application/json,text/plain,*/*","user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0"}}); if(!res.ok) throw new Error(`CoinGecko chart error: ${res.status}`); return res.json(); }
 async function fetchDefiLlamaChains(){ const res = await fetch("https://api.llama.fi/v2/chains"); if(!res.ok) throw new Error(`DefiLlama chains error: ${res.status}`); return res.json(); }
 async function fetchStablecoinChains(){ const res = await fetch("https://stablecoins.llama.fi/stablecoinchains"); if(!res.ok) throw new Error(`DefiLlama stable chains error: ${res.status}`); return res.json(); }
-async function fetchFeesOverview(chain){ const res = await fetch(`https://api.llama.fi/overview/fees/${encodeURIComponent(chain)}?excludeTotalDataChart=false&excludeTotalDataChartBreakdown=true&dataType=dailyFees`); if(!res.ok) throw new Error(`DefiLlama fees error: ${res.status}`); return res.json(); }
+async function fetchAppFeesOverview(chain){ const res = await fetch(`https://api.llama.fi/overview/fees/${encodeURIComponent(chain)}?excludeTotalDataChart=false&excludeTotalDataChartBreakdown=true&dataType=dailyFees`); if(!res.ok) throw new Error(`DefiLlama app fees error: ${res.status}`); return res.json(); }
+async function fetchChainFeesOverview(chain){ const res = await fetch(`https://api.llama.fi/summary/fees/${encodeURIComponent(String(chain).toLowerCase())}?dataType=dailyFees&excludeTotalDataChart=false`); if(!res.ok) throw new Error(`DefiLlama chain fees error: ${res.status}`); return res.json(); }
 async function fetchDexOverview(chain){ const res = await fetch(`https://api.llama.fi/overview/dexs/${encodeURIComponent(chain)}?excludeTotalDataChart=false&excludeTotalDataChartBreakdown=true&dataType=dailyVolume`); if(!res.ok) throw new Error(`DefiLlama dex error: ${res.status}`); return res.json(); }
 async function fetchTVLHistory(chain){
   const chainSlug = String(chain || "").toLowerCase();

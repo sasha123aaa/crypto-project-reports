@@ -3,7 +3,7 @@ import { formatMoney, formatMultiple, formatPercent } from "./formatters.js";
 import { calcMarketCapToTVL, calcStablecoinsToTVL, calcVolumeToMarketCap } from "./calculations.js";
 import { getUsersFallbackText } from "./fallbacks.js";
 import { fetchCoinGeckoMarket, fetchCoinGeckoChart } from "../adapters/coingecko.js";
-import { fetchDefiLlamaChains, fetchDefiLlamaTVLHistory, fetchStablecoinHistory, fetchStablecoinChains, fetchFeesOverview, fetchDexOverview } from "../adapters/defillama.js";
+import { fetchDefiLlamaChains, fetchDefiLlamaTVLHistory, fetchStablecoinHistory, fetchStablecoinChains, fetchAppFeesOverview, fetchChainFeesOverview, fetchDexOverview } from "../adapters/defillama.js";
 import { getTechnicalBias } from "../adapters/bybit.js";
 
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item)=>String(item.name).toLowerCase()===String(chainName).toLowerCase()) : null; }
@@ -11,14 +11,15 @@ function findStableChainData(chains, chainKey){ return Array.isArray(chains) ? c
 function lastChartValue(chart, valueKey="totalLiquidityUSD"){ if(!Array.isArray(chart)||chart.length===0) return null; const last=chart[chart.length-1]; return last?.[valueKey] ?? last?.totalLiquidityUSD ?? last?.totalCirculatingUSD ?? null; }
 
 export async function buildReport(project){
-  const [cgMarket,cgChart,chains,tvlHistory,stableHistory,stableChains,fees,dex,ta] = await Promise.allSettled([
+  const [cgMarket,cgChart,chains,tvlHistory,stableHistory,stableChains,appFees,chainFees,dex,ta] = await Promise.allSettled([
     fetchCoinGeckoMarket(project.coingeckoId),
     fetchCoinGeckoChart(project.coingeckoId,365),
     project.defillamaChain ? fetchDefiLlamaChains() : Promise.resolve(null),
     project.defillamaChain ? fetchDefiLlamaTVLHistory(project.defillamaChain) : Promise.resolve(null),
     project.stablecoinChain ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve(null),
     project.stablecoinChain ? fetchStablecoinChains() : Promise.resolve(null),
-    project.defillamaChain ? fetchFeesOverview(project.defillamaChain) : Promise.resolve(null),
+    project.defillamaChain ? fetchAppFeesOverview(project.defillamaChain) : Promise.resolve(null),
+    project.defillamaChain ? fetchChainFeesOverview(project.defillamaChain) : Promise.resolve(null),
     project.defillamaChain ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
     getTechnicalBias(project.bybitSymbol),
   ]);
@@ -29,7 +30,8 @@ export async function buildReport(project){
   const tvlRows = tvlHistory.status==="fulfilled" ? tvlHistory.value : null;
   const stableRows = stableHistory.status==="fulfilled" ? stableHistory.value : null;
   const stableChainRows = stableChains.status==="fulfilled" ? stableChains.value : null;
-  const feesData = fees.status==="fulfilled" ? fees.value : null;
+  const appFeesData = appFees.status==="fulfilled" ? appFees.value : null;
+  const chainFeesData = chainFees.status==="fulfilled" ? chainFees.value : null;
   const dexData = dex.status==="fulfilled" ? dex.value : null;
   const taData = ta.status==="fulfilled" ? ta.value : null;
 
@@ -46,7 +48,7 @@ export async function buildReport(project){
 
   const tvl = chainNow?.tvl ?? lastChartValue(tvlRows) ?? null;
   const stablecoinsMcap = stableNow?.totalCirculatingUSD ?? lastChartValue(stableRows,"totalCirculatingUSD") ?? null;
-  const chainFees24h = feesData?.total24h ?? null;
+  const chainFees24h = chainFeesData?.total24h ?? null;
   const dexVolume24h = dexData?.total24h ?? null;
 
   const marketCapToTVL = calcMarketCapToTVL(marketCap, tvl);
@@ -79,7 +81,7 @@ export async function buildReport(project){
     risks:{ items:["Ослабление сетевой экономики.","Слабый рост ключевых фундаментальных метрик.","Конкуренция со стороны других проектов.","Разрыв между рыночной оценкой и реальной экономикой."] },
     watchlist:{ items:["Динамику комиссий и объемов.","TVL и капитал внутри экосистемы.","Пользовательскую активность.","Изменение мультипликаторов оценки."] },
     final_verdict:{ title:`Финальная оценка ${project.ticker}`, subtitle:"Итоговая картина по активу", paragraphs:[`${project.name} выглядит как сильный проект для фундаментального наблюдения, если смотреть на рынок не только через цену.`,"Главный вопрос для инвестора — подтверждают ли экономические и пользовательские метрики рыночную оценку.","Сильный тезис строится там, где цена, экономика, капитал и живая активность не противоречат друг другу."] },
-    charts:{ price_history:chart?.prices || [], tvl_history:Array.isArray(tvlRows)?tvlRows:[], stablecoins_history:Array.isArray(stableRows)?stableRows:[], fees_history:feesData?.totalDataChart || [], dex_history:dexData?.totalDataChart || [] },
+    charts:{ price_history:chart?.prices || [], tvl_history:Array.isArray(tvlRows)?tvlRows:[], stablecoins_history:Array.isArray(stableRows)?stableRows:[], app_fees_history:appFeesData?.totalDataChart || [], chain_fees_history:chainFeesData?.totalDataChart || [], dex_history:dexData?.totalDataChart || [] },
     sources:[{name:"CoinGecko", used_for:["price","market cap","fdv","volume"]},{name:"DefiLlama", used_for:["tvl","stablecoins","fees","dex volume"]},{name:"Bybit", used_for:["technical bias"]}]
   };
 }

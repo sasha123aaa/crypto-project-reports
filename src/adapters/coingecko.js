@@ -55,33 +55,32 @@ export async function fetchProjectNews(project, { limit = 5, days = 45 } = {}) {
 export function selectDiverseNews(items, feeds = [], limit = 5) {
   const feedMeta = new Map(feeds.map((feed, index) => [feed.source, {
     priority: Number.isFinite(feed.priority) ? feed.priority : index + 1,
-    audience: feed.audience || "client",
+    audience: feed.audience || (/research/i.test(feed.source || "") ? "research" : "client"),
   }]));
   const ranked = [...items].sort((a, b) => newsRank(b, feedMeta) - newsRank(a, feedMeta) || byNewest(a, b));
   const selected = [];
-  const remaining = [...ranked];
+  const usedSources = new Set();
+  const researchLimit = ranked.some((item) => (feedMeta.get(item.source)?.audience || "client") !== "research") ? 1 : limit;
 
-  // Give every available source one useful slot before repeating a source.
-  const bestBySource = new Map();
-  ranked.forEach((item) => { if (!bestBySource.has(item.source)) bestBySource.set(item.source, item); });
-  [...bestBySource.values()]
-    .sort((a, b) => newsRank(b, feedMeta) - newsRank(a, feedMeta) || byNewest(a, b))
-    .slice(0, limit)
-    .forEach((item) => {
-      selected.push(item);
-      remaining.splice(remaining.indexOf(item), 1);
-    });
+  const canSelect = (item) => {
+    const researchCount = selected.filter((entry) => (feedMeta.get(entry.source)?.audience || "client") === "research").length;
+    return (feedMeta.get(item.source)?.audience || "client") !== "research" || researchCount < researchLimit;
+  };
+  const take = (item) => { selected.push(item); usedSources.add(item.source); };
 
-  const onlyRemainingSource = new Set(remaining.map((item) => item.source));
-  if (onlyRemainingSource.size === 1 && selected.at(-1)?.source === remaining[0]?.source) {
-    const sourceIndex = selected.findIndex((item) => item.source === remaining[0].source);
-    if (sourceIndex >= 0) selected.splice(Math.max(0, selected.length - 2), 0, ...selected.splice(sourceIndex, 1));
-  }
+  // First fill the visible feed with the strongest client-facing update from each source.
+  ranked.filter((item) => (feedMeta.get(item.source)?.audience || "client") !== "research")
+    .forEach((item) => { if (selected.length < limit && !usedSources.has(item.source)) take(item); });
+  // Research stays visible as a useful lower-priority perspective, but cannot dominate top five.
+  ranked.filter((item) => (feedMeta.get(item.source)?.audience || "client") === "research")
+    .forEach((item) => { if (selected.length < limit && !usedSources.has(item.source) && canSelect(item)) take(item); });
 
-  while (selected.length < limit && remaining.length) {
+  for (const item of ranked) {
+    if (selected.length >= limit) break;
+    if (selected.includes(item) || !canSelect(item)) continue;
     const lastSource = selected.at(-1)?.source;
-    const nextIndex = remaining.findIndex((item) => item.source !== lastSource);
-    selected.push(...remaining.splice(nextIndex >= 0 ? nextIndex : 0, 1));
+    if (item.source === lastSource && ranked.some((candidate) => !selected.includes(candidate) && candidate.source !== lastSource && canSelect(candidate))) continue;
+    take(item);
   }
   return selected.slice(0, limit);
 }
