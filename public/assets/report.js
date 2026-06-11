@@ -124,6 +124,24 @@ function shouldRenderUsersBlock(report) {
   return !!report?.users;
 }
 
+
+function heroKpisHtml(report) {
+  const selected = report?.hero?.kpis;
+  if (Array.isArray(selected) && selected.length) return selected.map((item) => metricHtml(item.label, item.metric)).join("");
+  return [
+    ["Цена", report?.market?.price], ["Рыночная капитализация", report?.market?.market_cap],
+    ["FDV", report?.market?.fdv], ["Объем 24ч", report?.market?.volume_24h],
+    ["TVL", report?.capital?.metrics?.tvl], ["Stablecoins Mcap", report?.capital?.metrics?.stablecoins_mcap],
+  ].map(([label, metric]) => metricHtml(label, metric)).join("");
+}
+
+function finalVerdictHtml(report) {
+  if (!shouldRenderSection(report, "final_summary")) return "";
+  const verdict = report?.final_verdict;
+  if (!Array.isArray(verdict?.paragraphs) || !verdict.paragraphs.length) return "";
+  return `<section class="panel final-verdict"><div class="section-title">${escapeHtml(verdict.title || "Финальный вывод")}</div>${verdict.subtitle ? `<div class="section-sub">${escapeHtml(verdict.subtitle)}</div>` : ""}${verdict.paragraphs.map((paragraph) => `<p class="lead compact-lead">${escapeHtml(paragraph)}</p>`).join("")}</section>`;
+}
+
 function usersSectionHtml(report) {
   if (!shouldRenderSection(report, "users_and_activity") || !shouldRenderUsersBlock(report)) return "";
   const users = report?.users || {};
@@ -464,16 +482,17 @@ async function loadReport() {
     const tvSymbolMap = { eth:"BINANCE:ETHUSDT", sol:"BINANCE:SOLUSDT", link:"BINANCE:LINKUSDT" };
     app.innerHTML = `<div class="layout"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="project-main">${escapeHtml(data.meta.project_name)}</div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
       <section class="panel hero-overview"><div class="hero-heading">${ethereumIconHtml(data.meta.ticker)}<div class="hero-identity"><div class="hero-title-row"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><span class="hero-ticker">${escapeHtml(data.meta.ticker)}</span></div>${data.hero.subtitle && data.hero.subtitle !== data.meta.ticker ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}</div></div><p class="lead hero-lead">${escapeHtml(data.hero.lead)}</p>
-      <div class="hero-grid hero-kpis">${metricHtml("Цена", data.market.price)}${metricHtml("Рыночная капитализация", data.market.market_cap)}${metricHtml("FDV", data.market.fdv)}${metricHtml("Объем 24ч", data.market.volume_24h)}${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div>
+      <div class="hero-grid hero-kpis">${heroKpisHtml(data)}</div>
       <div class="three-col hero-thesis top-gap"><div class="list-item"><strong>Главная сила</strong><span>${escapeHtml(data.hero.main_strength || "—")}</span></div><div class="list-item"><strong>Главный риск</strong><span>${escapeHtml(data.hero.main_risk || "—")}</span></div><div class="list-item"><strong>Общий статус</strong><span>${escapeHtml(data.hero.status_text || "—")}</span></div></div></section>
       ${tradingViewCard()}
       ${technicalBiasHtml(data.technical_bias)}
       ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel"><div class="section-title">Executive Summary</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
-      ${shouldRenderSection(data, "tokenomics") ? `<section class="panel section-flow tokenomics-section"><div class="section-title">Токеномика</div><div class="section-sub">Баланс предложения, выпуска и сжигания ETH</div><div class="hero-grid">${metricHtml("Market Cap", data.tokenomics.metrics.market_cap)}${metricHtml("FDV", data.tokenomics.metrics.fdv)}${metricHtml("Circulating Supply", data.tokenomics.metrics.circulating_supply)}${metricHtml("Total Supply", data.tokenomics.metrics.total_supply)}${metricHtml("Max Supply", data.tokenomics.metrics.max_supply)}${optionalMetricHtml("Net Issuance", data.tokenomics.metrics.net_issuance)}${optionalMetricHtml("Burn Mechanism", data.tokenomics.metrics.burn_mechanism)}${optionalMetricHtml("Market Buyback", data.tokenomics.metrics.market_buyback)}</div>${insightHtml(data.tokenomics)}</section>` : ""}
+      ${shouldRenderSection(data, "tokenomics") ? `<section class="panel section-flow tokenomics-section"><div class="section-title">Токеномика</div><div class="section-sub">Баланс предложения, выпуска и механик токена ${escapeHtml(data.meta.ticker)}</div><div class="hero-grid">${metricHtml("Market Cap", data.tokenomics.metrics.market_cap)}${metricHtml("FDV", data.tokenomics.metrics.fdv)}${metricHtml("Circulating Supply", data.tokenomics.metrics.circulating_supply)}${metricHtml("Total Supply", data.tokenomics.metrics.total_supply)}${metricHtml("Max Supply", data.tokenomics.metrics.max_supply)}${optionalMetricHtml("Net Issuance", data.tokenomics.metrics.net_issuance)}${optionalMetricHtml("Burn Mechanism", data.tokenomics.metrics.burn_mechanism)}${optionalMetricHtml("Market Buyback", data.tokenomics.metrics.market_buyback)}</div>${insightHtml(data.tokenomics)}</section>` : ""}
       ${shouldRenderSection(data, "financials") ? `<section class="panel section-flow finance-section"><div class="section-title">Финансы</div>${(data.financials.text || []).slice(0, 2).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid finance-kpis">${metricHtml("Chain Fees 24h", data.financials.metrics.chain_fees_24h)}${metricHtml("DEX Volume 24h", data.financials.metrics.dex_volume_24h)}${metricHtml("Объем 24ч / капитализация", data.financials.metrics.volume_market_cap)}</div><div class="financial-fee-charts">${compactChartHtml("appFeesChart", "App Fees", "Комиссии приложений внутри экосистемы")}${compactChartHtml("chainFeesChart", "Chain Fees", "Сетевые комиссии базового слоя")}</div><div class="chart-stack">${compactChartHtml("dexChart", "DEX-оборот", "On-chain торговая активность")}</div>${insightHtml(data.financials)}</section>` : ""}
       ${shouldRenderSection(data, "tvl_and_capital") ? `<section class="panel section-flow capital-section"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).slice(0, 1).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid capital-kpis">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}${metricHtml("RWA Active Mcap", data.capital.metrics.rwa_active_mcap)}</div><div class="capital-charts">${compactChartHtml("tvlChart", "TVL", "Капитал в DeFi-слое")}${compactChartHtml("stableChart", "Stablecoins", "Расчетная ликвидность сети")}</div>${insightHtml(data.capital)}</section>` : ""}
       ${usersSectionHtml(data)}
       ${shouldRenderSection(data, "risks") || shouldRenderSection(data, "final_summary") ? `<section class="panel"><div class="section-title">Резюме</div><div class="columns-4 profile-grid"><div><h3>Сильные стороны</h3>${listHtml(data.profile.strengths)}</div><div><h3>Слабые стороны</h3>${listHtml(data.profile.weaknesses)}</div><div><h3>Риски</h3>${listHtml(data.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(data.profile.watch)}</div></div></section>` : ""}
+      ${finalVerdictHtml(data)}
       ${newsHtml(data.news, data)}
     </main></div>`;
 

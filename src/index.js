@@ -5,6 +5,7 @@ import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
 import { fetchProjectNews } from "./adapters/coingecko.js";
 import { formatCompactNumber, formatMoney } from "./lib/formatters.js";
+import { applyProfileAwareSemantics } from "./lib/profile-semantics.js";
 
 export default {
   async fetch(request, env) {
@@ -33,6 +34,7 @@ async function handleHybridReportApi(request, env, url) {
   try {
     const live = await fetchLiveMetrics(project);
     mergeLiveMetrics(report, live);
+    applyProfileAwareSemantics(report, project, { preserveCurated:Boolean(project.reportOptions?.preserveCuratedSemantics) });
     applySectionSelection(report, project);
     applyBlockRenderingRules(report, project, live);
 
@@ -56,6 +58,7 @@ async function handleHybridReportApi(request, env, url) {
     report.meta.data_status = "hybrid-fallback";
     report.meta.live_error = error instanceof Error ? error.message : String(error);
     report.meta.generated_at = new Date().toISOString();
+    applyProfileAwareSemantics(report, project, { preserveCurated:Boolean(project.reportOptions?.preserveCuratedSemantics) });
     applySectionSelection(report, project);
     applyBlockRenderingRules(report, project, null);
     return json(report, 200, { cacheControl: resolveReportCacheControl(report.meta.data_status) });
