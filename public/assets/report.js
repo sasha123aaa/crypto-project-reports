@@ -56,6 +56,7 @@ function injectEnhancementStyles() {
     .metric-status-line{font-size:12px;color:#d5def5;margin-top:10px}
     .status-chip{display:inline-flex;align-items:center;justify-content:center;min-width:68px;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.08em;border:1px solid var(--line);background:rgba(255,255,255,.04);color:#dce6ff}
     .status-chip.live{background:rgba(84,211,138,.14);color:#8cf0b4;border-color:rgba(84,211,138,.35)}
+    .status-chip.static{background:rgba(154,117,255,.14);color:#cdbaff;border-color:rgba(154,117,255,.35)}
     .status-chip.manual{background:rgba(180,188,205,.10);color:#d9e1f2;border-color:rgba(180,188,205,.22)}
     .status-chip.calculated{background:rgba(86,145,255,.14);color:#a8c7ff;border-color:rgba(86,145,255,.35)}
     .status-chip.partial{background:rgba(255,196,86,.14);color:#ffd88b;border-color:rgba(255,196,86,.35)}
@@ -89,8 +90,16 @@ function escapeHtml(value) {
 }
 
 function statusChip(status = "unknown") {
-  const labelMap = { live:"LIVE", manual:"MANUAL", calculated:"CALC", partial:"PARTIAL", unavailable:"N/A", unknown:"UNKNOWN" };
-  return `<span class="status-chip ${escapeHtml(status)}">${labelMap[status] || status.toUpperCase()}</span>`;
+  const labelMap = { live:"LIVE", static:"STATIC", manual:"MANUAL", calculated:"CALC", partial:"PARTIAL", unavailable:"N/A", unknown:"UNKNOWN" };
+  const titleMap = {
+    live:"Получено из актуального внешнего источника.",
+    static:"Структурная характеристика протокола. Не требует регулярного обновления.",
+    calculated:"Рассчитано автоматически на основе актуальных данных.",
+    partial:"Доступна только часть актуальных данных.",
+    unavailable:"Данные временно недоступны.",
+    manual:"Заполнено вручную и требует периодической проверки.",
+  };
+  return `<span class="status-chip ${escapeHtml(status)}" title="${escapeHtml(titleMap[status] || "Статус данных")}">${labelMap[status] || status.toUpperCase()}</span>`;
 }
 
 function hasNoLiveUsers(metrics) {
@@ -138,8 +147,8 @@ function compactChartHtml(id, caption) {
 }
 function newsHtml(news = {}) {
   const items = Array.isArray(news.items) ? news.items : [];
-  const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span>${escapeHtml(formatShortDate(item.date))}</span><span>${escapeHtml(item.source || news.source || "Источник")}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">Свежие новости не подтянулись</div>`;
-  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Свежие события по проекту и экосистеме</div>${body}</section>`;
+  const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span>${escapeHtml(formatShortDate(item.date))}</span><span>${escapeHtml(item.source || news.source || "Источник")}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">Свежие новости временно недоступны</div>`;
+  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Показываются 5 самых свежих событий за последние 30 дней</div>${body}</section>`;
 }
 
 function listHtml(items = []) {

@@ -109,7 +109,7 @@ async function fetchLiveMetrics(project) {
   const usersData = usersRes.status === "fulfilled" ? usersRes.value : null;
   const technicalBias = technicalBiasRes.status === "fulfilled" ? technicalBiasRes.value : null;
   const rwa = rwaRes.status === "fulfilled" ? rwaRes.value : null;
-  const news = newsRes.status === "fulfilled" ? newsRes.value : { items: [], source: "Ethereum Foundation Blog", updated_at: new Date().toISOString() };
+  const news = newsRes.status === "fulfilled" ? newsRes.value : { status:"unavailable", items:[], source:"Configured news feeds", source_summary:"All configured news sources are temporarily unavailable", updated_at:new Date().toISOString(), debug:{ sources:[], error:parsePromiseRejection(newsRes.reason) } };
 
   const chainNow = findChainData(chains, project.defillamaChain);
   const stableNow = findStableChainData(stableChains, project.stablecoinChain);
@@ -172,7 +172,7 @@ async function fetchLiveMetrics(project) {
       users: usersRes.status,
       technicalBias: technicalBiasRes.status,
       rwa: rwaRes.status,
-      news: newsRes.status,
+      news: news?.debug || { status: newsRes.status },
     },
     debugReasons: {
       cgMarket: cgMarketError,
@@ -293,7 +293,7 @@ function mergeLiveMetrics(report, live) {
   if (live.charts.dexHistory?.length) report.charts.dex_history = live.charts.dexHistory;
   mergeUsersMetrics(report, live.users);
   if (live.technicalBias) report.technical_bias = live.technicalBias;
-  report.news = { ...(live.news || {}), status: live.news?.items?.length ? "live" : "unavailable" };
+  report.news = live.news || { status:"unavailable", items:[], source_summary:"All configured news sources are temporarily unavailable", updated_at:new Date().toISOString(), debug:{ sources:[] } };
   report.financials.conclusion = buildFinancialSummary(live);
   report.capital.conclusion = buildCapitalSummary(live);
   sanitizeUsersBlock(report, live.users);

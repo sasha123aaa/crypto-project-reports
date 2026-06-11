@@ -14,39 +14,95 @@ export async function fetchCoinGeckoChart(coingeckoId,days=365){
 }
 
 export async function fetchProjectNews(project, { limit = 5, days = 30 } = {}) {
-  const feeds = Array.isArray(project?.newsFeeds) ? project.newsFeeds : [];
-  if (!feeds.length) throw new Error("News feeds are not configured");
+  const feeds = (Array.isArray(project?.newsFeeds) ? project.newsFeeds : [])
+    .map((feed, index) => ({ ...feed, priority: Number.isFinite(feed?.priority) ? feed.priority : index + 1 }))
+    .sort((a, b) => a.priority - b.priority);
+  const updated_at = new Date().toISOString();
+  if (!feeds.length) return unavailableNews("News feeds are not configured", updated_at, []);
+
   const settled = await Promise.allSettled(feeds.map(fetchNewsFeed));
+  const debug = settled.map((result, index) => ({
+    source: feeds[index]?.source || `News source ${index + 1}`,
+    ok: result.status === "fulfilled",
+    status: result.status === "fulfilled" ? "ok" : "failed",
+    item_count: result.status === "fulfilled" ? result.value.length : 0,
+    ...(result.status === "rejected" ? { error: errorMessage(result.reason) } : {}),
+  }));
+  debug.filter((entry) => !entry.ok).forEach((entry) => console.debug(`[news] ${entry.source} failed: ${entry.error}`));
+
   const cutoff = Date.now() - days * 86400000;
-  const seen = new Set();
-  const items = settled.flatMap((result) => result.status === "fulfilled" ? result.value : [])
-    .filter((item) => Number.isFinite(Date.parse(item.date)) && Date.parse(item.date) >= cutoff)
-    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+  const candidates = settled.flatMap((result) => result.status === "fulfilled" ? result.value : [])
     .filter((item) => {
-      const key = `${item.url || ""}|${item.title.toLowerCase().replace(/\s+/g, " ")}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, limit);
-  if (!items.length && settled.every((result) => result.status === "rejected")) throw new Error("All news feeds are unavailable");
-  return { items, source: feeds.map((feed) => feed.source).filter(Boolean).join(", "), updated_at: new Date().toISOString() };
+      const timestamp = Date.parse(item.date);
+      return Number.isFinite(timestamp) && timestamp >= cutoff && timestamp <= Date.now() + 86400000;
+    });
+  const items = deduplicateNews(candidates).sort(byNewest).slice(0, limit);
+  const successfulSources = debug.filter((entry) => entry.ok).map((entry) => entry.source);
+  const source_summary = successfulSources.length
+    ? `${successfulSources.join(", ")} · ${items.length} news items from the last ${days} days`
+    : "All configured news sources are temporarily unavailable";
+
+  return {
+    status: items.length ? "live" : (successfulSources.length ? "partial" : "unavailable"),
+    items,
+    source: successfulSources.join(", ") || "Configured news feeds",
+    source_summary,
+    updated_at,
+    debug: { sources: debug },
+  };
 }
 
-async function fetchNewsFeed(feed) {
+export async function fetchNewsFeed(feed) {
   const res = await fetch(feed.url, { headers: { accept: "application/rss+xml,application/atom+xml,text/xml,*/*", "user-agent": HEADERS["user-agent"] } });
   if (!res.ok) throw new Error(`${feed.source || "RSS"} news error: ${res.status}`);
   const xml = await res.text();
-  return [...xml.matchAll(/<(item|entry)\b[\s\S]*?<\/\1>/gi)].map((match) => parseFeedItem(match[0], feed.source || "Official feed")).filter(Boolean);
+  if (!xml.trim()) throw new Error(`${feed.source || "RSS"} returned an empty feed`);
+  return [...xml.matchAll(/<(?:[\w-]+:)?(item|entry)\b[\s\S]*?<\/(?:[\w-]+:)?\1>/gi)]
+    .map((match) => parseFeedItem(match[0], feed.source || "Official feed"))
+    .filter(Boolean);
 }
 
-function parseFeedItem(xml, source) {
+export function parseFeedItem(xml, source) {
   const title = cleanXml(readTag(xml, "title"));
-  const date = cleanXml(readTag(xml, "pubDate") || readTag(xml, "published") || readTag(xml, "updated"));
-  const url = cleanXml(readTag(xml, "link")) || cleanXml(xml.match(/<link[^>]+href=["']([^"']+)/i)?.[1]);
-  const snippet = cleanXml(readTag(xml, "description") || readTag(xml, "summary") || readTag(xml, "content")).slice(0, 220);
-  if (!title || !date || !url) return null;
-  return { date: new Date(date).toISOString(), title, source, url, snippet };
+  const rawDate = cleanXml(readTag(xml, "pubDate") || readTag(xml, "published") || readTag(xml, "updated") || readTag(xml, "date"));
+  const timestamp = Date.parse(rawDate);
+  const url = cleanXml(readTag(xml, "link")) || cleanXml(xml.match(/<link\b[^>]*\bhref=["']([^"']+)/i)?.[1]) || cleanXml(readTag(xml, "guid"));
+  const snippet = cleanXml(readTag(xml, "description") || readTag(xml, "summary") || readTag(xml, "content:encoded") || readTag(xml, "content")).slice(0, 220);
+  if (!title || !Number.isFinite(timestamp) || !url) return null;
+  return { title, url, date: new Date(timestamp).toISOString(), source, snippet };
 }
-function readTag(xml, tag) { return xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"))?.[1] || ""; }
-function cleanXml(value) { return String(value || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, " ").trim(); }
+
+export function deduplicateNews(items) {
+  const selected = [];
+  for (const item of [...items].sort(byQuality)) {
+    const duplicate = selected.some((existing) => isDuplicateNews(existing, item));
+    if (!duplicate) selected.push(item);
+  }
+  return selected;
+}
+
+function isDuplicateNews(a, b) {
+  if (normalizeUrl(a.url) && normalizeUrl(a.url) === normalizeUrl(b.url)) return true;
+  const titleA = normalizeTitle(a.title);
+  const titleB = normalizeTitle(b.title);
+  if (titleA === titleB) return true;
+  const closeDates = Math.abs(Date.parse(a.date) - Date.parse(b.date)) <= 3 * 86400000;
+  return closeDates && titleSimilarity(titleA, titleB) >= 0.82;
+}
+function titleSimilarity(a, b) {
+  const left = new Set(a.split(" ").filter(Boolean));
+  const right = new Set(b.split(" ").filter(Boolean));
+  if (!left.size || !right.size) return 0;
+  const common = [...left].filter((word) => right.has(word)).length;
+  return common / Math.max(left.size, right.size);
+}
+function byQuality(a, b) { return qualityScore(b) - qualityScore(a) || byNewest(a, b); }
+function qualityScore(item) { return Math.min(String(item.title || "").length, 120) + (item.snippet ? 80 : 0) + (Number.isFinite(Date.parse(item.date)) ? 40 : 0); }
+function byNewest(a, b) { return Date.parse(b.date) - Date.parse(a.date); }
+function normalizeTitle(value) { return cleanXml(value).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim(); }
+function normalizeUrl(value) { try { const url = new URL(value); url.hash = ""; ["utm_source","utm_medium","utm_campaign","utm_term","utm_content"].forEach((key) => url.searchParams.delete(key)); return url.toString().replace(/\/$/, ""); } catch { return String(value || "").replace(/\/$/, ""); } }
+function unavailableNews(error, updated_at, sources) { return { status:"unavailable", items:[], source:"Configured news feeds", source_summary:"All configured news sources are temporarily unavailable", updated_at, debug:{ sources, error } }; }
+function errorMessage(error) { return error instanceof Error ? error.message : String(error || "Unknown error"); }
+function readTag(xml, tag) { const escaped = tag.replace(":", "\\:"); return xml.match(new RegExp(`<(?:[\\w-]+:)?${escaped}[^>]*>([\\s\\S]*?)<\\/(?:[\\w-]+:)?${escaped}>`, "i"))?.[1] || ""; }
+function cleanXml(value) { return decodeEntities(String(value || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim(); }
+function decodeEntities(value) { return value.replace(/&#(x?[0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code.replace(/^x/i, ""), /^x/i.test(code) ? 16 : 10))).replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&apos;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/&nbsp;/g, " "); }

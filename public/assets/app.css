@@ -239,6 +239,12 @@ h1{font-size:54px;line-height:1;letter-spacing:-.03em;margin:12px 0}
   border-color:rgba(84,211,138,.35);
 }
 
+.status-chip.static{
+  background:rgba(154,117,255,.14);
+  color:#cdbaff;
+  border-color:rgba(154,117,255,.35);
+}
+
 .status-chip.manual{
   background:rgba(180,188,205,.10);
   color:#d9e1f2;
