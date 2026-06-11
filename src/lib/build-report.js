@@ -7,6 +7,7 @@ import { fetchDefiLlamaChains, fetchDefiLlamaTVLHistory, fetchStablecoinHistory,
 import { getTechnicalBias } from "../adapters/bybit.js";
 import { getProjectProfile, getSectionSelection } from "../config/projects.js";
 import { applySectionSelection, isSectionSelected } from "./section-selection.js";
+import { applyProfileAwareSemantics } from "./profile-semantics.js";
 
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item)=>String(item.name).toLowerCase()===String(chainName).toLowerCase()) : null; }
 function findStableChainData(chains, chainKey){ return Array.isArray(chains) ? chains.find((item)=>String(item.gecko_id || item.name || "").toLowerCase()===String(chainKey).toLowerCase()) : null; }
@@ -88,6 +89,7 @@ export async function buildReport(project){
     charts:{ price_history:chart?.prices || [], tvl_history:Array.isArray(tvlRows)?tvlRows:[], stablecoins_history:Array.isArray(stableRows)?stableRows:[], app_fees_history:appFeesData?.totalDataChart || [], chain_fees_history:chainFeesData?.totalDataChart || [], dex_history:dexData?.totalDataChart || [] },
     sources:[{name:"CoinGecko", used_for:["price","market cap","fdv","volume"]},{name:"DefiLlama", used_for:["tvl","stablecoins","fees","dex volume"]},{name:"Bybit", used_for:["technical bias"]}]
   };
+  applyProfileAwareSemantics(report, project, { preserveCurated:Boolean(project.reportOptions?.preserveCuratedSemantics) });
   applySectionSelection(report, project);
   return report;
 }

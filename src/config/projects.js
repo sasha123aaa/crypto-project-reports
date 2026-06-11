@@ -35,6 +35,10 @@ export const CAPABILITY_DEFAULTS = Object.freeze({
   hasUnlocks: false,
   hasWhaleData: false,
   hasNarrativeNews: false,
+  hasLiquidityData: false,
+  hasNarrativeMomentum: false,
+  hasTokenUtilityData: false,
+  hasAdoptionData: false,
 });
 
 // Section rules are the shared contract between project profiles, report builders, and rendering.
@@ -118,7 +122,7 @@ export const PROJECTS = {
       { url: "https://weekinethereumnews.com/feed/", source: "Week in Ethereum News", priority: 2, audience: "ecosystem" },
       { url: "https://medium.com/feed/ethereum-cat-herders", source: "Ethereum Cat Herders", priority: 3, audience: "ecosystem" },
     ],
-    reportOptions: { hideExecutiveSummary: true, compactTokenomics: true, integratedFinancials: true },
+    reportOptions: { hideExecutiveSummary: true, compactTokenomics: true, integratedFinancials: true, preserveCuratedSemantics: true },
     usersSource: {
       type: "none",
       chain: "Ethereum",
@@ -173,6 +177,30 @@ export const PROJECTS = {
     tags: ["L1", "DeFi", "Smart Contracts"]
   }
 };
+
+// Non-routable examples document category-aware defaults for the next automation stage.
+export const PROJECT_PROFILE_EXAMPLES = Object.freeze({
+  utility: {
+    slug: "example-utility",
+    name: "Example Utility Network",
+    ticker: "UTIL",
+    projectType: "utility",
+    projectProfile: {
+      category: PROJECT_CATEGORIES.UTILITY,
+      analysisProfile: ANALYSIS_PROFILES.UTILITY_TOKEN,
+      capabilities: {
+        hasTokenomics: true,
+        hasDexVolume: true,
+        hasLiquidityData: true,
+        hasTokenUtilityData: true,
+        hasAdoptionData: true,
+        hasWhaleData: true,
+        hasNarrativeNews: true,
+      },
+      preferredSections: ["market", "tokenomics", "liquidity_and_trading", "narrative_and_news", "risks", "final_summary"],
+    },
+  },
+});
 
 export function getProjectBySlug(slug) {
   return PROJECTS[slug?.toLowerCase()] || null;
