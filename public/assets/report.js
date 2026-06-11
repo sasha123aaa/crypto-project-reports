@@ -111,6 +111,12 @@ function hasNoLiveUsers(metrics) {
   });
 }
 
+function shouldRenderSection(report, section) {
+  const status = report?.meta?.section_selection?.sections?.[section]?.status;
+  if (!status) return true;
+  return status === "enabled" || status === "partial";
+}
+
 function shouldRenderUsersBlock(report) {
   const explicitRule = report?.meta?.features?.usersBlock;
   if (explicitRule === true) return true;
@@ -119,7 +125,7 @@ function shouldRenderUsersBlock(report) {
 }
 
 function usersSectionHtml(report) {
-  if (!shouldRenderUsersBlock(report)) return "";
+  if (!shouldRenderSection(report, "users_and_activity") || !shouldRenderUsersBlock(report)) return "";
   const users = report?.users || {};
   const metrics = users.metrics || {};
   const text = Array.isArray(users.text) ? users.text : [];
@@ -190,7 +196,8 @@ function ethereumIconHtml(ticker) {
   if (String(ticker).toUpperCase() !== "ETH") return `<span class="hero-token-fallback">${escapeHtml(ticker || "")}</span>`;
   return `<span class="eth-icon" aria-label="Ethereum"><svg viewBox="0 0 256 417" role="img" aria-hidden="true"><path class="eth-top-left" d="M127.9 0L125.1 9.5v274.2l2.8 2.8 127.9-75.6z"/><path class="eth-top-right" d="M127.9 0L0 210.9l127.9 75.6V154.1z"/><path class="eth-bottom-left" d="M127.9 310.7l-1.6 1.9v98.2l1.6 4.7 128-180.3z"/><path class="eth-bottom-right" d="M127.9 415.5V310.7L0 235.2z"/><path class="eth-center-left" d="M127.9 286.5l127.9-75.6-127.9-56.8z"/><path class="eth-center-right" d="M0 210.9l127.9 75.6V154.1z"/></svg></span>`;
 }
-function newsHtml(news = {}) {
+function newsHtml(news = {}, report = {}) {
+  if (!shouldRenderSection(report, "narrative_and_news")) return "";
   const items = Array.isArray(news.items) ? news.items : [];
   const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span class="news-source">${escapeHtml(item.source || news.source || "Источник")}</span><span class="news-date">${escapeHtml(formatShortDate(item.date))}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">Свежие новости временно недоступны</div>`;
   const freshness = news.updated_at ? `Обновлено ${new Date(news.updated_at).toLocaleString("ru-RU")}` : "Live-лента";
@@ -462,12 +469,12 @@ async function loadReport() {
       ${tradingViewCard()}
       ${technicalBiasHtml(data.technical_bias)}
       ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel"><div class="section-title">Executive Summary</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
-      <section class="panel section-flow tokenomics-section"><div class="section-title">Токеномика</div><div class="section-sub">Баланс предложения, выпуска и сжигания ETH</div><div class="hero-grid">${metricHtml("Market Cap", data.tokenomics.metrics.market_cap)}${metricHtml("FDV", data.tokenomics.metrics.fdv)}${metricHtml("Circulating Supply", data.tokenomics.metrics.circulating_supply)}${metricHtml("Total Supply", data.tokenomics.metrics.total_supply)}${metricHtml("Max Supply", data.tokenomics.metrics.max_supply)}${optionalMetricHtml("Net Issuance", data.tokenomics.metrics.net_issuance)}${optionalMetricHtml("Burn Mechanism", data.tokenomics.metrics.burn_mechanism)}${optionalMetricHtml("Market Buyback", data.tokenomics.metrics.market_buyback)}</div>${insightHtml(data.tokenomics)}</section>
-      <section class="panel section-flow finance-section"><div class="section-title">Финансы</div>${(data.financials.text || []).slice(0, 2).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid finance-kpis">${metricHtml("Chain Fees 24h", data.financials.metrics.chain_fees_24h)}${metricHtml("DEX Volume 24h", data.financials.metrics.dex_volume_24h)}${metricHtml("Объем 24ч / капитализация", data.financials.metrics.volume_market_cap)}</div><div class="financial-fee-charts">${compactChartHtml("appFeesChart", "App Fees", "Комиссии приложений внутри экосистемы")}${compactChartHtml("chainFeesChart", "Chain Fees", "Сетевые комиссии базового слоя")}</div><div class="chart-stack">${compactChartHtml("dexChart", "DEX-оборот", "On-chain торговая активность")}</div>${insightHtml(data.financials)}</section>
-      <section class="panel section-flow capital-section"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).slice(0, 1).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid capital-kpis">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}${metricHtml("RWA Active Mcap", data.capital.metrics.rwa_active_mcap)}</div><div class="capital-charts">${compactChartHtml("tvlChart", "TVL", "Капитал в DeFi-слое")}${compactChartHtml("stableChart", "Stablecoins", "Расчетная ликвидность сети")}</div>${insightHtml(data.capital)}</section>
+      ${shouldRenderSection(data, "tokenomics") ? `<section class="panel section-flow tokenomics-section"><div class="section-title">Токеномика</div><div class="section-sub">Баланс предложения, выпуска и сжигания ETH</div><div class="hero-grid">${metricHtml("Market Cap", data.tokenomics.metrics.market_cap)}${metricHtml("FDV", data.tokenomics.metrics.fdv)}${metricHtml("Circulating Supply", data.tokenomics.metrics.circulating_supply)}${metricHtml("Total Supply", data.tokenomics.metrics.total_supply)}${metricHtml("Max Supply", data.tokenomics.metrics.max_supply)}${optionalMetricHtml("Net Issuance", data.tokenomics.metrics.net_issuance)}${optionalMetricHtml("Burn Mechanism", data.tokenomics.metrics.burn_mechanism)}${optionalMetricHtml("Market Buyback", data.tokenomics.metrics.market_buyback)}</div>${insightHtml(data.tokenomics)}</section>` : ""}
+      ${shouldRenderSection(data, "financials") ? `<section class="panel section-flow finance-section"><div class="section-title">Финансы</div>${(data.financials.text || []).slice(0, 2).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid finance-kpis">${metricHtml("Chain Fees 24h", data.financials.metrics.chain_fees_24h)}${metricHtml("DEX Volume 24h", data.financials.metrics.dex_volume_24h)}${metricHtml("Объем 24ч / капитализация", data.financials.metrics.volume_market_cap)}</div><div class="financial-fee-charts">${compactChartHtml("appFeesChart", "App Fees", "Комиссии приложений внутри экосистемы")}${compactChartHtml("chainFeesChart", "Chain Fees", "Сетевые комиссии базового слоя")}</div><div class="chart-stack">${compactChartHtml("dexChart", "DEX-оборот", "On-chain торговая активность")}</div>${insightHtml(data.financials)}</section>` : ""}
+      ${shouldRenderSection(data, "tvl_and_capital") ? `<section class="panel section-flow capital-section"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).slice(0, 1).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid capital-kpis">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}${metricHtml("RWA Active Mcap", data.capital.metrics.rwa_active_mcap)}</div><div class="capital-charts">${compactChartHtml("tvlChart", "TVL", "Капитал в DeFi-слое")}${compactChartHtml("stableChart", "Stablecoins", "Расчетная ликвидность сети")}</div>${insightHtml(data.capital)}</section>` : ""}
       ${usersSectionHtml(data)}
-      <section class="panel"><div class="section-title">Резюме</div><div class="columns-4 profile-grid"><div><h3>Сильные стороны</h3>${listHtml(data.profile.strengths)}</div><div><h3>Слабые стороны</h3>${listHtml(data.profile.weaknesses)}</div><div><h3>Риски</h3>${listHtml(data.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(data.profile.watch)}</div></div></section>
-      ${newsHtml(data.news)}
+      ${shouldRenderSection(data, "risks") || shouldRenderSection(data, "final_summary") ? `<section class="panel"><div class="section-title">Резюме</div><div class="columns-4 profile-grid"><div><h3>Сильные стороны</h3>${listHtml(data.profile.strengths)}</div><div><h3>Слабые стороны</h3>${listHtml(data.profile.weaknesses)}</div><div><h3>Риски</h3>${listHtml(data.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(data.profile.watch)}</div></div></section>` : ""}
+      ${newsHtml(data.news, data)}
     </main></div>`;
 
     const tvlSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.tvl_history, "totalLiquidityUSD"), { trimLeadingZeroes:true });

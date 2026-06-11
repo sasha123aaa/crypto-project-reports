@@ -37,8 +37,7 @@ export const CAPABILITY_DEFAULTS = Object.freeze({
   hasNarrativeNews: false,
 });
 
-// This is a declarative foundation for later rendering changes. Stage 1 does not
-// hide or reorder existing report blocks based on these rules.
+// Section rules are the shared contract between project profiles, report builders, and rendering.
 export const SECTION_RULES = Object.freeze({
   market: { requiredAny: [], reportBlocks: ["market", "technical_bias"] },
   tokenomics: { requiredAny: ["hasTokenomics"], reportBlocks: ["tokenomics"] },
@@ -46,12 +45,13 @@ export const SECTION_RULES = Object.freeze({
   stablecoins: { requiredAny: ["hasStablecoins"], reportBlocks: ["capital"] },
   rwa: { requiredAny: ["hasRwa"], reportBlocks: ["capital"] },
   financials: { requiredAny: ["hasProtocolFees", "hasChainFees"], reportBlocks: ["financials"] },
-  dex_activity: { requiredAny: ["hasDexVolume"], reportBlocks: ["financials", "liquidity"] },
+  liquidity_and_trading: { requiredAny: ["hasDexVolume"], reportBlocks: ["liquidity"] },
   users_and_activity: { requiredAny: ["hasUsersData"], reportBlocks: ["users"] },
   unlocks: { requiredAny: ["hasUnlocks"], reportBlocks: ["tokenomics"] },
   whale_activity: { requiredAny: ["hasWhaleData"], reportBlocks: ["liquidity"] },
   narrative_and_news: { requiredAny: ["hasNarrativeNews"], reportBlocks: ["narrative"] },
-  risks_and_verdict: { requiredAny: [], reportBlocks: ["risks", "watchlist", "final_verdict"] },
+  risks: { requiredAny: [], reportBlocks: ["risks", "watchlist"] },
+  final_summary: { requiredAny: [], reportBlocks: ["profile", "final_verdict"] },
 });
 
 // Keep this layer limited to stable, publisher-backed public feeds.
@@ -95,9 +95,10 @@ export const PROJECTS = {
         "tokenomics",
         "stablecoins",
         "rwa",
-        "dex_activity",
+        "liquidity_and_trading",
         "narrative_and_news",
-        "risks_and_verdict",
+        "risks",
+        "final_summary",
       ],
     },
     coingeckoId: "ethereum",
@@ -142,7 +143,7 @@ export const PROJECTS = {
         hasProtocolFees: true,
         hasChainFees: true,
         hasDexVolume: true,
-        hasUsersData: true,
+        hasUsersData: false,
         hasTokenomics: true,
         hasNarrativeNews: true,
       },
@@ -153,9 +154,10 @@ export const PROJECTS = {
         "users_and_activity",
         "tokenomics",
         "stablecoins",
-        "dex_activity",
+        "liquidity_and_trading",
         "narrative_and_news",
-        "risks_and_verdict",
+        "risks",
+        "final_summary",
       ],
     },
     coingeckoId: "solana",
@@ -197,6 +199,61 @@ export function getEligibleSections(capabilities = {}) {
   return Object.entries(SECTION_RULES)
     .filter(([, rule]) => !rule.requiredAny.length || rule.requiredAny.some((capability) => resolvedCapabilities[capability]))
     .map(([section]) => section);
+}
+
+export const SECTION_VISIBILITY = Object.freeze({
+  ENABLED: "enabled",
+  DISABLED_BY_PROFILE: "disabled_by_profile",
+  DISABLED_BY_MISSING_DATA: "disabled_by_missing_data",
+  PARTIAL: "partial",
+});
+
+export function getSectionSelection(project, dataAvailability = {}) {
+  const profile = getProjectProfile(project);
+  const preferred = new Set(profile.preferredSections);
+  const sections = {};
+
+  for (const [section, rule] of Object.entries(SECTION_RULES)) {
+    const missingCapabilities = rule.requiredAny.length && !rule.requiredAny.some((capability) => profile.capabilities[capability])
+      ? [...rule.requiredAny]
+      : [];
+    let status = SECTION_VISIBILITY.ENABLED;
+    let reason = "selected_by_profile";
+
+    if (!preferred.has(section)) {
+      status = SECTION_VISIBILITY.DISABLED_BY_PROFILE;
+      reason = "not_in_preferred_sections";
+    } else if (missingCapabilities.length) {
+      status = SECTION_VISIBILITY.DISABLED_BY_MISSING_DATA;
+      reason = "missing_required_capability";
+    } else if (dataAvailability[section] === false) {
+      status = SECTION_VISIBILITY.DISABLED_BY_MISSING_DATA;
+      reason = "required_data_unavailable";
+    } else if (dataAvailability[section] === "partial") {
+      status = SECTION_VISIBILITY.PARTIAL;
+      reason = "required_data_partial";
+    }
+
+    sections[section] = {
+      status,
+      reason,
+      requiredAny: [...rule.requiredAny],
+      missingCapabilities,
+      reportBlocks: [...rule.reportBlocks],
+    };
+  }
+
+  const enabledSections = profile.preferredSections.filter((section) => {
+    const status = sections[section]?.status;
+    return status === SECTION_VISIBILITY.ENABLED || status === SECTION_VISIBILITY.PARTIAL;
+  });
+
+  return {
+    preferredSections: [...profile.preferredSections],
+    eligibleSections: [...profile.eligibleSections],
+    enabledSections,
+    sections,
+  };
 }
 
 export function getUsersSourceExamples() {

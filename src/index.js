@@ -1,4 +1,5 @@
-import { getProjectBySlug, getProjectProfile } from "./config/projects.js";
+import { getProjectBySlug, getSectionSelection } from "./config/projects.js";
+import { applySectionSelection, isSectionSelected } from "./lib/section-selection.js";
 import { getTechnicalBias } from "./adapters/bybit.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
@@ -27,11 +28,12 @@ async function handleHybridReportApi(request, env, url) {
   const staticJson = await loadStaticReportJson(request, env, slug);
   if (!staticJson.ok) return staticJson.response;
   const report = staticJson.data;
-  attachProjectProfile(report, project);
+  applySectionSelection(report, project);
 
   try {
     const live = await fetchLiveMetrics(project);
     mergeLiveMetrics(report, live);
+    applySectionSelection(report, project);
     applyBlockRenderingRules(report, project, live);
 
     const statuses = Object.values(live.debug || {});
@@ -54,14 +56,10 @@ async function handleHybridReportApi(request, env, url) {
     report.meta.data_status = "hybrid-fallback";
     report.meta.live_error = error instanceof Error ? error.message : String(error);
     report.meta.generated_at = new Date().toISOString();
+    applySectionSelection(report, project);
     applyBlockRenderingRules(report, project, null);
     return json(report, 200, { cacheControl: resolveReportCacheControl(report.meta.data_status) });
   }
-}
-
-function attachProjectProfile(report, project) {
-  report.meta = report.meta || {};
-  report.meta.project_profile = getProjectProfile(project);
 }
 
 async function loadStaticReportJson(request, env, slug) {
@@ -79,20 +77,22 @@ async function loadStaticReportJson(request, env, slug) {
 }
 
 async function fetchLiveMetrics(project) {
+  const initialSelection = getSectionSelection(project);
+  const selected = (section) => isSectionSelected(initialSelection, section);
   const results = await Promise.allSettled([
     fetchCoinGeckoMarket(project.coingeckoId),
     fetchCoinGeckoChart(project.coingeckoId),
-    project.defillamaChain ? fetchDefiLlamaChains() : Promise.resolve(null),
-    project.stablecoinChain ? fetchStablecoinChains() : Promise.resolve(null),
-    project.defillamaChain ? fetchAppFeesOverview(project.defillamaChain) : Promise.resolve(null),
-    project.defillamaChain ? fetchChainFeesOverview(project.defillamaChain) : Promise.resolve(null),
-    project.defillamaChain ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
-    project.defillamaChain ? fetchTVLHistory(project.defillamaChain) : Promise.resolve([]),
-    project.stablecoinChain ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve([]),
-    fetchUsersMetrics(project, { toNumber }),
+    project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaChains() : Promise.resolve(null),
+    project.stablecoinChain && selected("stablecoins") ? fetchStablecoinChains() : Promise.resolve(null),
+    project.defillamaChain && selected("financials") ? fetchAppFeesOverview(project.defillamaChain) : Promise.resolve(null),
+    project.defillamaChain && selected("financials") ? fetchChainFeesOverview(project.defillamaChain) : Promise.resolve(null),
+    project.defillamaChain && (selected("financials") || selected("liquidity_and_trading")) ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
+    project.defillamaChain && selected("tvl_and_capital") ? fetchTVLHistory(project.defillamaChain) : Promise.resolve([]),
+    project.stablecoinChain && selected("stablecoins") ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve([]),
+    selected("users_and_activity") ? fetchUsersMetrics(project, { toNumber }) : Promise.resolve(null),
     getTechnicalBias(project.bybitSymbol),
-    project.rwaChain ? fetchDefiLlamaRwaActiveMcap(project.rwaChain) : Promise.resolve(null),
-    fetchProjectNews(project),
+    project.rwaChain && selected("rwa") ? fetchDefiLlamaRwaActiveMcap(project.rwaChain) : Promise.resolve(null),
+    selected("narrative_and_news") ? fetchProjectNews(project) : Promise.resolve(null),
   ]);
 
   const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,appFeesOverviewRes,chainFeesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes,rwaRes,newsRes] = results;
