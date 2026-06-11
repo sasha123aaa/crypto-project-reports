@@ -66,3 +66,16 @@ test("selectDiverseNews mixes available sources before repeating one source", ()
   assert.deepEqual(new Set(selected.slice(0, 3).map((item) => item.source)), new Set(["Ethereum Blog", "Consensys News", "Ethereum Research"]));
   assert.ok(selected.every((item, index) => index < 2 || !(item.source === selected[index - 1].source && item.source === selected[index - 2].source)));
 });
+
+
+test("selectDiverseNews prioritizes fresh client updates over academic posts", () => {
+  const items = [
+    { title:"Accessible ecosystem update", url:"https://blog.test/update", date:new Date(now.getTime() - 3 * 86400000).toISOString(), source:"Ethereum Blog", snippet:"Client-facing update" },
+    { title:"Fresh research discussion", url:"https://research.test/update", date:new Date(now.getTime() - 86400000).toISOString(), source:"Ethereum Research", snippet:"Research discussion" },
+  ];
+  const selected = selectDiverseNews(items, [
+    { source:"Ethereum Blog", priority:1, audience:"client" },
+    { source:"Ethereum Research", priority:2, audience:"research" },
+  ], 1);
+  assert.equal(selected[0].source, "Ethereum Blog");
+});

@@ -13,7 +13,7 @@ export async function fetchCoinGeckoChart(coingeckoId,days=365){
   return res.json();
 }
 
-export async function fetchProjectNews(project, { limit = 5, days = 30 } = {}) {
+export async function fetchProjectNews(project, { limit = 5, days = 45 } = {}) {
   const feeds = (Array.isArray(project?.newsFeeds) ? project.newsFeeds : [])
     .map((feed, index) => ({ ...feed, priority: Number.isFinite(feed?.priority) ? feed.priority : index + 1 }))
     .sort((a, b) => a.priority - b.priority);
@@ -53,28 +53,49 @@ export async function fetchProjectNews(project, { limit = 5, days = 30 } = {}) {
 }
 
 export function selectDiverseNews(items, feeds = [], limit = 5) {
-  const priorities = new Map(feeds.map((feed, index) => [feed.source, Number.isFinite(feed.priority) ? feed.priority : index + 1]));
-  const remaining = [...items].sort((a, b) => (priorities.get(a.source) || 99) - (priorities.get(b.source) || 99) || byNewest(a, b));
+  const feedMeta = new Map(feeds.map((feed, index) => [feed.source, {
+    priority: Number.isFinite(feed.priority) ? feed.priority : index + 1,
+    audience: feed.audience || "client",
+  }]));
+  const ranked = [...items].sort((a, b) => newsRank(b, feedMeta) - newsRank(a, feedMeta) || byNewest(a, b));
   const selected = [];
-  const sourceCounts = new Map();
+  const remaining = [...ranked];
+
+  // Give every available source one useful slot before repeating a source.
+  const bestBySource = new Map();
+  ranked.forEach((item) => { if (!bestBySource.has(item.source)) bestBySource.set(item.source, item); });
+  [...bestBySource.values()]
+    .sort((a, b) => newsRank(b, feedMeta) - newsRank(a, feedMeta) || byNewest(a, b))
+    .slice(0, limit)
+    .forEach((item) => {
+      selected.push(item);
+      remaining.splice(remaining.indexOf(item), 1);
+    });
+
+  const onlyRemainingSource = new Set(remaining.map((item) => item.source));
+  if (onlyRemainingSource.size === 1 && selected.at(-1)?.source === remaining[0]?.source) {
+    const sourceIndex = selected.findIndex((item) => item.source === remaining[0].source);
+    if (sourceIndex >= 0) selected.splice(Math.max(0, selected.length - 2), 0, ...selected.splice(sourceIndex, 1));
+  }
 
   while (selected.length < limit && remaining.length) {
     const lastSource = selected.at(-1)?.source;
-    const previousSource = selected.at(-2)?.source;
-    const unseenSources = [...new Set(remaining.filter((item) => item.source !== lastSource && (sourceCounts.get(item.source) || 0) === 0).map((item) => item.source))]
-      .sort((a, b) => remaining.filter((item) => item.source === b).length - remaining.filter((item) => item.source === a).length || (priorities.get(a) || 99) - (priorities.get(b) || 99));
-    const diverseIndex = unseenSources.length ? remaining.findIndex((item) => item.source === unseenSources[0]) : -1;
-    const nonRepeatIndex = remaining.findIndex((item) => !(item.source === lastSource && item.source === previousSource));
-    const index = diverseIndex >= 0 ? diverseIndex : (nonRepeatIndex >= 0 ? nonRepeatIndex : 0);
-    const [item] = remaining.splice(index, 1);
-    selected.push(item);
-    sourceCounts.set(item.source, (sourceCounts.get(item.source) || 0) + 1);
+    const nextIndex = remaining.findIndex((item) => item.source !== lastSource);
+    selected.push(...remaining.splice(nextIndex >= 0 ? nextIndex : 0, 1));
   }
-  return selected;
+  return selected.slice(0, limit);
+}
+
+function newsRank(item, feedMeta) {
+  const meta = feedMeta.get(item.source) || { priority: 99, audience: "client" };
+  const ageDays = Math.max(0, (Date.now() - Date.parse(item.date)) / 86400000);
+  const freshness = Math.max(0, 45 - ageDays) * 4;
+  const clientRelevance = meta.audience === "research" ? 0 : 120;
+  return freshness + clientRelevance - meta.priority * 8 + Math.min(String(item.snippet || "").length, 160) / 8;
 }
 
 export async function fetchNewsFeed(feed) {
-  const res = await fetch(feed.url, { headers: { accept: "application/rss+xml,application/atom+xml,text/xml,*/*", "user-agent": HEADERS["user-agent"] } });
+  const res = await fetch(feed.url, { headers: { accept: "application/rss+xml,application/atom+xml,text/xml,*/*", "cache-control":"no-cache", "user-agent": HEADERS["user-agent"] } });
   if (!res.ok) throw new Error(`${feed.source || "RSS"} news error: ${res.status}`);
   const xml = await res.text();
   if (!xml.trim()) throw new Error(`${feed.source || "RSS"} returned an empty feed`);
