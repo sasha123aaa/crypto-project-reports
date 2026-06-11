@@ -1,4 +1,4 @@
-import { getProjectBySlug } from "./config/projects.js";
+import { getProjectBySlug, getProjectProfile } from "./config/projects.js";
 import { getTechnicalBias } from "./adapters/bybit.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
@@ -27,6 +27,7 @@ async function handleHybridReportApi(request, env, url) {
   const staticJson = await loadStaticReportJson(request, env, slug);
   if (!staticJson.ok) return staticJson.response;
   const report = staticJson.data;
+  attachProjectProfile(report, project);
 
   try {
     const live = await fetchLiveMetrics(project);
@@ -56,6 +57,11 @@ async function handleHybridReportApi(request, env, url) {
     applyBlockRenderingRules(report, project, null);
     return json(report, 200, { cacheControl: resolveReportCacheControl(report.meta.data_status) });
   }
+}
+
+function attachProjectProfile(report, project) {
+  report.meta = report.meta || {};
+  report.meta.project_profile = getProjectProfile(project);
 }
 
 async function loadStaticReportJson(request, env, slug) {
