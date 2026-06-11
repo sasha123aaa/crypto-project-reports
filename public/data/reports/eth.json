@@ -62,7 +62,7 @@
     "max_supply": {
       "value": null,
       "formatted": "Нет",
-      "status": "manual",
+      "status": "static",
       "source": "asset structure"
     }
   },
@@ -151,25 +151,25 @@
       "max_supply": {
         "value": null,
         "formatted": "Нет",
-        "status": "manual",
+        "status": "static",
         "source": "asset structure"
       },
       "net_issuance": {
         "value": null,
         "formatted": "зависит от выпуска и сжигания",
-        "status": "manual",
+        "status": "static",
         "source": "protocol mechanics"
       },
       "burn_mechanism": {
         "value": null,
         "formatted": "EIP-1559 burn",
-        "status": "manual",
+        "status": "static",
         "source": "protocol mechanics"
       },
       "market_buyback": {
         "value": null,
         "formatted": "нет классического buyback",
-        "status": "manual",
+        "status": "static",
         "source": "asset structure"
       }
     },
