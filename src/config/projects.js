@@ -74,6 +74,7 @@ export const PROJECTS = {
     slug: "eth",
     name: "Ethereum",
     ticker: "ETH",
+    aliases: ["ethereum", "ether"],
     subtitle: "ETH • infrastructure asset",
     projectType: "l1",
     categories: ["L1", "DeFi", "Smart Contracts"],
@@ -135,6 +136,7 @@ export const PROJECTS = {
     slug: "sol",
     name: "Solana",
     ticker: "SOL",
+    aliases: ["solana"],
     subtitle: "SOL • infrastructure asset",
     projectType: "l1",
     categories: ["L1", "DeFi", "Smart Contracts"],
@@ -203,13 +205,17 @@ export const PROJECT_PROFILE_EXAMPLES = Object.freeze({
 });
 
 export function normalizeProjectInput(input) {
-  return String(input || "").trim().toLowerCase();
+  return String(input ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-");
 }
 
 export function getRegisteredProject(input) {
   const normalized = normalizeProjectInput(input);
   if (!normalized) return null;
-  return Object.values(PROJECTS).find((project) => [project.slug, project.ticker, project.coingeckoId]
+  return Object.values(PROJECTS).find((project) => [project.slug, project.ticker, project.name, project.coingeckoId, ...(project.aliases || [])]
     .some((value) => normalizeProjectInput(value) === normalized)) || null;
 }
 
