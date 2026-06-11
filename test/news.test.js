@@ -79,3 +79,19 @@ test("selectDiverseNews prioritizes fresh client updates over academic posts", (
   ], 1);
   assert.equal(selected[0].source, "Ethereum Blog");
 });
+
+
+test("selectDiverseNews limits research to one item when client sources are available", () => {
+  const date = now.toISOString();
+  const items = [
+    ...Array.from({ length:4 }, (_, index) => ({ title:`Research ${index}`, url:`https://r.test/${index}`, date, source:"Ethereum Research" })),
+    { title:"Official", url:"https://o.test/1", date, source:"Ethereum Blog" },
+    { title:"Weekly", url:"https://w.test/1", date, source:"Week in Ethereum News" },
+  ];
+  const selected = selectDiverseNews(items, [
+    { source:"Ethereum Blog", priority:1, audience:"client" },
+    { source:"Week in Ethereum News", priority:2, audience:"client" },
+    { source:"Ethereum Research", priority:4, audience:"research" },
+  ], 5);
+  assert.equal(selected.filter((item) => item.source === "Ethereum Research").length, 1);
+});

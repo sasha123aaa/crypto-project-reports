@@ -143,7 +143,8 @@ function formatShortDate(value) {
   return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("ru-RU", { day:"2-digit", month:"short", year:"numeric" }).format(date) : "";
 }
 function compactChartHtml(id, label, caption) {
-  return `<div class="integrated-chart"><div class="chart-label"><span>${escapeHtml(label)}</span><span class="chart-range">Вся история</span></div><div class="chart-shell" id="${id}-wrap"><canvas id="${id}"></canvas></div><div class="chart-caption">${escapeHtml(caption)}</div></div>`;
+  const ranges = ["1M", "3M", "6M", "YTD", "1Y", "ALL"];
+  return `<div class="integrated-chart" id="${id}-card"><div class="chart-label"><span>${escapeHtml(label)}</span><span class="chart-range" id="${id}-range-label">1Y</span></div><div class="chart-range-controls" aria-label="Диапазон ${escapeHtml(label)}">${ranges.map((range) => `<button class="range-btn${range === "1Y" ? " active" : ""}" type="button" data-chart="${id}" data-range="${range}">${range}</button>`).join("")}</div><div class="chart-shell" id="${id}-wrap"><canvas id="${id}"></canvas></div><div class="chart-navigator" id="${id}-navigator"><div class="navigator-track"></div><input class="navigator-input navigator-start" type="range" min="0" max="1" value="0" aria-label="Начало диапазона ${escapeHtml(label)}"><input class="navigator-input navigator-end" type="range" min="0" max="1" value="1" aria-label="Конец диапазона ${escapeHtml(label)}"></div><div class="chart-caption">${escapeHtml(caption)}</div></div>`;
 }
 function ethereumIconHtml(ticker) {
   if (String(ticker).toUpperCase() !== "ETH") return `<span class="hero-token-fallback">${escapeHtml(ticker || "")}</span>`;
@@ -290,11 +291,53 @@ function dashboardChartOptions(timestamps) {
 
 function createDashboardChart(canvasId, series, label, { color = "#65a0ff" } = {}) {
   const el = document.getElementById(canvasId);
-  if (!el || !series?.length) { showChartEmpty(canvasId, "Данные для графика пока не подтянулись."); return null; }
-  const { timestamps, prepared } = mergeSeriesByTimestamp([{ label, series, color }]);
-  if (!prepared.length || !timestamps.length) { showChartEmpty(canvasId, "Данные для графика пока не подтянулись."); return null; }
+  if (!el || !series?.length) { showChartEmpty(canvasId, "Данные временно недоступны"); return null; }
+  const normalized = [...series].filter((point) => Number.isFinite(point.ts) && Number.isFinite(point.value)).sort((a, b) => a.ts - b.ts);
+  if (!normalized.length) { showChartEmpty(canvasId, "Данные временно недоступны"); return null; }
   clearChartEmpty(canvasId);
-  return new Chart(el, { type:"line", data:{ labels:timestamps, datasets:prepared }, options:dashboardChartOptions(timestamps) });
+  const chart = new Chart(el, { type:"line", data:{ labels:[], datasets:[] }, options:dashboardChartOptions([]) });
+  const startInput = document.querySelector(`#${canvasId}-navigator .navigator-start`);
+  const endInput = document.querySelector(`#${canvasId}-navigator .navigator-end`);
+  const navigator = document.getElementById(`${canvasId}-navigator`);
+  const maxIndex = normalized.length - 1;
+  [startInput, endInput].forEach((input) => { input.max = String(maxIndex); });
+
+  const render = (start, end, rangeLabel = "Выбранный диапазон") => {
+    start = Math.max(0, Math.min(start, maxIndex));
+    end = Math.max(start, Math.min(end, maxIndex));
+    startInput.value = String(start); endInput.value = String(end);
+    navigator?.style.setProperty("--range-start", `${maxIndex ? start / maxIndex * 100 : 0}%`);
+    navigator?.style.setProperty("--range-end", `${maxIndex ? end / maxIndex * 100 : 100}%`);
+    const visible = normalized.slice(start, end + 1);
+    const { timestamps, prepared } = mergeSeriesByTimestamp([{ label, series:visible, color }]);
+    chart.data.labels = timestamps; chart.data.datasets = prepared;
+    chart.options = dashboardChartOptions(timestamps); chart.update("none");
+    const rangeNode = document.getElementById(`${canvasId}-range-label`);
+    if (rangeNode) rangeNode.textContent = rangeLabel;
+  };
+  const indexForDate = (timestamp) => { const index = normalized.findIndex((point) => point.ts >= timestamp); return index < 0 ? 0 : index; };
+  const applyPreset = (range) => {
+    const last = normalized[maxIndex].ts;
+    const date = new Date(last);
+    let start = 0;
+    if (range === "1M") start = indexForDate(last - 31 * 86400000);
+    if (range === "3M") start = indexForDate(last - 92 * 86400000);
+    if (range === "6M") start = indexForDate(last - 183 * 86400000);
+    if (range === "1Y") start = indexForDate(last - 365 * 86400000);
+    if (range === "YTD") start = indexForDate(Date.UTC(date.getUTCFullYear(), 0, 1));
+    document.querySelectorAll(`[data-chart="${canvasId}"]`).forEach((button) => button.classList.toggle("active", button.dataset.range === range));
+    render(start, maxIndex, range);
+  };
+  document.querySelectorAll(`[data-chart="${canvasId}"]`).forEach((button) => button.addEventListener("click", () => applyPreset(button.dataset.range)));
+  const onNavigatorInput = (event) => {
+    let start = Number(startInput.value); let end = Number(endInput.value);
+    if (start >= end) { if (event.target === startInput) start = Math.max(0, end - 1); else end = Math.min(maxIndex, start + 1); }
+    document.querySelectorAll(`[data-chart="${canvasId}"]`).forEach((button) => button.classList.remove("active"));
+    render(start, end);
+  };
+  startInput?.addEventListener("input", onNavigatorInput); endInput?.addEventListener("input", onNavigatorInput);
+  applyPreset("1Y");
+  return chart;
 }
 
 function technicalBiasHtml(bias) {
@@ -370,14 +413,14 @@ async function loadReport() {
 
     const tvSymbolMap = { eth:"BINANCE:ETHUSDT", sol:"BINANCE:SOLUSDT", link:"BINANCE:LINKUSDT" };
     app.innerHTML = `<div class="layout"><aside class="sidebar-card"><div class="eyebrow">Crypto Project Deep Dive</div><div class="project-main">${escapeHtml(data.meta.project_name)}</div><div class="project-sub">${escapeHtml(data.meta.subtitle)}</div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="small-note">Обновлено: ${new Date(data.meta.updated_at).toLocaleString("ru-RU")}</div><div class="small-note">Slug: ${escapeHtml(data.meta.slug)}</div></aside><main class="content">
-      <section class="panel hero-overview"><div class="hero-heading">${ethereumIconHtml(data.meta.ticker)}<div class="hero-identity"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><div class="hero-meta">${escapeHtml(data.meta.ticker || "")} · live network report</div></div></div>${data.hero.subtitle ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}<p class="lead">${escapeHtml(data.hero.lead)}</p>
+      <section class="panel hero-overview"><div class="hero-heading">${ethereumIconHtml(data.meta.ticker)}<div class="hero-identity"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1></div></div>${data.hero.subtitle ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}<p class="lead">${escapeHtml(data.hero.lead)}</p>
       <div class="hero-grid">${metricHtml("Цена", data.market.price)}${metricHtml("Рыночная капитализация", data.market.market_cap)}${metricHtml("FDV", data.market.fdv)}${metricHtml("Объем 24ч", data.market.volume_24h)}${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div>
       <div class="three-col top-gap"><div class="list-item"><strong>Главная сила</strong><br>${escapeHtml(data.hero.main_strength || "—")}</div><div class="list-item"><strong>Главный риск</strong><br>${escapeHtml(data.hero.main_risk || "—")}</div><div class="list-item"><strong>Общий статус</strong><br>${escapeHtml(data.hero.status_text || "—")}</div></div></section>
       ${tradingViewCard()}
       ${technicalBiasHtml(data.technical_bias)}
       ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel"><div class="section-title">Executive Summary</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
       <section class="panel section-flow"><div class="section-title">Токеномика</div><div class="section-sub">Баланс предложения, выпуска и сжигания ETH</div><div class="hero-grid">${metricHtml("Market Cap", data.tokenomics.metrics.market_cap)}${metricHtml("FDV", data.tokenomics.metrics.fdv)}${metricHtml("Circulating Supply", data.tokenomics.metrics.circulating_supply)}${metricHtml("Total Supply", data.tokenomics.metrics.total_supply)}${metricHtml("Max Supply", data.tokenomics.metrics.max_supply)}${optionalMetricHtml("Net Issuance", data.tokenomics.metrics.net_issuance)}${optionalMetricHtml("Burn Mechanism", data.tokenomics.metrics.burn_mechanism)}${optionalMetricHtml("Market Buyback", data.tokenomics.metrics.market_buyback)}</div>${insightHtml(data.tokenomics)}</section>
-      <section class="panel section-flow"><div class="section-title">Финансы</div>${(data.financials.text || []).slice(0, 2).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid finance-kpis">${metricHtml("Chain Fees 24h", data.financials.metrics.chain_fees_24h)}${metricHtml("DEX Volume 24h", data.financials.metrics.dex_volume_24h)}${metricHtml("Объем 24ч / капитализация", data.financials.metrics.volume_market_cap)}</div><div class="chart-stack">${compactChartHtml("feesChart", "Сетевые комиссии", data.fees_block?.note || "Спрос на блокспейс")}${compactChartHtml("dexChart", "DEX-оборот", data.dex_block?.note || "Глубина on-chain торговой активности")}</div>${insightHtml(data.financials)}</section>
+      <section class="panel section-flow"><div class="section-title">Финансы</div>${(data.financials.text || []).slice(0, 2).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid finance-kpis">${metricHtml("Chain Fees 24h", data.financials.metrics.chain_fees_24h)}${metricHtml("DEX Volume 24h", data.financials.metrics.dex_volume_24h)}${metricHtml("Объем 24ч / капитализация", data.financials.metrics.volume_market_cap)}</div><div class="financial-fee-charts">${compactChartHtml("appFeesChart", "App Fees", "Комиссии приложений внутри экосистемы")}${compactChartHtml("chainFeesChart", "Chain Fees", "Сетевые комиссии базового слоя")}</div><div class="chart-stack">${compactChartHtml("dexChart", "DEX-оборот", data.dex_block?.note || "Глубина on-chain торговой активности")}</div>${insightHtml(data.financials)}</section>
       <section class="panel section-flow capital-section"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).slice(0, 1).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid capital-kpis">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}${metricHtml("RWA Active Mcap", data.capital.metrics.rwa_active_mcap)}</div><div class="capital-charts">${compactChartHtml("tvlChart", "TVL", "Капитал в DeFi-слое")}${compactChartHtml("stableChart", "Stablecoins", data.stablecoins_block?.note || "Расчетная ликвидность внутри сети")}</div>${insightHtml(data.capital)}</section>
       ${usersSectionHtml(data)}
       <section class="panel"><div class="section-title">Резюме</div><div class="columns-4 profile-grid"><div><h3>Сильные стороны</h3>${listHtml(data.profile.strengths)}</div><div><h3>Слабые стороны</h3>${listHtml(data.profile.weaknesses)}</div><div><h3>Риски</h3>${listHtml(data.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(data.profile.watch)}</div></div></section>
@@ -388,10 +431,12 @@ async function loadReport() {
     const stableSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.stablecoins_history, "totalCirculatingUSD"), { trimLeadingZeroes:true });
     const tvlSeries = sanitizeSeries(tvlSeriesRaw, { trimLeadingZeroes:true });
     const stableSeries = sanitizeSeries(stableSeriesRaw, { trimLeadingZeroes:true });
-    const feesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.fees_history), { trimLeadingZeroes:true });
+    const appFeesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.app_fees_history), { trimLeadingZeroes:true });
+    const chainFeesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.chain_fees_history), { trimLeadingZeroes:true });
     const dexSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.dex_history), { trimLeadingZeroes:true });
 
-    createDashboardChart("feesChart", feesSeries, "Fees", { color:"#a78bfa" });
+    createDashboardChart("appFeesChart", appFeesSeries, "App Fees", { color:"#a78bfa" });
+    createDashboardChart("chainFeesChart", chainFeesSeries, "Chain Fees", { color:"#f59e80" });
     createDashboardChart("dexChart", dexSeries, "DEX Volume", { color:"#60a5fa" });
     createDashboardChart("tvlChart", tvlSeries, "TVL", { color:"#65a0ff" });
     createDashboardChart("stableChart", stableSeries, "Stablecoins", { color:"#55d6a5" });
