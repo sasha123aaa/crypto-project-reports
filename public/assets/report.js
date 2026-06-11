@@ -191,7 +191,12 @@ function normalizeLlamaSeries(rows = [], key) {
     const rawTs = Number(row?.date);
     const ts = Number.isFinite(rawTs) ? (rawTs < 1e12 ? rawTs * 1000 : rawTs) : null;
     let raw = row?.[key];
-    if (raw && typeof raw === "object") raw = raw.peggedUSD ?? raw.usd ?? null;
+    if (raw && typeof raw === "object") {
+      // totalCirculatingUSD contains USD-converted peg buckets; their sum is
+      // DefiLlama's full chain Stablecoins Mcap, not only the peggedUSD subset.
+      const bucketValues = Object.values(raw).map(Number).filter(Number.isFinite);
+      raw = bucketValues.length ? bucketValues.reduce((total, value) => total + value, 0) : null;
+    }
     if (raw == null) raw = row?.totalLiquidityUSD ?? row?.totalCirculatingUSD ?? row?.totalCirculating?.peggedUSD ?? row?.totalCirculating?.usd ?? null;
     const value = Number(raw);
     if (!Number.isFinite(ts) || !Number.isFinite(value)) return null;
@@ -320,6 +325,7 @@ function createDashboardChart(canvasId, series, label, { color = "#65a0ff" } = {
     const last = normalized[maxIndex].ts;
     const date = new Date(last);
     let start = 0;
+    if (range === "ALL") start = 0;
     if (range === "1M") start = indexForDate(last - 31 * 86400000);
     if (range === "3M") start = indexForDate(last - 92 * 86400000);
     if (range === "6M") start = indexForDate(last - 183 * 86400000);

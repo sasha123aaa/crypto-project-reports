@@ -1,7 +1,7 @@
 import { getProjectBySlug } from "./config/projects.js";
 import { getTechnicalBias } from "./adapters/bybit.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
-import { fetchDefiLlamaRwaActiveMcap } from "./adapters/defillama.js";
+import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
 import { fetchProjectNews } from "./adapters/coingecko.js";
 
 export default {
@@ -126,7 +126,7 @@ async function fetchLiveMetrics(project) {
   const cgMarketError = parsePromiseRejection(cgMarketRes.reason);
 
   const tvlHistory = normalizeTvlHistory(tvlHistoryRaw);
-  const stableHistory = normalizeStableHistory(stableHistoryRaw);
+  const stableHistory = normalizeStablecoinHistory(stableHistoryRaw);
   const tvl = toNumber(chainNow?.tvl ?? getLastTVL(tvlHistory));
   const stablecoins = toNumber(extractStablecoinsCurrent(chainNow, stableNow) ?? getLastStable(stableHistory));
   const appFeesHistory = normalizeOverviewHistory(appFeesOverview?.totalDataChart);
@@ -459,7 +459,6 @@ function parsePromiseRejection(reason) {
 }
 async function fetchCoinGeckoChart(id,days=365){ const res = await fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}&interval=daily`,{headers:{accept:"application/json,text/plain,*/*","user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0"}}); if(!res.ok) throw new Error(`CoinGecko chart error: ${res.status}`); return res.json(); }
 async function fetchDefiLlamaChains(){ const res = await fetch("https://api.llama.fi/v2/chains"); if(!res.ok) throw new Error(`DefiLlama chains error: ${res.status}`); return res.json(); }
-async function fetchStablecoinChains(){ const res = await fetch("https://stablecoins.llama.fi/stablecoinchains"); if(!res.ok) throw new Error(`DefiLlama stable chains error: ${res.status}`); return res.json(); }
 async function fetchAppFeesOverview(chain){ const res = await fetch(`https://api.llama.fi/overview/fees/${encodeURIComponent(chain)}?excludeTotalDataChart=false&excludeTotalDataChartBreakdown=true&dataType=dailyFees`); if(!res.ok) throw new Error(`DefiLlama app fees error: ${res.status}`); return res.json(); }
 async function fetchChainFeesOverview(chain){ const res = await fetch(`https://api.llama.fi/summary/fees/${encodeURIComponent(String(chain).toLowerCase())}?dataType=dailyFees&excludeTotalDataChart=false`); if(!res.ok) throw new Error(`DefiLlama chain fees error: ${res.status}`); return res.json(); }
 async function fetchDexOverview(chain){ const res = await fetch(`https://api.llama.fi/overview/dexs/${encodeURIComponent(chain)}?excludeTotalDataChart=false&excludeTotalDataChartBreakdown=true&dataType=dailyVolume`); if(!res.ok) throw new Error(`DefiLlama dex error: ${res.status}`); return res.json(); }
@@ -471,27 +470,17 @@ async function fetchTVLHistory(chain){
   if (!fallback.ok) throw new Error(`DefiLlama TVL history error: ${primary.status}/${fallback.status}`);
   return fallback.json();
 }
-async function fetchStablecoinHistory(chain){ const res = await fetch(`https://stablecoins.llama.fi/stablecoincharts/${encodeURIComponent(chain)}`); if(!res.ok) throw new Error(`DefiLlama stable history error: ${res.status}`); return res.json(); }
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item) => String(item.name).toLowerCase() === String(chainName).toLowerCase()) : null; }
 function findStableChainData(chains, chainKey){ const target = String(chainKey || "").toLowerCase(); return Array.isArray(chains) ? chains.find((item) => [item?.gecko_id,item?.name,item?.chain,item?.tokenSymbol].filter(Boolean).map((v)=>String(v).toLowerCase()).includes(target)) : null; }
 function extractStablecoinsCurrent(chainNow, stableNow){
   const fromChain = toNumber(chainNow?.stablecoins ?? chainNow?.stablecoinMcap ?? chainNow?.stablecoinsMcap ?? chainNow?.stables);
   if (isValidNumber(fromChain)) return fromChain;
-  const rawStable = stableNow?.totalCirculatingUSD ?? stableNow?.totalCirculating ?? stableNow?.totalLiquidityUSD ?? stableNow?.mcap ?? null;
-  if (isValidNumber(toNumber(rawStable))) return toNumber(rawStable);
-  if (rawStable && typeof rawStable === "object") {
-    return toNumber(
-      rawStable.peggedUSD
-      ?? rawStable.usd
-      ?? rawStable.total
-      ?? rawStable.current
-      ?? null
-    );
-  }
+  const fromStablecoinChain = stablecoinMcapUsd(stableNow);
+  if (isValidNumber(fromStablecoinChain)) return fromStablecoinChain;
   return null;
 }
 function getLastTVL(rows){ if(!Array.isArray(rows) || !rows.length) return null; return toNumber(rows[rows.length-1]?.totalLiquidityUSD); }
-function getLastStable(rows){ if(!Array.isArray(rows) || !rows.length) return null; const last = rows[rows.length-1]; return toNumber(last?.totalCirculatingUSD ?? last?.totalCirculating?.peggedUSD ?? last?.totalCirculating?.usd ?? null); }
+function getLastStable(rows){ if(!Array.isArray(rows) || !rows.length) return null; return stablecoinMcapUsd(rows[rows.length-1]); }
 function toMillis(ts){ const num = Number(ts); if (!Number.isFinite(num)) return null; return num < 1e12 ? Math.trunc(num * 1000) : Math.trunc(num); }
 function normalizeTvlHistory(rows){
   if (!Array.isArray(rows)) return [];
@@ -501,18 +490,6 @@ function normalizeTvlHistory(rows){
     const value = toNumber(row?.totalLiquidityUSD ?? row?.tvl);
     if (!Number.isFinite(date) || !isValidNumber(value) || value <= 0) return;
     map.set(date, { ...row, date: Math.floor(date / 1000), totalLiquidityUSD: value });
-  });
-  return Array.from(map.values()).sort((a, b) => a.date - b.date);
-}
-function normalizeStableHistory(rows){
-  if (!Array.isArray(rows)) return [];
-  const map = new Map();
-  rows.forEach((row) => {
-    const date = toMillis(row?.date);
-    const rawValue = row?.totalCirculatingUSD ?? row?.totalCirculating?.peggedUSD ?? row?.totalCirculating?.usd ?? row?.totalLiquidityUSD;
-    const value = toNumber(rawValue);
-    if (!Number.isFinite(date) || !isValidNumber(value) || value <= 0) return;
-    map.set(date, { ...row, date: Math.floor(date / 1000), totalCirculatingUSD: value });
   });
   return Array.from(map.values()).sort((a, b) => a.date - b.date);
 }
