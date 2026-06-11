@@ -477,5 +477,44 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 .news-source{color:#a8c4f4}.news-date{color:#7d899e;font-weight:700}
 .news-card h3{margin-top:7px;color:#e7edf8;font-size:15px;line-height:1.4}
 .news-card p{display:-webkit-box;overflow:hidden;margin-top:6px;color:#929eb2;font-size:12px;line-height:1.5;-webkit-box-orient:vertical;-webkit-line-clamp:2}
-@media(max-width:1180px){.layout{gap:18px}.project-sidebar{position:static}.sidebar-identity{justify-content:flex-start}.project-sidebar .tag-row{padding-top:12px;margin-top:12px}.sidebar-meta{margin-top:12px;padding-top:12px}.hero-heading h1{font-size:44px}}
-@media(max-width:640px){.report-page{padding:10px}.content{gap:14px}.project-sidebar{padding:15px}.hero-overview,.section-flow,.capital-section,.news-section{padding:18px}.hero-heading h1{font-size:34px}.hero-lead{font-size:13px;line-height:1.62}.hero-kpis{margin-top:18px}.metric-box{min-height:112px}.metric-value{font-size:24px}.metric-value-long{font-size:17px}.section-title{font-size:24px}.section-insight{grid-template-columns:1fr;gap:5px}.hero-thesis .list-item{min-height:0}.news-card{padding:14px 15px}}
+/* Responsive report architecture: keep the polished desktop grid, then stack it cleanly. */
+@media(max-width:1180px){
+  .layout{grid-template-columns:minmax(0,1fr);gap:18px;width:100%}
+  .content,.project-sidebar,.hero-overview{width:100%;min-width:0;max-width:100%}
+  .project-sidebar{position:static}
+  .sidebar-identity{justify-content:flex-start}
+  .project-sidebar .tag-row{padding-top:12px;margin-top:12px}
+  .sidebar-meta{margin-top:12px;padding-top:12px}
+  .hero-heading h1{font-size:44px}
+  .hero-kpis{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:768px){
+  .layout,.content{min-width:0}
+  .panel,.sidebar-card,.metric-box,.hero-identity,.hero-title-row{min-width:0;max-width:100%}
+  .hero-heading{width:100%}
+  .hero-identity{flex:1 1 auto}
+  .hero-lead,.metric-status-line{overflow-wrap:anywhere}
+  .hero-kpis,.hero-thesis{grid-template-columns:minmax(0,1fr)}
+  .metric-top-row{gap:12px}
+  .metric-box .status-chip{flex:0 0 auto}
+}
+@media(max-width:640px){
+  .report-page{padding:10px}
+  .content{gap:14px}
+  .project-sidebar{padding:15px}
+  .sidebar-identity{justify-content:space-between}
+  .project-sidebar .tag-row{gap:6px}
+  .hero-overview,.section-flow,.capital-section,.news-section{padding:18px}
+  .hero-heading{gap:12px}
+  .hero-title-row{gap:8px}
+  .hero-heading h1{font-size:34px}
+  .hero-lead{font-size:13px;line-height:1.62}
+  .hero-kpis{margin-top:18px}
+  .metric-box{min-height:112px}
+  .metric-value{font-size:24px}
+  .metric-value-long{font-size:17px}
+  .section-title{font-size:24px}
+  .section-insight{grid-template-columns:1fr;gap:5px}
+  .hero-thesis .list-item{min-height:0}
+  .news-card{padding:14px 15px}
+}
