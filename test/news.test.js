@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deduplicateNews, fetchProjectNews, parseFeedItem, selectDiverseNews } from "../src/adapters/coingecko.js";
+import { deduplicateNews, fetchProjectNews, isProjectRelevantNews, parseFeedItem, selectDiverseNews } from "../src/adapters/coingecko.js";
+import { getNewsFeeds, PROJECTS } from "../src/config/projects.js";
 
 const now = new Date();
 const recent = new Date(now.getTime() - 2 * 86400000).toUTCString();
@@ -157,4 +158,54 @@ test("fetchProjectNews excludes stale feed items", async () => {
     assert.equal(news.status, "partial");
     assert.deepEqual(news.items, []);
   } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test("Ethereum feeds completely exclude Ethereum Research", () => {
+  const feeds = getNewsFeeds(PROJECTS.eth);
+  assert.deepEqual(feeds.map((feed) => feed.source), ["CoinDesk", "Ethereum Blog", "Week in Ethereum News", "Ethereum Cat Herders"]);
+  assert.ok(feeds.every((feed) => feed.source !== "Ethereum Research"));
+});
+
+test("strict ETH relevance rejects universal BTC headlines with weak ETH mentions", () => {
+  const feeds = getNewsFeeds(PROJECTS.eth);
+  const weakMention = {
+    title:"Bitcoin rises after macro data surprises markets",
+    url:"https://www.coindesk.com/markets/bitcoin-rises-after-macro-data",
+    snippet:"Ether also gained during the session.",
+    source:"CoinDesk",
+  };
+  const ethUpdate = {
+    title:"Ethereum staking upgrade moves closer to mainnet",
+    url:"https://www.coindesk.com/tech/ethereum-staking-upgrade-mainnet",
+    snippet:"Core developers agreed on the next step.",
+    source:"CoinDesk",
+  };
+
+  assert.equal(isProjectRelevantNews(weakMention, feeds, PROJECTS.eth), false);
+  assert.equal(isProjectRelevantNews(ethUpdate, feeds, PROJECTS.eth), true);
+});
+
+test("strict ETH selection may return fewer than five relevant items", () => {
+  const date = now.toISOString();
+  const feeds = getNewsFeeds(PROJECTS.eth);
+  const selected = selectDiverseNews([
+    { title:"Bitcoin market update", url:"https://coindesk.test/bitcoin", date, source:"CoinDesk", snippet:"Ether was mentioned once." },
+    { title:"Solana ecosystem expands", url:"https://coindesk.test/solana", date, source:"CoinDesk", snippet:"Ethereum remains a competitor." },
+    { title:"Ethereum ETF inflows accelerate", url:"https://coindesk.test/ethereum-etf", date, source:"CoinDesk", snippet:"Institutional ETH demand grew." },
+  ], feeds, 5, PROJECTS.eth);
+
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].title, "Ethereum ETF inflows accelerate");
+});
+
+test("excluded ETH sources cannot enter ranking even if supplied as candidates", () => {
+  const date = now.toISOString();
+  const feeds = [...getNewsFeeds(PROJECTS.eth), { source:"Ethereum Research", layer:"project", priority:1 }];
+  const selected = selectDiverseNews([
+    { title:"Ethereum protocol research", url:"https://ethresear.ch/test", date, source:"Ethereum Research" },
+    { title:"Ethereum protocol update", url:"https://blog.ethereum.org/test", date, source:"Ethereum Blog" },
+  ], feeds, 5, PROJECTS.eth);
+
+  assert.deepEqual(selected.map((item) => item.source), ["Ethereum Blog"]);
 });

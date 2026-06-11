@@ -94,13 +94,13 @@ async function fetchLiveMetrics(project) {
   const cachedCoinGeckoMarket = getCoinGeckoMarketSnapshot(project.coingeckoId);
   const hasFreshCoinGeckoMarket = hasAnyCoinGeckoMarketValue(cgMarket);
   const hasCachedCoinGeckoMarket = hasAnyCoinGeckoMarketValue(cachedCoinGeckoMarket);
-  const effectiveCoinGeckoMarket = hasFreshCoinGeckoMarket
-    ? cgMarket
-    : (hasCachedCoinGeckoMarket ? cachedCoinGeckoMarket : null);
+  const effectiveCoinGeckoMarket = mergeCoinGeckoMarketData(cgMarket, cachedCoinGeckoMarket);
+  const usesCachedCoinGeckoFields = hasFreshCoinGeckoMarket && hasCachedCoinGeckoMarket
+    && COINGECKO_MARKET_FIELDS.some((field) => !isValidNumber(toNumber(cgMarket?.[field])) && isValidNumber(toNumber(cachedCoinGeckoMarket?.[field])));
   const marketMetricsMode = hasFreshCoinGeckoMarket
-    ? "live_fresh"
+    ? (usesCachedCoinGeckoFields ? "live_fresh_with_cached_fields" : "live_fresh")
     : (hasCachedCoinGeckoMarket ? "live_cached_fallback" : "manual_static_fallback");
-  if (hasFreshCoinGeckoMarket) setCoinGeckoMarketSnapshot(project.coingeckoId, cgMarket);
+  if (hasFreshCoinGeckoMarket) setCoinGeckoMarketSnapshot(project.coingeckoId, effectiveCoinGeckoMarket);
   const cgChart = cgChartRes.status === "fulfilled" ? cgChartRes.value : null;
   const chains = chainsRes.status === "fulfilled" ? chainsRes.value : null;
   const stableChains = stableChainsRes.status === "fulfilled" ? stableChainsRes.value : null;
@@ -137,7 +137,10 @@ async function fetchLiveMetrics(project) {
   const dexVolume24h = toNumber(dexOverview?.total24h);
 
   return {
-    market: { price, marketCap, fdv, volume24h, circulatingSupply, totalSupply, maxSupply },
+    market: {
+      price, marketCap, fdv, volume24h, circulatingSupply, totalSupply, maxSupply,
+      source: marketMetricsMode === "live_cached_fallback" ? "CoinGecko cached snapshot" : (marketMetricsMode === "live_fresh_with_cached_fields" ? "CoinGecko + cached snapshot" : "CoinGecko"),
+    },
     capital: { tvl, stablecoins, rwaActiveMcap: toNumber(rwa?.value), rwaSource: rwa?.source || "DefiLlama RWA", rwaUpdatedAt: rwa?.updated_at || null },
     financials: { chainFees24h, dexVolume24h },
     users: {
@@ -183,7 +186,7 @@ async function fetchLiveMetrics(project) {
     debugReasons: {
       cgMarket: cgMarketError,
       cgMarketFallback: {
-        usedCachedSnapshot: marketMetricsMode === "live_cached_fallback",
+        usedCachedSnapshot: marketMetricsMode === "live_cached_fallback" || marketMetricsMode === "live_fresh_with_cached_fields",
         snapshotTtlMs: COINGECKO_MARKET_SNAPSHOT_TTL_MS,
       },
       rwa: rwaRes.status === "fulfilled" ? rwa?.debug || null : rwaRes.reason?.debug || parsePromiseRejection(rwaRes.reason),
@@ -244,8 +247,8 @@ function getCoinGeckoMarketSnapshot(id) {
   return snapshot.marketData;
 }
 
-function mergeLiveMetrics(report, live) {
-  const sourceCG = "CoinGecko";
+export function mergeLiveMetrics(report, live) {
+  const sourceCG = live.market?.source || "CoinGecko";
   const sourceDL = "DefiLlama";
 
   if (isValidNumber(live.market.price)) report.market.price = liveMetric(live.market.price, formatMoney(live.market.price), sourceCG);
@@ -369,7 +372,7 @@ class CoinGeckoMarketError extends Error {
     this.details = details;
   }
 }
-async function fetchCoinGeckoMarket(id){
+export async function fetchCoinGeckoMarket(id){
   const primaryUrl = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(id)}&price_change_percentage=7d`;
   let primary;
   try {
@@ -393,7 +396,15 @@ async function fetchCoinGeckoMarket(id){
   }
 
   const marketRow = primary.data[0];
-  if (marketRow && hasAnyCoinGeckoMarketValue(marketRow)) return marketRow;
+  if (marketRow && hasAnyCoinGeckoMarketValue(marketRow)) {
+    if (hasCompleteCoinGeckoTokenomics(marketRow)) return marketRow;
+    try {
+      return mergeCoinGeckoMarketData(marketRow, await fetchCoinGeckoMarketFallback(id));
+    } catch {
+      // A usable primary response is preferable to rejecting all market metrics.
+      return marketRow;
+    }
+  }
   if (!marketRow) {
     const fallback = await fetchCoinGeckoMarketFallback(id);
     if (fallback) return fallback;
@@ -423,9 +434,24 @@ async function fetchCoinGeckoMarketFallback(id) {
   if (!hasAnyCoinGeckoMarketValue(normalized)) return null;
   return normalized;
 }
+const COINGECKO_MARKET_FIELDS = ["current_price", "market_cap", "fully_diluted_valuation", "total_volume", "circulating_supply", "total_supply", "max_supply"];
+const COINGECKO_TOKENOMICS_FIELDS = ["market_cap", "fully_diluted_valuation", "circulating_supply", "total_supply"];
+
+export function mergeCoinGeckoMarketData(primary, fallback) {
+  if (!hasAnyCoinGeckoMarketValue(primary) && !hasAnyCoinGeckoMarketValue(fallback)) return null;
+  return Object.fromEntries(COINGECKO_MARKET_FIELDS.map((field) => {
+    const primaryValue = toNumber(primary?.[field]);
+    const fallbackValue = toNumber(fallback?.[field]);
+    return [field, isValidNumber(primaryValue) ? primaryValue : fallbackValue];
+  }));
+}
+
+function hasCompleteCoinGeckoTokenomics(row) {
+  return COINGECKO_TOKENOMICS_FIELDS.every((field) => isValidNumber(toNumber(row?.[field])));
+}
+
 function hasAnyCoinGeckoMarketValue(row) {
-  return ["current_price","market_cap","fully_diluted_valuation","total_volume","circulating_supply","total_supply","max_supply"]
-    .some((key) => isValidNumber(toNumber(row?.[key])));
+  return COINGECKO_MARKET_FIELDS.some((key) => isValidNumber(toNumber(row?.[key])));
 }
 async function fetchJsonWithTimeout(url, timeoutMs = 9000) {
   const controller = new AbortController();
