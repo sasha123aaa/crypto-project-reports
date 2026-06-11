@@ -1,6 +1,8 @@
 import { getProjectBySlug } from "./config/projects.js";
 import { getTechnicalBias } from "./adapters/bybit.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
+import { fetchDefiLlamaRwaActiveMcap } from "./adapters/defillama.js";
+import { fetchProjectNews } from "./adapters/coingecko.js";
 
 export default {
   async fetch(request, env) {
@@ -81,9 +83,11 @@ async function fetchLiveMetrics(project) {
     project.stablecoinChain ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve([]),
     fetchUsersMetrics(project, { toNumber }),
     getTechnicalBias(project.bybitSymbol),
+    project.rwaChain ? fetchDefiLlamaRwaActiveMcap(project.rwaChain) : Promise.resolve(null),
+    fetchProjectNews(project),
   ]);
 
-  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,feesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes] = results;
+  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,feesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes,rwaRes,newsRes] = results;
   const cgMarket = cgMarketRes.status === "fulfilled" ? cgMarketRes.value : null;
   const cachedCoinGeckoMarket = getCoinGeckoMarketSnapshot(project.coingeckoId);
   const hasFreshCoinGeckoMarket = hasAnyCoinGeckoMarketValue(cgMarket);
@@ -104,6 +108,8 @@ async function fetchLiveMetrics(project) {
   const stableHistoryRaw = stableHistoryRes.status === "fulfilled" ? stableHistoryRes.value : [];
   const usersData = usersRes.status === "fulfilled" ? usersRes.value : null;
   const technicalBias = technicalBiasRes.status === "fulfilled" ? technicalBiasRes.value : null;
+  const rwa = rwaRes.status === "fulfilled" ? rwaRes.value : null;
+  const news = newsRes.status === "fulfilled" ? newsRes.value : { items: [], source: "Ethereum Foundation Blog", updated_at: new Date().toISOString() };
 
   const chainNow = findChainData(chains, project.defillamaChain);
   const stableNow = findStableChainData(stableChains, project.stablecoinChain);
@@ -128,7 +134,7 @@ async function fetchLiveMetrics(project) {
 
   return {
     market: { price, marketCap, fdv, volume24h, circulatingSupply, totalSupply, maxSupply },
-    capital: { tvl, stablecoins },
+    capital: { tvl, stablecoins, rwaActiveMcap: toNumber(rwa?.value), rwaSource: rwa?.source || "DefiLlama RWA", rwaUpdatedAt: rwa?.updated_at || null },
     financials: { chainFees24h, dexVolume24h },
     users: {
       dailyActiveAddresses24h: toNumber(usersData?.dailyActiveAddresses24h),
@@ -152,6 +158,7 @@ async function fetchLiveMetrics(project) {
       dexHistory,
     },
     technicalBias,
+    news,
     debug: {
       cgMarket: cgMarketRes.status,
       marketMetricsMode,
@@ -164,6 +171,8 @@ async function fetchLiveMetrics(project) {
       stableHistory: stableHistoryRes.status,
       users: usersRes.status,
       technicalBias: technicalBiasRes.status,
+      rwa: rwaRes.status,
+      news: newsRes.status,
     },
     debugReasons: {
       cgMarket: cgMarketError,
@@ -173,6 +182,35 @@ async function fetchLiveMetrics(project) {
       },
     },
   };
+}
+
+function seriesTrend(rows, window = 7) {
+  const values = (Array.isArray(rows) ? rows : []).map((row) => toNumber(Array.isArray(row) ? row[1] : row?.value ?? row?.totalLiquidityUSD)).filter(isValidNumber);
+  if (values.length < window * 2) return null;
+  const average = (items) => items.reduce((sum, value) => sum + value, 0) / items.length;
+  const recent = average(values.slice(-window));
+  const previous = average(values.slice(-window * 2, -window));
+  return previous > 0 ? ((recent - previous) / previous) * 100 : null;
+}
+function trendState(value, threshold = 5) { if (!isValidNumber(value)) return "unknown"; if (value >= threshold) return "up"; if (value <= -threshold) return "down"; return "flat"; }
+function buildFinancialSummary(live) {
+  const fees = trendState(seriesTrend(live?.charts?.feesHistory));
+  const dex = trendState(seriesTrend(live?.charts?.dexHistory));
+  const ratio = live?.valuation?.volumeMarketCap;
+  const liquidity = isValidNumber(ratio) ? ` Суточный торговый объем составляет ${ratio.toFixed(1)}% капитализации и дополняет оценку ликвидности.` : " Данных по отношению объема к капитализации недостаточно, поэтому оценка ликвидности остается осторожной.";
+  if (fees === "unknown" || dex === "unknown") return `Доступных рядов недостаточно для уверенной оценки денежной активности. Вывод следует считать предварительным до восстановления данных по комиссиям и DEX-обороту.${liquidity}`;
+  if (fees === "up" && dex === "up") return `Комиссии и DEX-оборот растут согласованно, указывая на усиление спроса на блокспейс и on-chain ликвидность.${liquidity}`;
+  if (fees === "down" && dex === "down") return `Комиссии и DEX-оборот одновременно снижаются, поэтому качество текущей денежной активности требует осторожной оценки.${liquidity}`;
+  if (fees !== dex && (fees === "up" || dex === "up") && (fees === "down" || dex === "down")) return `Комиссии и DEX-оборот движутся разнонаправленно: активность сохраняется, но пока не формирует единый сильный сигнал.${liquidity}`;
+  return `Комиссии и DEX-оборот остаются без согласованного сильного импульса. Для улучшения оценки нужен устойчивый совместный рост обеих метрик.${liquidity}`;
+}
+function buildCapitalSummary(live) {
+  const tvl = trendState(seriesTrend(live?.charts?.tvlHistory, 14), 3);
+  const stable = trendState(seriesTrend(live?.charts?.stableHistory, 14), 3);
+  if (tvl === "unknown") return "Данных по динамике TVL недостаточно для уверенного вывода. Текущий размер капитала следует оценивать вместе со стабильностью ликвидности и последующими потоками.";
+  if (tvl === "up" && stable !== "down") return "Капитал в экосистеме расширяется, а расчетная ликвидность не противоречит этому движению. Такая связка поддерживает тезис об устойчивом притоке средств.";
+  if (tvl === "down") return "TVL указывает на отток капитала, поэтому приоритетом остается подтверждение стабилизации и разворота потоков. Стабильная ликвидность смягчает риск, но не заменяет восстановление TVL.";
+  return "TVL остается относительно стабильным без выраженного направления потоков. Для усиления оценки нужен последовательный рост капитала при сохранении глубокой расчетной ликвидности.";
 }
 
 function setCoinGeckoMarketSnapshot(id, marketData) {
@@ -232,6 +270,9 @@ function mergeLiveMetrics(report, live) {
   }
   if (isValidNumber(live.capital.tvl)) report.capital.metrics.tvl = liveMetric(live.capital.tvl, formatMoney(live.capital.tvl), sourceDL);
   if (isValidNumber(live.capital.stablecoins)) report.capital.metrics.stablecoins_mcap = liveMetric(live.capital.stablecoins, formatMoney(live.capital.stablecoins), sourceDL);
+  report.capital.metrics.rwa_active_mcap = isValidNumber(live.capital.rwaActiveMcap)
+    ? liveMetric(live.capital.rwaActiveMcap, formatMoney(live.capital.rwaActiveMcap), live.capital.rwaSource || "DefiLlama RWA", live.capital.rwaUpdatedAt)
+    : unavailableMetric("DefiLlama RWA");
   if (isValidNumber(live.financials.chainFees24h)) report.financials.metrics.chain_fees_24h = liveMetric(live.financials.chainFees24h, formatMoney(live.financials.chainFees24h), sourceDL);
   if (isValidNumber(live.financials.dexVolume24h)) {
     const metric = liveMetric(live.financials.dexVolume24h, formatMoney(live.financials.dexVolume24h), sourceDL);
@@ -252,6 +293,9 @@ function mergeLiveMetrics(report, live) {
   if (live.charts.dexHistory?.length) report.charts.dex_history = live.charts.dexHistory;
   mergeUsersMetrics(report, live.users);
   if (live.technicalBias) report.technical_bias = live.technicalBias;
+  report.news = { ...(live.news || {}), status: live.news?.items?.length ? "live" : "unavailable" };
+  report.financials.conclusion = buildFinancialSummary(live);
+  report.capital.conclusion = buildCapitalSummary(live);
   sanitizeUsersBlock(report, live.users);
 }
 
@@ -261,6 +305,9 @@ function applyBlockRenderingRules(report, project, live){
   report.meta.features = {
     ...(report.meta.features || {}),
     usersBlock: shouldRenderUsersBlock(report, project, usersState),
+    hideExecutiveSummary: Boolean(project?.reportOptions?.hideExecutiveSummary),
+    compactTokenomics: Boolean(project?.reportOptions?.compactTokenomics),
+    integratedFinancials: Boolean(project?.reportOptions?.integratedFinancials),
   };
 }
 
@@ -278,8 +325,9 @@ function toNumber(value){
   return Number.isFinite(num) ? num : null;
 }
 function isValidNumber(value){ return typeof value === "number" && Number.isFinite(value); }
-function liveMetric(value, formatted, source){ return { value, formatted, status:"live", source }; }
-function calcMetric(value, formatted){ return { value, formatted, status:"calculated", source:"calc" }; }
+function liveMetric(value, formatted, source, updated_at = new Date().toISOString()){ return { value, formatted, status:"live", source, updated_at }; }
+function calcMetric(value, formatted){ return { value, formatted, status:"calculated", source:"calc", updated_at:new Date().toISOString() }; }
+function unavailableMetric(source){ return { value:null, formatted:"—", status:"unavailable", source, updated_at:new Date().toISOString() }; }
 function safeDivide(a,b){ if (!isValidNumber(a) || !isValidNumber(b) || b===0) return null; return a/b; }
 function safePercent(a,b){ if (!isValidNumber(a) || !isValidNumber(b) || b===0) return null; return (a/b)*100; }
 function formatMoney(value){ const num = toNumber(value); if (!isValidNumber(num)) return "—"; const abs = Math.abs(num); if (abs>=1e12) return `$${(num/1e12).toFixed(2)}T`; if (abs>=1e9) return `$${(num/1e9).toFixed(2)}B`; if (abs>=1e6) return `$${(num/1e6).toFixed(2)}M`; if (abs>=1e3) return `$${(num/1e3).toFixed(2)}K`; return `$${num.toFixed(2)}`; }

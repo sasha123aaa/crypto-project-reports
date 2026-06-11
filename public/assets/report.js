@@ -12,7 +12,8 @@ const METRIC_HELP = {
   "Stablecoins Mcap": "Общий объем стейблкоинов внутри сети.",
   "Chain Fees 24h": "Сумма сетевых комиссий за последние 24 часа.",
   "DEX Volume 24h": "Объем торгов на децентрализованных биржах внутри сети за 24 часа.",
-  "Volume / Market Cap": "Отношение объема торгов к капитализации. Показывает активность рынка относительно размера актива.",
+  "Объем 24ч / капитализация": "Показывает, какой процент от рыночной капитализации составил суточный объем торгов.",
+  "RWA Active Mcap": "Активная рыночная капитализация токенизированных реальных активов в сети по данным DefiLlama.",
   "Market Cap / TVL": "Сравнение капитализации актива с капиталом внутри сети.",
   "Stablecoins / TVL": "Отношение объема стейблкоинов в сети к TVL.",
   "Circulating Supply": "Количество монет, которые реально находятся в обращении.",
@@ -120,11 +121,25 @@ function metricHtml(title, metric) {
   const help = METRIC_HELP[title]
     ? `<span class="info-wrap"><span class="info-icon">i</span><span class="tooltip">${escapeHtml(METRIC_HELP[title])}</span></span>`
     : "";
-  return `<div class="metric-box"><div class="metric-top-row"><div class="metric-title">${escapeHtml(title)} ${help}</div>${statusChip(metric?.status || "unknown")}</div><div class="metric-value">${escapeHtml(metric?.formatted || "—")}</div><div class="metric-status-line">${escapeHtml(metric?.source || "—")}</div></div>`;
+  const freshness = metric?.updated_at ? ` · ${escapeHtml(formatShortDate(metric.updated_at))}` : "";
+  return `<div class="metric-box"><div class="metric-top-row"><div class="metric-title">${escapeHtml(title)} ${help}</div>${statusChip(metric?.status || "unknown")}</div><div class="metric-value">${escapeHtml(metric?.formatted || "—")}</div><div class="metric-status-line">${escapeHtml(metric?.source || "—")}${freshness}</div></div>`;
 }
 
 function optionalMetricHtml(title, metric) {
   return metric ? metricHtml(title, metric) : "";
+}
+
+function formatShortDate(value) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("ru-RU", { day:"2-digit", month:"short", year:"numeric" }).format(date) : "";
+}
+function compactChartHtml(id, caption) {
+  return `<div class="integrated-chart"><div class="chart-shell" id="${id}-wrap"><canvas id="${id}"></canvas></div><div class="chart-caption">${escapeHtml(caption)}</div></div>`;
+}
+function newsHtml(news = {}) {
+  const items = Array.isArray(news.items) ? news.items : [];
+  const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span>${escapeHtml(formatShortDate(item.date))}</span><span>${escapeHtml(item.source || news.source || "Источник")}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">Свежие новости не подтянулись</div>`;
+  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Свежие события по проекту и экосистеме</div>${body}</section>`;
 }
 
 function listHtml(items = []) {
@@ -374,15 +389,14 @@ async function loadReport() {
       <div class="three-col top-gap"><div class="list-item"><strong>Главная сила</strong><br>${escapeHtml(data.hero.main_strength || "—")}</div><div class="list-item"><strong>Главный риск</strong><br>${escapeHtml(data.hero.main_risk || "—")}</div><div class="list-item"><strong>Общий статус</strong><br>${escapeHtml(data.hero.status_text || "—")}</div></div></section>
       ${tradingViewCard()}
       ${technicalBiasHtml(data.technical_bias)}
-      <section class="panel"><div class="section-title">Executive Summary</div><div class="list-wrap">${listHtml(data.executive_summary.items)}</div></section>
-      <section class="panel"><div class="section-title">Токеномика</div>${(data.tokenomics.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Market Cap", data.tokenomics.metrics.market_cap)}${metricHtml("FDV", data.tokenomics.metrics.fdv)}${metricHtml("Circulating Supply", data.tokenomics.metrics.circulating_supply)}${metricHtml("Total Supply", data.tokenomics.metrics.total_supply)}${metricHtml("Max Supply", data.tokenomics.metrics.max_supply)}${optionalMetricHtml("Net Issuance", data.tokenomics.metrics.net_issuance)}${optionalMetricHtml("Burn Mechanism", data.tokenomics.metrics.burn_mechanism)}${optionalMetricHtml("Market Buyback", data.tokenomics.metrics.market_buyback)}</div>${insightHtml(data.tokenomics)}</section>
-      <section class="panel"><div class="section-title">Финансы</div>${(data.financials.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Chain Fees 24h", data.financials.metrics.chain_fees_24h)}${metricHtml("DEX Volume 24h", data.financials.metrics.dex_volume_24h)}${metricHtml("Volume / Market Cap", data.financials.metrics.volume_market_cap)}</div>${explanationListHtml(data.financials.metric_explanations)}${insightHtml(data.financials)}</section>
-      ${chartCard("feesChart","История сетевых комиссий",data.fees_block?.subtitle || "Показывает сумму комиссий, которые пользователи платят сети за транзакции и смарт-контракты.","",data.fees_block?.note || "Для ETH этот блок отражает денежную нагрузку сети: при росте комиссий спрос на блокспейс выше, при снижении — активность или стоимость транзакций ниже.")}${insightPanelHtml(data.fees_block)}
-      ${chartCard("dexChart","DEX Volume",data.dex_block?.subtitle || "Показывает объем торгов на децентрализованных биржах внутри сети.","",data.dex_block?.note || "Рост DEX Volume означает больше торговой активности внутри экосистемы; падение указывает на охлаждение on-chain оборота.")}${insightPanelHtml(data.dex_block)}
-      <section class="panel"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}</div>${insightHtml(data.capital)}<div class="chart-shell top-gap" id="tvlChart-wrap"><canvas id="tvlChart"></canvas></div></section>
-      ${chartCard("stableChart","Stablecoins внутри сети",data.stablecoins_block?.subtitle || "Показывает объем стейблкоинов, размещенных внутри сети.","",data.stablecoins_block?.note || "Стейблкоины отражают расчетную ликвидность: чем выше и стабильнее показатель, тем больше сеть используется для платежей, DeFi и оборота капитала.")}${insightPanelHtml(data.stablecoins_block)}
+      ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel"><div class="section-title">Executive Summary</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
+      <section class="panel section-flow"><div class="section-title">Токеномика</div><div class="section-sub">Баланс предложения, выпуска и сжигания ETH</div><div class="hero-grid">${metricHtml("Market Cap", data.tokenomics.metrics.market_cap)}${metricHtml("FDV", data.tokenomics.metrics.fdv)}${metricHtml("Circulating Supply", data.tokenomics.metrics.circulating_supply)}${metricHtml("Total Supply", data.tokenomics.metrics.total_supply)}${metricHtml("Max Supply", data.tokenomics.metrics.max_supply)}${optionalMetricHtml("Net Issuance", data.tokenomics.metrics.net_issuance)}${optionalMetricHtml("Burn Mechanism", data.tokenomics.metrics.burn_mechanism)}${optionalMetricHtml("Market Buyback", data.tokenomics.metrics.market_buyback)}</div>${insightHtml(data.tokenomics)}</section>
+      <section class="panel section-flow"><div class="section-title">Финансы</div>${(data.financials.text || []).slice(0, 2).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid finance-kpis">${metricHtml("Chain Fees 24h", data.financials.metrics.chain_fees_24h)}${metricHtml("DEX Volume 24h", data.financials.metrics.dex_volume_24h)}${metricHtml("Объем 24ч / капитализация", data.financials.metrics.volume_market_cap)}</div><div class="chart-stack">${compactChartHtml("feesChart", data.fees_block?.note || "Комиссии отражают спрос на блокспейс и денежную нагрузку сети.")}${compactChartHtml("dexChart", data.dex_block?.note || "DEX-оборот отражает глубину on-chain торговой активности.")}</div>${insightHtml(data.financials)}</section>
+      <section class="panel section-flow"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).slice(0, 1).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("TVL", data.capital.metrics.tvl)}${metricHtml("Stablecoins Mcap", data.capital.metrics.stablecoins_mcap)}${metricHtml("RWA Active Mcap", data.capital.metrics.rwa_active_mcap)}</div>${compactChartHtml("tvlChart", "Динамика TVL показывает направление капитальных потоков внутри экосистемы.")}${insightHtml(data.capital)}</section>
+      ${chartCard("stableChart","Stablecoins внутри сети",data.stablecoins_block?.subtitle || "Расчетная ликвидность внутри Ethereum.","",data.stablecoins_block?.note || "Стейблкоины поддерживают платежи, торговлю и DeFi-оборот.")}${insightPanelHtml(data.stablecoins_block)}
       ${usersSectionHtml(data)}
-      <section class="panel"><div class="section-title">Быстрый профиль</div><div class="columns-4"><div><h3>Сильные стороны</h3>${listHtml(data.profile.strengths)}</div><div><h3>Слабые стороны</h3>${listHtml(data.profile.weaknesses)}</div><div><h3>Риски</h3>${listHtml(data.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(data.profile.watch)}</div></div></section>
+      <section class="panel"><div class="section-title">Резюме</div><div class="columns-4 profile-grid"><div><h3>Сильные стороны</h3>${listHtml(data.profile.strengths)}</div><div><h3>Слабые стороны</h3>${listHtml(data.profile.weaknesses)}</div><div><h3>Риски</h3>${listHtml(data.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(data.profile.watch)}</div></div></section>
+      ${newsHtml(data.news)}
     </main></div>`;
 
     const tvlSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.tvl_history, "totalLiquidityUSD"), { trimLeadingZeroes:true });
