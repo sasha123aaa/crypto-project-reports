@@ -88,5 +88,20 @@ export function applyProfileAwareSemantics(report, project, { preserveCurated = 
   if (!preserveCurated || !report.executive_summary?.items?.length) report.executive_summary = { items:copy.executive(name) };
   if (!preserveCurated || !report.profile?.strengths?.length) report.profile = structuredClone(copy.profile);
   if (!preserveCurated || !report.final_verdict?.paragraphs?.length) report.final_verdict = copy.verdict(name, ticker);
+  if (!preserveCurated && profile.category === PROJECT_CATEGORIES.UTILITY && report.valuation) {
+    report.valuation.text = [
+      "Оценку utility-токена важно сопоставлять с ликвидностью, оборотом и тем, создает ли использование продукта спрос на токен.",
+      "Market Cap / TVL не используется как основной ориентир, если токен не представляет капитал внутри собственного протокола или сети.",
+    ];
+    if (report.valuation.metrics?.valuation_status) {
+      report.valuation.metrics.valuation_status = {
+        ...report.valuation.metrics.valuation_status,
+        value:null,
+        formatted:"—",
+        status:"unavailable",
+        source:"profile semantics",
+      };
+    }
+  }
   return report;
 }

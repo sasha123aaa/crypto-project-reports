@@ -2,7 +2,7 @@ import { PROJECT_CATEGORIES, getProjectProfile, getSectionSelection } from "../c
 
 const RUNTIME_CATEGORY_SECTIONS = Object.freeze({
   [PROJECT_CATEGORIES.MEME]: new Set(["market", "tokenomics", "liquidity_and_trading", "narrative_and_news", "risks", "final_summary"]),
-  [PROJECT_CATEGORIES.UTILITY]: new Set(["market", "tokenomics", "financials", "tvl_and_capital", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"]),
+  [PROJECT_CATEGORIES.UTILITY]: new Set(["market", "tokenomics", "financials", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"]),
   [PROJECT_CATEGORIES.INFRA]: new Set(["market", "tokenomics", "financials", "tvl_and_capital", "users_and_activity", "liquidity_and_trading", "narrative_and_news", "risks", "final_summary"]),
 });
 
