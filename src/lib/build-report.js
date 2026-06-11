@@ -3,7 +3,7 @@ import { formatMoney, formatMultiple, formatPercent } from "./formatters.js";
 import { calcMarketCapToTVL, calcStablecoinsToTVL, calcVolumeToMarketCap } from "./calculations.js";
 import { getUsersFallbackText } from "./fallbacks.js";
 import { fetchCoinGeckoMarket, fetchCoinGeckoChart } from "../adapters/coingecko.js";
-import { fetchDefiLlamaChains, fetchDefiLlamaTVLHistory, fetchStablecoinHistory, fetchStablecoinChains, fetchAppFeesOverview, fetchChainFeesOverview, fetchDexOverview } from "../adapters/defillama.js";
+import { fetchDefiLlamaChains, fetchDefiLlamaTVLHistory, fetchStablecoinHistory, fetchStablecoinChains, fetchAppFeesOverview, fetchChainFeesOverview, fetchDexOverview, normalizeStablecoinHistory, stablecoinMcapUsd } from "../adapters/defillama.js";
 import { getTechnicalBias } from "../adapters/bybit.js";
 
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item)=>String(item.name).toLowerCase()===String(chainName).toLowerCase()) : null; }
@@ -28,7 +28,7 @@ export async function buildReport(project){
   const chart = cgChart.status==="fulfilled" ? cgChart.value : null;
   const chainRows = chains.status==="fulfilled" ? chains.value : null;
   const tvlRows = tvlHistory.status==="fulfilled" ? tvlHistory.value : null;
-  const stableRows = stableHistory.status==="fulfilled" ? stableHistory.value : null;
+  const stableRows = stableHistory.status==="fulfilled" ? normalizeStablecoinHistory(stableHistory.value) : [];
   const stableChainRows = stableChains.status==="fulfilled" ? stableChains.value : null;
   const appFeesData = appFees.status==="fulfilled" ? appFees.value : null;
   const chainFeesData = chainFees.status==="fulfilled" ? chainFees.value : null;
@@ -47,7 +47,7 @@ export async function buildReport(project){
   const maxSupply = market?.max_supply ?? null;
 
   const tvl = chainNow?.tvl ?? lastChartValue(tvlRows) ?? null;
-  const stablecoinsMcap = stableNow?.totalCirculatingUSD ?? lastChartValue(stableRows,"totalCirculatingUSD") ?? null;
+  const stablecoinsMcap = stablecoinMcapUsd(stableNow) ?? lastChartValue(stableRows,"totalCirculatingUSD") ?? null;
   const chainFees24h = chainFeesData?.total24h ?? null;
   const dexVolume24h = dexData?.total24h ?? null;
 

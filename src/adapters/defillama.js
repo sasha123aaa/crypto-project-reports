@@ -2,7 +2,33 @@ const JSON_HEADERS = { accept: "application/json,text/plain,*/*", "user-agent": 
 
 export async function fetchDefiLlamaChains(){ const res=await fetch("https://api.llama.fi/v2/chains"); if(!res.ok) throw new Error(`DefiLlama chains error: ${res.status}`); return res.json(); }
 export async function fetchDefiLlamaTVLHistory(chainName){ const res=await fetch(`https://api.llama.fi/charts/${encodeURIComponent(chainName)}`); if(!res.ok) throw new Error(`DefiLlama TVL history error: ${res.status}`); return res.json(); }
-export async function fetchStablecoinHistory(chainKey){ const res=await fetch(`https://stablecoins.llama.fi/stablecoincharts/${encodeURIComponent(chainKey)}`); if(!res.ok) throw new Error(`DefiLlama stable history error: ${res.status}`); return res.json(); }
+export async function fetchStablecoinHistory(chainKey){ const res=await fetch(`https://stablecoins.llama.fi/stablecoincharts/${encodeURIComponent(chainKey)}`, { headers:JSON_HEADERS }); if(!res.ok) throw new Error(`DefiLlama stable history error: ${res.status}`); return res.json(); }
+
+export function stablecoinMcapUsd(row) {
+  const usdBuckets = row?.totalCirculatingUSD;
+  if (usdBuckets && typeof usdBuckets === "object" && !Array.isArray(usdBuckets)) {
+    // DefiLlama's chain chart stores every peg bucket already converted to USD;
+    // summing them matches the full Stablecoins Mcap shown on the chain page.
+    const values = Object.values(usdBuckets).map(toFiniteNumber).filter(Number.isFinite);
+    if (values.length) return values.reduce((total, value) => total + value, 0);
+  }
+  const direct = toFiniteNumber(usdBuckets);
+  if (Number.isFinite(direct)) return direct;
+  return toFiniteNumber(row?.totalCirculating?.peggedUSD ?? row?.totalCirculating?.usd ?? row?.totalLiquidityUSD);
+}
+
+export function normalizeStablecoinHistory(payload) {
+  const rows = Array.isArray(payload) ? payload : (payload?.chart ?? payload?.data ?? payload?.history ?? []);
+  const byDate = new Map();
+  rows.forEach((row) => {
+    const rawDate = toFiniteNumber(row?.date ?? row?.timestamp ?? row?.time);
+    const value = stablecoinMcapUsd(row);
+    if (!Number.isFinite(rawDate) || !Number.isFinite(value) || value <= 0) return;
+    const date = rawDate < 1e12 ? Math.trunc(rawDate) : Math.trunc(rawDate / 1000);
+    byDate.set(date, { ...row, date, totalCirculatingUSD:value });
+  });
+  return Array.from(byDate.values()).sort((a, b) => a.date - b.date);
+}
 export async function fetchStablecoinChains(){ const res=await fetch("https://stablecoins.llama.fi/stablecoinchains"); if(!res.ok) throw new Error(`DefiLlama stable chains error: ${res.status}`); return res.json(); }
 export async function fetchAppFeesOverview(chainName){ const url=`https://api.llama.fi/overview/fees/${encodeURIComponent(chainName)}?excludeTotalDataChart=false&excludeTotalDataChartBreakdown=true&dataType=dailyFees`; const res=await fetch(url); if(!res.ok) throw new Error(`DefiLlama app fees error: ${res.status}`); return res.json(); }
 export async function fetchChainFeesOverview(chainName){ const url=`https://api.llama.fi/summary/fees/${encodeURIComponent(String(chainName).toLowerCase())}?dataType=dailyFees&excludeTotalDataChart=false`; const res=await fetch(url); if(!res.ok) throw new Error(`DefiLlama chain fees error: ${res.status}`); return res.json(); }
