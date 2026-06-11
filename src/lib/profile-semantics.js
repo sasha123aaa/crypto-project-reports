@@ -5,11 +5,20 @@ const KPI_DEFINITIONS = Object.freeze({
   market_cap: { label: "Рыночная капитализация", path: "market.market_cap" },
   fdv: { label: "FDV", path: "market.fdv", capability: "hasTokenomics" },
   volume_24h: { label: "Объем 24ч", path: "market.volume_24h" },
+  circulating_supply: { label: "Circulating Supply", path: "tokenomics.metrics.circulating_supply", capability: "hasTokenomics", requireValue: true },
+  total_supply: { label: "Total Supply", path: "tokenomics.metrics.total_supply", capability: "hasTokenomics", requireValue: true },
+  max_supply: { label: "Max Supply", path: "tokenomics.metrics.max_supply", capability: "hasTokenomics", requireValue: true },
+  net_issuance: { label: "Net Issuance", path: "tokenomics.metrics.net_issuance", capability: "hasTokenomics" },
+  burn_mechanism: { label: "Burn Mechanism", path: "tokenomics.metrics.burn_mechanism", capability: "hasTokenomics" },
+  market_buyback: { label: "Market Buyback", path: "tokenomics.metrics.market_buyback", capability: "hasTokenomics" },
   tvl: { label: "TVL", path: "capital.metrics.tvl", capability: "hasTvl" },
   stablecoins: { label: "Stablecoins Mcap", path: "capital.metrics.stablecoins_mcap", capability: "hasStablecoins" },
-  fees: { label: "Fees / revenue 24h", path: "financials.metrics.chain_fees_24h", anyCapability: ["hasProtocolFees", "hasChainFees"] },
+  rwa: { label: "RWA Active Mcap", path: "capital.metrics.rwa_active_mcap", capability: "hasRwa" },
+  market_cap_tvl: { label: "Market Cap / TVL", path: "valuation.metrics.market_cap_tvl", capability: "hasTvl" },
+  stablecoins_tvl: { label: "Stablecoins / TVL", path: "valuation.metrics.stablecoins_tvl", capability: "hasStablecoins" },
+  fees: { label: "Chain Fees 24h", path: "financials.metrics.chain_fees_24h", anyCapability: ["hasProtocolFees", "hasChainFees"] },
   dex_volume: { label: "DEX Volume 24h", path: "financials.metrics.dex_volume_24h", capability: "hasDexVolume" },
-  trading_quality: { label: "Объем / капитализация", path: "financials.metrics.volume_market_cap" },
+  trading_quality: { label: "Объем 24ч / капитализация", path: "financials.metrics.volume_market_cap" },
   liquidity: { label: "Ликвидность", path: "semantic_metrics.liquidity", capability: "hasLiquidityData" },
   concentration: { label: "Концентрация / whale risk", path: "semantic_metrics.concentration", capability: "hasWhaleData" },
   momentum: { label: "Нарратив / momentum", path: "semantic_metrics.narrative_momentum", capability: "hasNarrativeMomentum" },
@@ -18,13 +27,32 @@ const KPI_DEFINITIONS = Object.freeze({
   users: { label: "Активные пользователи", path: "users.metrics.daily_active_addresses", capability: "hasUsersData" },
 });
 
-export const HERO_KPI_PRIORITIES = Object.freeze({
-  [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins", "fees", "dex_volume"],
-  [PROJECT_CATEGORIES.DEFI]: ["price", "market_cap", "tvl", "fees", "dex_volume", "liquidity", "trading_quality", "fdv"],
-  [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "liquidity", "trading_quality", "concentration", "momentum"],
-  [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "volume_24h", "token_utility", "liquidity", "adoption", "concentration", "fdv"],
-  [PROJECT_CATEGORIES.CONSUMER]: ["price", "market_cap", "volume_24h", "users", "adoption", "momentum", "liquidity"],
+export const METRIC_SLOT_PRIORITIES = Object.freeze({
+  hero: {
+    [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins", "fees", "dex_volume", "users"],
+    [PROJECT_CATEGORIES.DEFI]: ["price", "market_cap", "tvl", "fees", "dex_volume", "liquidity", "trading_quality", "fdv", "users"],
+    [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "liquidity", "trading_quality", "concentration", "momentum"],
+    [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "volume_24h", "token_utility", "liquidity", "adoption", "concentration", "fdv"],
+    [PROJECT_CATEGORIES.CONSUMER]: ["price", "market_cap", "volume_24h", "users", "adoption", "momentum", "liquidity"],
+  },
+  tokenomics: {
+    default: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply", "net_issuance", "burn_mechanism", "market_buyback"],
+    [PROJECT_CATEGORIES.MEME]: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply"],
+  },
+  financial: {
+    [PROJECT_CATEGORIES.INFRA]: ["fees", "dex_volume", "trading_quality"],
+    [PROJECT_CATEGORIES.DEFI]: ["fees", "dex_volume", "trading_quality"],
+    [PROJECT_CATEGORIES.MEME]: [],
+    default: ["trading_quality", "dex_volume", "fees"],
+  },
+  capital: {
+    [PROJECT_CATEGORIES.INFRA]: ["tvl", "stablecoins", "rwa", "stablecoins_tvl", "market_cap_tvl"],
+    [PROJECT_CATEGORIES.DEFI]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
+    default: [],
+  },
 });
+
+export const HERO_KPI_PRIORITIES = METRIC_SLOT_PRIORITIES.hero;
 
 const PROFILE_COPY = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: {
@@ -62,17 +90,43 @@ const PROFILE_COPY = Object.freeze({
 function getPath(object, path) { return path.split(".").reduce((value, key) => value?.[key], object); }
 function supports(definition, capabilities) { return (!definition.capability || capabilities[definition.capability]) && (!definition.anyCapability || definition.anyCapability.some((key) => capabilities[key])); }
 function isMetric(metric) { return metric && typeof metric === "object" && ("formatted" in metric || "value" in metric || "status" in metric); }
-function isAvailableMetric(metric) { return metric.status !== "unavailable" && (metric.value != null || !["", "—", "данные временно недоступны"].includes(metric.formatted)); }
+
+const EMPTY_METRIC_FORMATS = new Set(["", "—", "-", "n/a", "na", "unknown", "данные временно недоступны", "источник подключается"]);
+
+export function isAvailableMetric(metric, { requireValue = false } = {}) {
+  if (!isMetric(metric) || metric.status === "unavailable" || metric.status === "unknown") return false;
+  if (metric.value !== null && metric.value !== undefined && !(typeof metric.value === "number" && !Number.isFinite(metric.value))) return true;
+  if (requireValue) return false;
+  const formatted = String(metric.formatted ?? "").trim().toLowerCase();
+  return Boolean(formatted) && !EMPTY_METRIC_FORMATS.has(formatted) && !formatted.includes("временно недоступ") && !formatted.includes("unknown");
+}
+
+function prioritiesFor(slot, category) {
+  const priorities = METRIC_SLOT_PRIORITIES[slot] || {};
+  return priorities[category] || priorities.default || [];
+}
+
+export function selectMetricSlots(report, project, slot, limit = Infinity) {
+  const profile = getProjectProfile(project);
+  return prioritiesFor(slot, profile.category).flatMap((key) => {
+    const definition = KPI_DEFINITIONS[key];
+    const metric = definition ? getPath(report, definition.path) : null;
+    return definition && supports(definition, profile.capabilities) && isAvailableMetric(metric, definition)
+      ? [{ key, label:definition.label, metric }]
+      : [];
+  }).slice(0, limit);
+}
 
 export function selectHeroKpis(report, project, limit = 6) {
-  const profile = getProjectProfile(project);
-  const priorities = HERO_KPI_PRIORITIES[profile.category] || HERO_KPI_PRIORITIES[PROJECT_CATEGORIES.UTILITY];
-  const supported = priorities.flatMap((key) => {
-    const definition = KPI_DEFINITIONS[key];
-    const metric = getPath(report, definition.path);
-    return supports(definition, profile.capabilities) && isMetric(metric) ? [{ key, label:definition.label, metric }] : [];
-  });
-  return [...supported.filter(({ metric }) => isAvailableMetric(metric)), ...supported.filter(({ metric }) => !isAvailableMetric(metric))].slice(0, limit);
+  return selectMetricSlots(report, project, "hero", limit);
+}
+
+export function selectReportMetricSlots(report, project) {
+  return {
+    tokenomics: selectMetricSlots(report, project, "tokenomics", 8),
+    financial: selectMetricSlots(report, project, "financial", 3),
+    capital: selectMetricSlots(report, project, "capital", 3),
+  };
 }
 
 export function applyProfileAwareSemantics(report, project, { preserveCurated = false } = {}) {
@@ -85,6 +139,7 @@ export function applyProfileAwareSemantics(report, project, { preserveCurated = 
   report.meta = { ...(report.meta || {}), project_profile:profile, semantic_profile:profile.category };
   report.hero = preserveCurated && report.hero ? report.hero : copy.hero(name);
   report.hero.kpis = selectHeroKpis(report, project);
+  report.metric_slots = selectReportMetricSlots(report, project);
   if (!preserveCurated || !report.executive_summary?.items?.length) report.executive_summary = { items:copy.executive(name) };
   if (!preserveCurated || !report.profile?.strengths?.length) report.profile = structuredClone(copy.profile);
   if (!preserveCurated || !report.final_verdict?.paragraphs?.length) report.final_verdict = copy.verdict(name, ticker);
