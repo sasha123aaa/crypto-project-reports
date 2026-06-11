@@ -38,11 +38,14 @@ export async function fetchProjectNews(project, { limit = 5, days = 45 } = {}) {
   debug.filter((entry) => !entry.ok).forEach((entry) => console.debug(`[news] ${entry.source} failed: ${entry.error}`));
 
   const cutoff = Date.now() - days * 86400000;
+  const excludedSources = new Set((project?.excludedNewsSources || []).map((source) => String(source).toLowerCase()));
   const candidates = settled.flatMap((result) => result.status === "fulfilled" ? result.value : [])
     .filter((item) => {
       const timestamp = Date.parse(item.date);
       return Number.isFinite(timestamp) && timestamp >= cutoff && timestamp <= Date.now() + 86400000;
-    });
+    })
+    .filter((item) => !excludedSources.has(String(item.source || "").toLowerCase()))
+    .filter((item) => isProjectRelevantNews(item, feeds, project));
   const items = selectDiverseNews(deduplicateNews(candidates), feeds, limit, project);
   const successfulSources = debug.filter((entry) => entry.ok).map((entry) => entry.source);
   const source_summary = successfulSources.length
@@ -66,7 +69,10 @@ export function selectDiverseNews(items, feeds = [], limit = 5, project = {}) {
     layer: feed.layer || "project",
   }]));
   const keywords = projectNewsKeywords(project);
-  const ranked = [...items].sort((a, b) => newsRank(b, feedMeta, keywords) - newsRank(a, feedMeta, keywords) || byNewest(a, b));
+  const excludedSources = new Set((project?.excludedNewsSources || []).map((source) => String(source).toLowerCase()));
+  const eligibleItems = items.filter((item) => !excludedSources.has(String(item.source || "").toLowerCase()))
+    .filter((item) => isProjectRelevantNews(item, feeds, project));
+  const ranked = [...eligibleItems].sort((a, b) => newsRank(b, feedMeta, keywords) - newsRank(a, feedMeta, keywords) || byNewest(a, b));
   const selected = [];
   const nonResearchExists = ranked.some((item) => metaFor(item, feedMeta).audience !== "research");
   const researchLimit = nonResearchExists ? 1 : limit;
@@ -104,6 +110,45 @@ export function selectDiverseNews(items, feeds = [], limit = 5, project = {}) {
     if (canSelect(item)) selected.push(item);
   }
   return selected.slice(0, limit);
+}
+
+export function isProjectRelevantNews(item, feeds = [], project = {}) {
+  const feed = feeds.find((candidate) => candidate.source === item.source);
+  if ((feed?.layer || "project") !== "universal") return true;
+  if (project?.newsRelevance?.mode !== "strict") return true;
+
+  const relevance = project.newsRelevance;
+  const title = normalizedField(item.title);
+  const url = normalizedField(item.url);
+  const snippet = normalizedField(item.snippet);
+  const directTerms = normalizedTerms(relevance.directTerms || projectNewsKeywords(project));
+  const contextTerms = normalizedTerms(relevance.contextTerms || []);
+  const competingTerms = normalizedTerms(relevance.competingTerms || []);
+  const directInTitle = countTerms(title, directTerms);
+  const directInUrl = countTerms(url, directTerms);
+  const contextInTitleOrUrl = countTerms(`${title} ${url}`, contextTerms);
+  const weakSnippetMentions = countTerms(snippet, directTerms) + countTerms(snippet, contextTerms);
+  const competingInTitle = countTerms(title, competingTerms);
+
+  // A snippet-only mention is never enough for strict project feeds. Competing-asset
+  // headlines need explicit Ethereum ecosystem context, not just a side mention of ETH.
+  if (!directInTitle && !directInUrl && !contextInTitleOrUrl) return false;
+  if (competingInTitle && !contextInTitleOrUrl) return false;
+
+  const score = directInTitle * 6 + directInUrl * 4 + contextInTitleOrUrl * 7 + Math.min(weakSnippetMentions, 2) - competingInTitle * 4;
+  return score >= 6;
+}
+
+function normalizedTerms(terms) {
+  return [...new Set(terms.map((term) => normalizeTitle(term)).filter(Boolean))];
+}
+
+function normalizedField(value) {
+  return ` ${normalizeTitle(value || "")} `;
+}
+
+function countTerms(text, terms) {
+  return terms.filter((term) => text.includes(` ${term} `)).length;
 }
 
 function metaFor(item, feedMeta) {

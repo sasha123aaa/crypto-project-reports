@@ -31,11 +31,17 @@ export const PROJECTS = {
     stablecoinChain: "Ethereum",
     rwaChain: "Ethereum",
     newsKeywords: ["ethereum", "ether", "eth"],
+    newsRelevance: {
+      mode: "strict",
+      directTerms: ["ethereum", "ether", "eth"],
+      contextTerms: ["ethereum foundation", "ethereum upgrade", "ethereum staking", "ethereum etf", "ethereum l2", "ethereum layer 2", "ethereum defi", "eth staking", "eth etf"],
+      competingTerms: ["bitcoin", "btc", "solana", "sol", "xrp", "dogecoin", "doge"],
+    },
+    excludedNewsSources: ["Ethereum Research"],
     projectNewsFeeds: [
       { url: "https://blog.ethereum.org/feed.xml", source: "Ethereum Blog", priority: 1, audience: "official" },
       { url: "https://weekinethereumnews.com/feed/", source: "Week in Ethereum News", priority: 2, audience: "ecosystem" },
       { url: "https://medium.com/feed/ethereum-cat-herders", source: "Ethereum Cat Herders", priority: 3, audience: "ecosystem" },
-      { url: "https://ethresear.ch/latest.rss", source: "Ethereum Research", priority: 4, audience: "research" },
     ],
     reportOptions: { hideExecutiveSummary: true, compactTokenomics: true, integratedFinancials: true },
     usersSource: {
@@ -57,9 +63,12 @@ export function getUsersSourceExamples() {
 }
 
 export function getNewsFeeds(project) {
-  if (Array.isArray(project?.newsFeeds)) return project.newsFeeds;
-  return [
-    ...UNIVERSAL_NEWS_FEEDS,
-    ...(Array.isArray(project?.projectNewsFeeds) ? project.projectNewsFeeds : []).map((feed) => ({ ...feed, layer: feed.layer || "project" })),
-  ];
+  const excludedSources = new Set((project?.excludedNewsSources || []).map((source) => String(source).toLowerCase()));
+  const feeds = Array.isArray(project?.newsFeeds)
+    ? project.newsFeeds
+    : [
+      ...UNIVERSAL_NEWS_FEEDS,
+      ...(Array.isArray(project?.projectNewsFeeds) ? project.projectNewsFeeds : []).map((feed) => ({ ...feed, layer: feed.layer || "project" })),
+    ];
+  return feeds.filter((feed) => !excludedSources.has(String(feed?.source || "").toLowerCase()));
 }
