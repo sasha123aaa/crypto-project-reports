@@ -8,9 +8,12 @@ const RUNTIME_CATEGORY_SECTIONS = Object.freeze({
 
 function hasMetricValue(metric) {
   if (!metric || typeof metric !== "object") return false;
-  if (metric.status === "unavailable") return false;
-  return metric.value !== null && metric.value !== undefined
-    || (typeof metric.formatted === "string" && !["", "—", "данные временно недоступны"].includes(metric.formatted.toLowerCase()));
+  if (metric.status === "unavailable" || metric.status === "unknown") return false;
+  if (metric.value !== null && metric.value !== undefined) return true;
+  if (typeof metric.formatted !== "string") return false;
+  const formatted = metric.formatted.trim().toLowerCase();
+  return Boolean(formatted) && !["—", "-", "n/a", "na", "unknown", "данные временно недоступны", "источник подключается"].includes(formatted)
+    && !formatted.includes("временно недоступ");
 }
 
 function metricBlockAvailability(block, { strict = false, metricKeys } = {}) {

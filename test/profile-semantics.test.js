@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PROJECTS, PROJECT_PROFILE_EXAMPLES } from "../src/config/projects.js";
-import { applyProfileAwareSemantics, selectHeroKpis } from "../src/lib/profile-semantics.js";
+import { applyProfileAwareSemantics, isAvailableMetric, selectHeroKpis, selectReportMetricSlots } from "../src/lib/profile-semantics.js";
 
 const metric = (value = 1) => ({ value, formatted:String(value), status:"live", source:"test" });
 function baseReport() {
@@ -82,4 +82,42 @@ test("curated ETH valuation copy and status are preserved", () => {
 
   assert.deepEqual(report.valuation.text, ["Curated valuation"]);
   assert.equal(report.valuation.metrics.valuation_status.formatted, "curated");
+});
+
+
+test("metric availability rejects client-facing placeholders", () => {
+  for (const formatted of ["—", "N/A", "unknown", "данные временно недоступны"]) {
+    assert.equal(isAvailableMetric({ value:null, formatted, status:"partial" }), false);
+  }
+  assert.equal(isAvailableMetric({ value:null, formatted:"Есть", status:"manual" }), true);
+});
+
+test("profile-aware metric slots hide unavailable cards and fill capital with a stronger fallback", () => {
+  const report = baseReport();
+  report.tokenomics = { metrics:{
+    market_cap:metric(), fdv:metric(), circulating_supply:metric(), total_supply:metric(),
+    max_supply:{ value:null, formatted:"Нет", status:"static", source:"structure" },
+  } };
+  report.capital.metrics.rwa_active_mcap = { value:null, formatted:"N/A", status:"unavailable", source:"test" };
+  report.valuation = { metrics:{ market_cap_tvl:metric(2), stablecoins_tvl:metric(0.5) } };
+
+  const slots = selectReportMetricSlots(report, PROJECTS.eth);
+
+  assert.deepEqual(slots.capital.map(({ key }) => key), ["tvl", "stablecoins", "stablecoins_tvl"]);
+  assert.ok(!slots.tokenomics.some(({ key }) => key === "max_supply"));
+  assert.ok(slots.tokenomics.every(({ metric }) => isAvailableMetric(metric)));
+});
+
+test("SOL slots omit unsupported RWA and DOGE slots avoid infra financial/capital metrics", () => {
+  const solSlots = selectReportMetricSlots(baseReport(), PROJECTS.sol);
+  assert.deepEqual(solSlots.capital.map(({ key }) => key), ["tvl", "stablecoins"]);
+
+  const doge = { name:"Dogecoin", ticker:"DOGE", projectProfile:{ category:"meme", capabilities:{ hasTokenomics:true, hasLiquidityData:true } } };
+  const dogeReport = baseReport();
+  dogeReport.tokenomics = { metrics:{ market_cap:metric(), fdv:metric(), circulating_supply:metric(), total_supply:metric(), max_supply:{ value:null, formatted:"—", status:"unavailable" } } };
+  const dogeSlots = selectReportMetricSlots(dogeReport, doge);
+
+  assert.deepEqual(dogeSlots.capital, []);
+  assert.deepEqual(dogeSlots.financial, []);
+  assert.ok(!dogeSlots.tokenomics.some(({ key }) => key === "max_supply"));
 });

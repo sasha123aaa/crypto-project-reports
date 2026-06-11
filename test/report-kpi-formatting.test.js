@@ -9,3 +9,14 @@ test("KPI renderer compacts only large raw numeric metric values", async () => {
   assert.match(source, /isRawNumericFormat/);
   assert.match(source, /escapeHtml\(metricFormattedValue\(metric\)\)/);
 });
+
+
+test("KPI renderer hides unavailable placeholders and uses profile-aware metric slots", async () => {
+  const source = await readFile(new URL("../public/assets/report.js", import.meta.url), "utf8");
+  assert.match(source, /function isRenderableMetric\(metric\)/);
+  assert.match(source, /metric\.status === "unavailable"/);
+  assert.match(source, /function metricSlotsHtml\(report, slot\)/);
+  assert.match(source, /metricSlotsHtml\(data, "tokenomics"\)/);
+  assert.match(source, /metricSlotsHtml\(data, "financial"\)/);
+  assert.match(source, /metricSlotsHtml\(data, "capital"\)/);
+});
