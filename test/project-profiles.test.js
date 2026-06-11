@@ -8,6 +8,8 @@ import {
   SECTION_RULES,
   getEligibleSections,
   getProjectProfile,
+  getSectionSelection,
+  SECTION_VISIBILITY,
 } from "../src/config/projects.js";
 
 test("project taxonomy exposes the stage-one categories", () => {
@@ -36,6 +38,11 @@ test("SOL is available as a second infrastructure profile", () => {
   assert.equal(profile.category, PROJECT_CATEGORIES.INFRA);
   assert.equal(profile.analysisProfile, ANALYSIS_PROFILES.L1_INFRA);
   assert.equal(profile.capabilities.hasDexVolume, true);
+  assert.equal(profile.capabilities.hasUsersData, false);
+
+  const selection = getSectionSelection(PROJECTS.sol);
+  assert.equal(selection.sections.users_and_activity.status, SECTION_VISIBILITY.DISABLED_BY_MISSING_DATA);
+  assert.ok(!selection.enabledSections.includes("users_and_activity"));
 });
 
 test("section eligibility is driven by declared capability rules", () => {
@@ -46,6 +53,33 @@ test("section eligibility is driven by declared capability rules", () => {
   const sections = getEligibleSections({ ...CAPABILITY_DEFAULTS, hasChainFees: true });
   assert.ok(sections.includes("market"));
   assert.ok(sections.includes("financials"));
-  assert.ok(sections.includes("risks_and_verdict"));
+  assert.ok(sections.includes("risks"));
+  assert.ok(sections.includes("final_summary"));
   assert.ok(!sections.includes("tvl_and_capital"));
+});
+
+test("preferred sections disable otherwise eligible sections by profile", () => {
+  const project = {
+    projectProfile: {
+      capabilities: { hasTvl: true, hasTokenomics: true },
+      preferredSections: ["market", "tokenomics", "risks", "final_summary"],
+    },
+  };
+
+  const selection = getSectionSelection(project);
+  assert.equal(selection.sections.tokenomics.status, SECTION_VISIBILITY.ENABLED);
+  assert.equal(selection.sections.tvl_and_capital.status, SECTION_VISIBILITY.DISABLED_BY_PROFILE);
+  assert.equal(selection.sections.financials.status, SECTION_VISIBILITY.DISABLED_BY_PROFILE);
+});
+
+test("available profile sections can be marked partial or disabled by report data", () => {
+  const selection = getSectionSelection(PROJECTS.eth, {
+    tokenomics: "partial",
+    financials: false,
+  });
+
+  assert.equal(selection.sections.tokenomics.status, SECTION_VISIBILITY.PARTIAL);
+  assert.equal(selection.sections.financials.status, SECTION_VISIBILITY.DISABLED_BY_MISSING_DATA);
+  assert.ok(selection.enabledSections.includes("tokenomics"));
+  assert.ok(!selection.enabledSections.includes("financials"));
 });

@@ -5,23 +5,26 @@ import { getUsersFallbackText } from "./fallbacks.js";
 import { fetchCoinGeckoMarket, fetchCoinGeckoChart } from "../adapters/coingecko.js";
 import { fetchDefiLlamaChains, fetchDefiLlamaTVLHistory, fetchStablecoinHistory, fetchStablecoinChains, fetchAppFeesOverview, fetchChainFeesOverview, fetchDexOverview, normalizeStablecoinHistory, stablecoinMcapUsd } from "../adapters/defillama.js";
 import { getTechnicalBias } from "../adapters/bybit.js";
-import { getProjectProfile } from "../config/projects.js";
+import { getProjectProfile, getSectionSelection } from "../config/projects.js";
+import { applySectionSelection, isSectionSelected } from "./section-selection.js";
 
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item)=>String(item.name).toLowerCase()===String(chainName).toLowerCase()) : null; }
 function findStableChainData(chains, chainKey){ return Array.isArray(chains) ? chains.find((item)=>String(item.gecko_id || item.name || "").toLowerCase()===String(chainKey).toLowerCase()) : null; }
 function lastChartValue(chart, valueKey="totalLiquidityUSD"){ if(!Array.isArray(chart)||chart.length===0) return null; const last=chart[chart.length-1]; return last?.[valueKey] ?? last?.totalLiquidityUSD ?? last?.totalCirculatingUSD ?? null; }
 
 export async function buildReport(project){
+  const initialSelection = getSectionSelection(project);
+  const selected = (section) => isSectionSelected(initialSelection, section);
   const [cgMarket,cgChart,chains,tvlHistory,stableHistory,stableChains,appFees,chainFees,dex,ta] = await Promise.allSettled([
     fetchCoinGeckoMarket(project.coingeckoId),
     fetchCoinGeckoChart(project.coingeckoId,365),
-    project.defillamaChain ? fetchDefiLlamaChains() : Promise.resolve(null),
-    project.defillamaChain ? fetchDefiLlamaTVLHistory(project.defillamaChain) : Promise.resolve(null),
-    project.stablecoinChain ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve(null),
-    project.stablecoinChain ? fetchStablecoinChains() : Promise.resolve(null),
-    project.defillamaChain ? fetchAppFeesOverview(project.defillamaChain) : Promise.resolve(null),
-    project.defillamaChain ? fetchChainFeesOverview(project.defillamaChain) : Promise.resolve(null),
-    project.defillamaChain ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
+    project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaChains() : Promise.resolve(null),
+    project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaTVLHistory(project.defillamaChain) : Promise.resolve(null),
+    project.stablecoinChain && selected("stablecoins") ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve(null),
+    project.stablecoinChain && selected("stablecoins") ? fetchStablecoinChains() : Promise.resolve(null),
+    project.defillamaChain && selected("financials") ? fetchAppFeesOverview(project.defillamaChain) : Promise.resolve(null),
+    project.defillamaChain && selected("financials") ? fetchChainFeesOverview(project.defillamaChain) : Promise.resolve(null),
+    project.defillamaChain && (selected("financials") || selected("liquidity_and_trading")) ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
     getTechnicalBias(project.bybitSymbol),
   ]);
 
@@ -56,7 +59,7 @@ export async function buildReport(project){
   const volumeToMarketCap = calcVolumeToMarketCap(volume24h, marketCap);
   const stablecoinsToTVL = calcStablecoinsToTVL(stablecoinsMcap, tvl);
 
-  return {
+  const report = {
     meta:{ slug:project.slug, project_name:project.name, ticker:project.ticker, subtitle:project.subtitle, categories:project.categories, project_type:project.projectType, project_profile:getProjectProfile(project), report_version:"v1.0", updated_at:new Date().toISOString(), data_status:"partial" },
     hero:{ title:`${project.name} как базовая инфраструктура рынка`, subtitle:"Сильный фундаментал, зрелость актива и главный вопрос — удержание ценности внутри экосистемы.", lead:`${project.name} остается важным активом для инфраструктурного слоя крипторынка. Главная задача отчета — показать не только рыночный размер, но и качество экономики сети, капитала и пользовательской активности.`, main_strength:"Сильная инфраструктурная позиция, масштаб экосистемы и высокая ликвидность.", main_risk:"Часть ценности может уходить в смежные уровни экосистемы, а не оставаться напрямую в токене.", status_text:"Сильный фундаментал, но дальнейший тезис должен подтверждаться живой экономикой сети." },
     market:{
@@ -85,4 +88,6 @@ export async function buildReport(project){
     charts:{ price_history:chart?.prices || [], tvl_history:Array.isArray(tvlRows)?tvlRows:[], stablecoins_history:Array.isArray(stableRows)?stableRows:[], app_fees_history:appFeesData?.totalDataChart || [], chain_fees_history:chainFeesData?.totalDataChart || [], dex_history:dexData?.totalDataChart || [] },
     sources:[{name:"CoinGecko", used_for:["price","market cap","fdv","volume"]},{name:"DefiLlama", used_for:["tvl","stablecoins","fees","dex volume"]},{name:"Bybit", used_for:["technical bias"]}]
   };
+  applySectionSelection(report, project);
+  return report;
 }
