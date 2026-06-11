@@ -423,3 +423,59 @@ h1{font-size:54px;line-height:1;letter-spacing:-.03em;margin:12px 0}
 .navigator-input::-moz-range-thumb{width:14px;height:22px;border-radius:6px;border:1px solid rgba(174,198,255,.65);background:#26334d;box-shadow:0 4px 12px rgba(0,0,0,.4);pointer-events:auto;cursor:ew-resize}
 @media(max-width:1180px){.financial-fee-charts{grid-template-columns:1fr}}
 @media(max-width:640px){.chart-range-controls{gap:4px}.chart-range-controls .range-btn{flex:1 1 calc(33.333% - 4px);padding:7px 5px}.chart-navigator{margin-top:4px}}
+
+/* Final client-facing report polish */
+body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,190,.11),transparent 32%),linear-gradient(180deg,#20242b 0%,#181c21 100%)}
+.report-page{padding-top:28px;padding-bottom:48px}
+.layout{grid-template-columns:252px minmax(0,1fr);gap:20px;align-items:start}
+.content{gap:20px;min-width:0}
+.panel,.sidebar-card{border-color:rgba(158,178,222,.14);box-shadow:0 18px 46px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.025)}
+.project-sidebar{padding:20px;top:20px;background:linear-gradient(165deg,rgba(255,255,255,.04),rgba(255,255,255,.018));box-shadow:0 14px 36px rgba(0,0,0,.2)}
+.sidebar-identity{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.project-sidebar .project-main{font-size:21px;line-height:1.15;letter-spacing:-.02em;margin:0}
+.project-ticker{flex:0 0 auto;padding:5px 8px;border:1px solid rgba(141,169,235,.2);border-radius:8px;background:rgba(94,129,211,.08);color:#afc5f5;font-size:10px;font-weight:800;letter-spacing:.12em}
+.project-sidebar .tag-row{gap:6px;margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.07)}
+.project-sidebar .tag{padding:6px 9px;border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.025);color:#b9c4d9;font-size:10px;letter-spacing:.02em}
+.sidebar-meta{display:grid;gap:4px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.07);color:#7f8ba1;font-size:10px;letter-spacing:.05em;text-transform:uppercase}
+.sidebar-meta strong{color:#c8d2e5;font-size:11px;font-weight:700;letter-spacing:0;text-transform:none}
+.hero-overview{padding:28px 28px 26px}
+.hero-heading{margin:0 0 14px}
+.hero-title-row{display:flex;align-items:baseline;gap:13px;flex-wrap:wrap}
+.hero-heading h1{font-size:50px;letter-spacing:-.045em}
+.hero-ticker{padding:5px 8px;border:1px solid rgba(141,169,235,.2);border-radius:8px;background:rgba(94,129,211,.08);color:#a8bde9;font-size:11px;line-height:1;letter-spacing:.12em}
+.hero-lead{max-width:1040px;margin:0;color:#aeb9cc;font-size:14px;line-height:1.7}
+.hero-kpis{margin-top:22px}
+.hero-thesis{margin-top:16px}
+.hero-thesis .list-item{display:flex;flex-direction:column;gap:7px;min-height:104px;padding:15px 16px;color:#b9c4d7;line-height:1.5}
+.hero-thesis .list-item strong{color:#edf3ff;font-size:12px;letter-spacing:.02em}
+.metric-box{display:flex;min-width:0;min-height:126px;flex-direction:column;padding:15px 16px;border-radius:19px;border-color:rgba(149,171,218,.14);background:linear-gradient(160deg,rgba(255,255,255,.032),rgba(255,255,255,.014));box-shadow:inset 0 1px 0 rgba(255,255,255,.018)}
+.metric-top-row{min-height:25px;align-items:flex-start}
+.metric-title{min-width:0;color:#9ba7bb;font-size:11px;line-height:1.35;letter-spacing:.01em}
+.metric-value{margin-top:11px;color:#f2f5fc;font-size:26px;line-height:1.12;letter-spacing:-.025em;overflow-wrap:anywhere}
+.metric-value-long{font-size:18px;line-height:1.25;letter-spacing:-.01em}
+.metric-box .metric-status-line{margin-top:auto;padding-top:11px;color:#7f8ba1;font-size:10px;line-height:1.35;letter-spacing:.025em}
+.metric-box .status-chip{min-width:58px;padding:4px 7px;opacity:.78;font-size:9px;line-height:1;letter-spacing:.07em}
+.section-flow{padding:25px 26px}
+.section-title{margin-bottom:7px;font-size:27px;line-height:1.12;letter-spacing:-.025em}
+.section-sub{color:#929db1;font-size:13px}
+.compact-lead{max-width:920px;margin-top:7px;color:#9eabbe;font-size:13px;line-height:1.6}
+.section-flow .hero-grid{margin-top:16px}
+.section-insight{display:grid;grid-template-columns:112px minmax(0,1fr);gap:14px;align-items:start;max-width:1040px;min-height:0!important;padding:14px 16px!important;color:#aeb9cb!important;line-height:1.55!important}
+.section-insight strong{color:#dfe8f8;font-size:12px}
+.section-insight span{font-size:13px}
+.finance-section .financial-fee-charts,.capital-section .capital-charts{margin-top:16px}
+.financial-fee-charts .integrated-chart{display:flex;flex-direction:column;height:100%}
+.financial-fee-charts .chart-caption{min-height:28px}
+.integrated-chart{border-radius:19px}
+.chart-caption{color:#7f8ba1;font-size:11px;line-height:1.45}
+.chart-stack{margin-top:16px}
+.news-section{padding:25px 26px}
+.news-list{gap:8px;margin-top:16px}
+.news-card{padding:15px 17px;border-radius:16px;border-color:rgba(150,173,220,.13);background:linear-gradient(155deg,rgba(255,255,255,.026),rgba(255,255,255,.012))}
+.news-card:hover{transform:translateY(-1px);border-color:rgba(110,151,242,.32);background:rgba(86,145,255,.045)}
+.news-meta{align-items:center;gap:8px;font-size:10px;letter-spacing:.045em}
+.news-source{color:#a8c4f4}.news-date{color:#7d899e;font-weight:700}
+.news-card h3{margin-top:7px;color:#e7edf8;font-size:15px;line-height:1.4}
+.news-card p{display:-webkit-box;overflow:hidden;margin-top:6px;color:#929eb2;font-size:12px;line-height:1.5;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+@media(max-width:1180px){.layout{gap:18px}.project-sidebar{position:static}.sidebar-identity{justify-content:flex-start}.project-sidebar .tag-row{padding-top:12px;margin-top:12px}.sidebar-meta{margin-top:12px;padding-top:12px}.hero-heading h1{font-size:44px}}
+@media(max-width:640px){.report-page{padding:10px}.content{gap:14px}.project-sidebar{padding:15px}.hero-overview,.section-flow,.capital-section,.news-section{padding:18px}.hero-heading h1{font-size:34px}.hero-lead{font-size:13px;line-height:1.62}.hero-kpis{margin-top:18px}.metric-box{min-height:112px}.metric-value{font-size:24px}.metric-value-long{font-size:17px}.section-title{font-size:24px}.section-insight{grid-template-columns:1fr;gap:5px}.hero-thesis .list-item{min-height:0}.news-card{padding:14px 15px}}
