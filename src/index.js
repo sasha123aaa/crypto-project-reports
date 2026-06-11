@@ -3,6 +3,7 @@ import { getTechnicalBias } from "./adapters/bybit.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
 import { fetchProjectNews } from "./adapters/coingecko.js";
+import { formatCompactNumber, formatMoney } from "./lib/formatters.js";
 
 export default {
   async fetch(request, env) {
@@ -264,17 +265,17 @@ function mergeLiveMetrics(report, live) {
     if (report.liquidity?.metrics) report.liquidity.metrics.spot_volume = metric;
   }
   if (isValidNumber(live.market.circulatingSupply)) {
-    const metric = liveMetric(live.market.circulatingSupply, new Intl.NumberFormat("ru-RU",{maximumFractionDigits:0}).format(live.market.circulatingSupply), sourceCG);
+    const metric = liveMetric(live.market.circulatingSupply, formatCompactNumber(live.market.circulatingSupply), sourceCG);
     report.market.circulating_supply = metric;
     if (report.tokenomics?.metrics) report.tokenomics.metrics.circulating_supply = metric;
   }
   if (isValidNumber(live.market.totalSupply)) {
-    const metric = liveMetric(live.market.totalSupply, new Intl.NumberFormat("ru-RU",{maximumFractionDigits:0}).format(live.market.totalSupply), sourceCG);
+    const metric = liveMetric(live.market.totalSupply, formatCompactNumber(live.market.totalSupply), sourceCG);
     report.market.total_supply = metric;
     if (report.tokenomics?.metrics) report.tokenomics.metrics.total_supply = metric;
   }
   if (isValidNumber(live.market.maxSupply)) {
-    const metric = liveMetric(live.market.maxSupply, new Intl.NumberFormat("ru-RU",{maximumFractionDigits:0}).format(live.market.maxSupply), sourceCG);
+    const metric = liveMetric(live.market.maxSupply, formatCompactNumber(live.market.maxSupply), sourceCG);
     report.market.max_supply = metric;
     if (report.tokenomics?.metrics) report.tokenomics.metrics.max_supply = metric;
   }
@@ -341,7 +342,6 @@ function calcMetric(value, formatted){ return { value, formatted, status:"calcul
 function unavailableMetric(source){ return { value:null, formatted:"—", status:"unavailable", source, updated_at:new Date().toISOString() }; }
 function safeDivide(a,b){ if (!isValidNumber(a) || !isValidNumber(b) || b===0) return null; return a/b; }
 function safePercent(a,b){ if (!isValidNumber(a) || !isValidNumber(b) || b===0) return null; return (a/b)*100; }
-function formatMoney(value){ const num = toNumber(value); if (!isValidNumber(num)) return "—"; const abs = Math.abs(num); if (abs>=1e12) return `$${(num/1e12).toFixed(2)}T`; if (abs>=1e9) return `$${(num/1e9).toFixed(2)}B`; if (abs>=1e6) return `$${(num/1e6).toFixed(2)}M`; if (abs>=1e3) return `$${(num/1e3).toFixed(2)}K`; return `$${num.toFixed(2)}`; }
 function parseHumanNumber(raw){
   if (raw === null || raw === undefined) return null;
   const value = String(raw).trim().replace(/\s+/g, "");

@@ -126,12 +126,48 @@ function usersSectionHtml(report) {
   return `<section class="panel"><div class="section-title">${escapeHtml(users.title || "Активность пользователей")}</div>${text.map((p) => `<p class="lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid">${metricHtml("Daily Active Addresses", metrics.daily_active_addresses)}${metricHtml("New Addresses", metrics.new_addresses)}${metricHtml("Transactions", metrics.transactions)}</div>${hasNoLiveUsers(metrics) ? `<div class="three-col top-gap">${buildUsersStatusCard(metrics)}</div>` : ""}</section>`;
 }
 
+const COMPACT_NUMBER_UNITS = [
+  { value: 1e3, suffix: "K" },
+  { value: 1e6, suffix: "M" },
+  { value: 1e9, suffix: "B" },
+  { value: 1e12, suffix: "T" },
+];
+
+function formatCompactNumber(value, maximumFractionDigits = 2) {
+  if (!Number.isFinite(value)) return "—";
+  const abs = Math.abs(value);
+  let unitIndex = -1;
+  for (let index = 0; index < COMPACT_NUMBER_UNITS.length; index += 1) {
+    if (abs >= COMPACT_NUMBER_UNITS[index].value) unitIndex = index;
+  }
+  if (unitIndex < 0) return Number(value.toFixed(maximumFractionDigits)).toString();
+
+  let scaled = value / COMPACT_NUMBER_UNITS[unitIndex].value;
+  const rounded = Number(scaled.toFixed(maximumFractionDigits));
+  if (Math.abs(rounded) >= 1000 && unitIndex < COMPACT_NUMBER_UNITS.length - 1) {
+    unitIndex += 1;
+    scaled = value / COMPACT_NUMBER_UNITS[unitIndex].value;
+  }
+  return `${Number(scaled.toFixed(maximumFractionDigits))}${COMPACT_NUMBER_UNITS[unitIndex].suffix}`;
+}
+
+function metricFormattedValue(metric) {
+  const formatted = metric?.formatted;
+  const value = metric?.value;
+  const isRawNumericFormat = typeof formatted === "number"
+    || (typeof formatted === "string" && /^[+-]?[\d\s.,\u00a0\u202f]+$/.test(formatted.trim()));
+  if (Number.isFinite(value) && Math.abs(value) >= 1e3 && (formatted == null || formatted === "" || isRawNumericFormat)) {
+    return formatCompactNumber(value);
+  }
+  return formatted ?? "—";
+}
+
 function metricHtml(title, metric) {
   const help = METRIC_HELP[title]
     ? `<span class="info-wrap"><span class="info-icon">i</span><span class="tooltip">${escapeHtml(METRIC_HELP[title])}</span></span>`
     : "";
   const freshness = metric?.updated_at ? ` · ${escapeHtml(formatShortDate(metric.updated_at))}` : "";
-  return `<div class="metric-box"><div class="metric-top-row"><div class="metric-title">${escapeHtml(title)} ${help}</div>${statusChip(metric?.status || "unknown")}</div><div class="metric-value">${escapeHtml(metric?.formatted || "—")}</div><div class="metric-status-line">${escapeHtml(metric?.source || "—")}${freshness}</div></div>`;
+  return `<div class="metric-box"><div class="metric-top-row"><div class="metric-title">${escapeHtml(title)} ${help}</div>${statusChip(metric?.status || "unknown")}</div><div class="metric-value">${escapeHtml(metricFormattedValue(metric))}</div><div class="metric-status-line">${escapeHtml(metric?.source || "—")}${freshness}</div></div>`;
 }
 
 function optionalMetricHtml(title, metric) {
@@ -242,10 +278,7 @@ function sanitizeSeries(series = [], { trimLeadingZeroes = false } = {}) {
 function formatAxisValue(value) {
   if (!Number.isFinite(value)) return "";
   const abs = Math.abs(value);
-  if (abs >= 1e12) return `${(value / 1e12).toFixed(1)}T`;
-  if (abs >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
-  if (abs >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
-  if (abs >= 1e3) return `${(value / 1e3).toFixed(1)}K`;
+  if (abs >= 1e3) return formatCompactNumber(value, 1);
   if (abs >= 100) return `${Math.round(value)}`;
   if (abs >= 1) return `${value.toFixed(1)}`;
   return `${value.toFixed(2)}`;
