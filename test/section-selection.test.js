@@ -25,3 +25,62 @@ test("SOL report demonstrates capability-driven users section selection", async 
   assert.ok(["enabled", "partial"].includes(selection.sections.tvl_and_capital.status));
   assert.ok(["enabled", "partial"].includes(selection.sections.financials.status));
 });
+
+
+const metric = (value = 1) => ({ value, formatted:String(value), status:"live", source:"test" });
+const unavailableMetric = () => ({ value:null, formatted:"—", status:"unavailable", source:"test" });
+
+function runtimeProject(category, capabilities, preferredSections) {
+  return {
+    resolution:{ mode:"runtime" },
+    projectProfile:{ category, capabilities, preferredSections },
+  };
+}
+
+function runtimeReport() {
+  return {
+    meta:{ project_resolution:{ mode:"runtime" } },
+    market:{ price:metric(), market_cap:metric(), volume_24h:metric() },
+    tokenomics:{ metrics:{ circulating_supply:metric() } },
+    liquidity:{ metrics:{ spot_volume:metric() } },
+    valuation:{ metrics:{ volume_market_cap:metric() } },
+    capital:{ metrics:{ tvl:unavailableMetric(), stablecoins_mcap:unavailableMetric() } },
+    financials:{ metrics:{ chain_fees_24h:unavailableMetric(), dex_volume_24h:unavailableMetric(), volume_market_cap:metric() } },
+    users:{ metrics:{ daily_active_addresses:unavailableMetric() } },
+    narrative:{ items:["Narrative"] },
+    risks:{ items:["Risk"] },
+    final_verdict:{ paragraphs:["Summary"] },
+  };
+}
+
+test("runtime meme selection keeps a minimal relevant set and rejects ETH-like sections", () => {
+  const preferred = ["market", "tokenomics", "tvl_and_capital", "financials", "users_and_activity", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"];
+  const project = runtimeProject("meme", { hasTokenomics:true, hasTvl:true, hasChainFees:true, hasUsersData:true, hasLiquidityData:true, hasNarrativeNews:true }, preferred);
+  const selection = applySectionSelection(runtimeReport(), project);
+
+  assert.deepEqual(selection.enabledSections, ["market", "tokenomics", "liquidity_and_trading", "narrative_and_news", "risks", "final_summary"]);
+  for (const section of ["tvl_and_capital", "financials", "users_and_activity", "valuation"]) {
+    assert.equal(selection.sections[section].status, "disabled_by_profile");
+  }
+});
+
+test("runtime utility selection includes valuation but hides empty capital and financial blocks", () => {
+  const preferred = ["market", "tokenomics", "tvl_and_capital", "financials", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"];
+  const project = runtimeProject("utility", { hasTokenomics:true, hasTvl:true, hasChainFees:true, hasLiquidityData:true, hasNarrativeNews:true }, preferred);
+  const selection = applySectionSelection(runtimeReport(), project);
+
+  assert.deepEqual(selection.enabledSections, ["market", "tokenomics", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"]);
+  assert.equal(selection.sections.tvl_and_capital.status, "disabled_by_missing_data");
+  assert.equal(selection.sections.financials.status, "disabled_by_missing_data");
+});
+
+test("runtime infra selection only exposes capability-backed sections with real data", () => {
+  const preferred = ["market", "tokenomics", "tvl_and_capital", "financials", "users_and_activity", "liquidity_and_trading", "narrative_and_news", "risks", "final_summary"];
+  const project = runtimeProject("infra", { hasTokenomics:true, hasTvl:true, hasChainFees:true, hasUsersData:true, hasLiquidityData:true, hasNarrativeNews:true }, preferred);
+  const selection = applySectionSelection(runtimeReport(), project);
+
+  assert.deepEqual(selection.enabledSections, ["market", "tokenomics", "liquidity_and_trading", "narrative_and_news", "risks", "final_summary"]);
+  for (const section of ["tvl_and_capital", "financials", "users_and_activity"]) {
+    assert.equal(selection.sections[section].status, "disabled_by_missing_data");
+  }
+});

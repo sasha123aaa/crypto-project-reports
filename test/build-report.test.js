@@ -34,6 +34,10 @@ test("runtime fallback project builds a compatible partial report without curate
     assert.ok(report.meta.section_selection.enabledSections.includes("market"));
     assert.equal(report.meta.section_selection.sections.tvl_and_capital.status, "disabled_by_profile");
     assert.equal(report.meta.section_selection.sections.financials.status, "disabled_by_profile");
+    assert.equal(report.meta.section_selection.sections.users_and_activity.status, "disabled_by_profile");
+    assert.ok(!report.meta.section_selection.enabledSections.includes("tvl_and_capital"));
+    assert.ok(!report.meta.section_selection.enabledSections.includes("financials"));
+    assert.ok(!report.meta.section_selection.enabledSections.includes("users_and_activity"));
     assert.equal(report.market.price.status, "unavailable");
     assert.deepEqual(report.charts.price_history, []);
     assert.ok(!requests.some((url) => url.includes("api.coingecko.com")), "CoinGecko must not be called without a resolved id");

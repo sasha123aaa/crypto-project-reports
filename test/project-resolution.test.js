@@ -111,6 +111,8 @@ test("runtime discovery infers cautious profiles for doge, pepe, and link", asyn
   assert.equal(link.capabilities.hasTokenUtilityData, true);
   assert.equal(link.capabilities.hasTvl, true);
   assert.equal(link.resolution.source, "discovery");
+  assert.ok(link.preferredSections.includes("liquidity_and_trading"));
+  assert.ok(link.preferredSections.includes("valuation"));
 });
 
 test("category inference favors utility over weak protocol or market-only signals", () => {
