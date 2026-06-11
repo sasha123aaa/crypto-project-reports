@@ -1,4 +1,10 @@
-import { getProjectProfile, getSectionSelection } from "../config/projects.js";
+import { PROJECT_CATEGORIES, getProjectProfile, getSectionSelection } from "../config/projects.js";
+
+const RUNTIME_CATEGORY_SECTIONS = Object.freeze({
+  [PROJECT_CATEGORIES.MEME]: new Set(["market", "tokenomics", "liquidity_and_trading", "narrative_and_news", "risks", "final_summary"]),
+  [PROJECT_CATEGORIES.UTILITY]: new Set(["market", "tokenomics", "financials", "tvl_and_capital", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"]),
+  [PROJECT_CATEGORIES.INFRA]: new Set(["market", "tokenomics", "financials", "tvl_and_capital", "users_and_activity", "liquidity_and_trading", "narrative_and_news", "risks", "final_summary"]),
+});
 
 function hasMetricValue(metric) {
   if (!metric || typeof metric !== "object") return false;
@@ -7,45 +13,66 @@ function hasMetricValue(metric) {
     || (typeof metric.formatted === "string" && !["", "—", "данные временно недоступны"].includes(metric.formatted.toLowerCase()));
 }
 
-function metricBlockAvailability(block) {
+function metricBlockAvailability(block, { strict = false, metricKeys } = {}) {
   if (!block || typeof block !== "object") return false;
-  const metrics = Object.values(block.metrics || {});
-  if (!metrics.length) return "partial";
+  const source = block.metrics || {};
+  const metrics = (metricKeys || Object.keys(source)).map((key) => source[key]).filter(Boolean);
+  if (!metrics.length) return strict ? false : "partial";
   const available = metrics.filter(hasMetricValue).length;
-  if (!available) return "partial";
+  if (!available) return strict ? false : "partial";
   return available === metrics.length ? true : "partial";
 }
 
-function listBlockAvailability(...lists) {
+function listBlockAvailability(lists, { strict = false } = {}) {
   const existing = lists.filter(Array.isArray);
   if (!existing.length) return false;
-  return existing.some((items) => items.length) ? true : "partial";
+  if (!existing.some((items) => items.length)) return strict ? false : "partial";
+  return true;
 }
 
-export function getReportDataAvailability(report = {}) {
+function isRuntimeProject(project, report) {
+  return project?.resolution?.mode === "runtime" || report?.meta?.project_resolution?.mode === "runtime";
+}
+
+export function getReportDataAvailability(report = {}, { strict = false } = {}) {
   return {
-    market: metricBlockAvailability({ metrics: report.market }),
-    tokenomics: metricBlockAvailability(report.tokenomics),
-    tvl_and_capital: metricBlockAvailability(report.capital),
-    stablecoins: metricBlockAvailability(report.capital),
-    rwa: metricBlockAvailability(report.capital),
-    financials: metricBlockAvailability(report.financials),
-    liquidity_and_trading: metricBlockAvailability(report.liquidity),
-    users_and_activity: metricBlockAvailability(report.users),
-    unlocks: report.tokenomics ? "partial" : false,
-    whale_activity: report.liquidity ? "partial" : false,
-    narrative_and_news: report.news
-      ? listBlockAvailability(report.news.items)
-      : listBlockAvailability(report.narrative?.items),
-    risks: listBlockAvailability(report.profile?.risks, report.risks?.items, report.watchlist?.items),
-    final_summary: listBlockAvailability(report.profile?.strengths, report.profile?.weaknesses, report.final_verdict?.paragraphs),
+    market: metricBlockAvailability({ metrics: report.market }, { strict }),
+    tokenomics: metricBlockAvailability(report.tokenomics, { strict }),
+    tvl_and_capital: metricBlockAvailability(report.capital, { strict, metricKeys:["tvl"] }),
+    stablecoins: metricBlockAvailability(report.capital, { strict, metricKeys:["stablecoins_mcap"] }),
+    rwa: metricBlockAvailability(report.capital, { strict, metricKeys:["rwa_active_mcap"] }),
+    financials: metricBlockAvailability(report.financials, { strict, metricKeys:["chain_fees_24h", "dex_volume_24h"] }),
+    liquidity_and_trading: metricBlockAvailability(report.liquidity, { strict }),
+    valuation: metricBlockAvailability(report.valuation, { strict }),
+    users_and_activity: metricBlockAvailability(report.users, { strict }),
+    unlocks: metricBlockAvailability(report.tokenomics, { strict }),
+    whale_activity: metricBlockAvailability(report.liquidity, { strict }),
+    narrative_and_news: listBlockAvailability([report.news?.items, report.narrative?.items], { strict }),
+    risks: listBlockAvailability([report.profile?.risks, report.risks?.items, report.watchlist?.items], { strict }),
+    final_summary: listBlockAvailability([report.profile?.strengths, report.profile?.weaknesses, report.final_verdict?.paragraphs], { strict }),
   };
+}
+
+function applyRuntimeCategorySafety(selection, category) {
+  const allowedSections = RUNTIME_CATEGORY_SECTIONS[category];
+  if (!allowedSections) return selection;
+
+  for (const [section, details] of Object.entries(selection.sections)) {
+    if (allowedSections.has(section) || details.status === "disabled_by_profile") continue;
+    details.status = "disabled_by_profile";
+    details.reason = "not_relevant_for_runtime_category";
+  }
+  selection.enabledSections = selection.enabledSections.filter((section) => allowedSections.has(section));
+  return selection;
 }
 
 export function applySectionSelection(report, project) {
   report.meta = report.meta || {};
-  report.meta.project_profile = getProjectProfile(project);
-  report.meta.section_selection = getSectionSelection(project, getReportDataAvailability(report));
+  const profile = getProjectProfile(project);
+  const runtime = isRuntimeProject(project, report);
+  report.meta.project_profile = profile;
+  report.meta.section_selection = getSectionSelection(project, getReportDataAvailability(report, { strict:runtime }));
+  if (runtime) applyRuntimeCategorySafety(report.meta.section_selection, profile.category);
   return report.meta.section_selection;
 }
 

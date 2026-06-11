@@ -85,13 +85,14 @@ function buildCapabilitySeed(category, signals, marketData = {}) {
   };
 }
 
-function buildPreferredSections(capabilities) {
+function buildPreferredSections(capabilities, category) {
   return [...new Set([
     ...BASE_SECTIONS,
     ...(capabilities.hasTvl ? ["tvl_and_capital"] : []),
     ...(capabilities.hasStablecoins ? ["stablecoins"] : []),
     ...(capabilities.hasProtocolFees || capabilities.hasChainFees ? ["financials"] : []),
-    ...(capabilities.hasDexVolume ? ["liquidity_and_trading"] : []),
+    ...(capabilities.hasDexVolume || capabilities.hasLiquidityData ? ["liquidity_and_trading"] : []),
+    ...(category === PROJECT_CATEGORIES.UTILITY ? ["valuation"] : []),
     ...(capabilities.hasUsersData ? ["users_and_activity"] : []),
   ])].filter((section) => getEligibleSections(capabilities).includes(section));
 }
@@ -101,7 +102,7 @@ function buildProfile(category, capabilities) {
     category,
     analysisProfile: CATEGORY_PROFILES[category],
     capabilities,
-    preferredSections: buildPreferredSections(capabilities),
+    preferredSections: buildPreferredSections(capabilities, category),
   };
 }
 
