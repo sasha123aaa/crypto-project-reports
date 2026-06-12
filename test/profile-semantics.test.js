@@ -251,7 +251,9 @@ test("LINK oracle profile prioritizes utility and value capture without ETH-like
   assert.match(report.hero.lead, /oracle|данных|LINK/i);
   assert.match(report.final_verdict.paragraphs.join(" "), /value|спрос на LINK|захват/i);
   assert.ok(report.utility_adoption.items.length >= 3);
-  assert.ok(report.hero.kpis.some(({ key }) => key === "token_utility"));
+  assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "token_utility", "adoption", "value_capture"]);
+  assert.match(report.semantic_metrics.value_capture.formatted, /Непрямой|token demand/i);
+  assert.match(report.tokenomics.text.join(" "), /dilution|total \/ max supply|value capture/i);
   assert.ok(!report.hero.kpis.some(({ key }) => ["tvl", "stablecoins", "fees"].includes(key)));
   assert.deepEqual(report.metric_slots.capital, []);
   assert.deepEqual(report.metric_slots.financial, []);
