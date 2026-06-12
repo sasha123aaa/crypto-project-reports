@@ -13,7 +13,7 @@ import {
 } from "../src/config/projects.js";
 
 test("project taxonomy exposes the stage-one categories", () => {
-  assert.deepEqual(Object.values(PROJECT_CATEGORIES), ["infra", "macro", "defi", "meme", "utility", "consumer", "hybrid_ecosystem", "trading_venue"]);
+  assert.deepEqual(Object.values(PROJECT_CATEGORIES), ["infra", "macro", "defi", "meme", "utility", "consumer", "hybrid_ecosystem", "ecosystem_growth", "trading_venue"]);
 });
 
 
@@ -147,4 +147,21 @@ test("PENDLE and CRV use the product-driven DeFi economics template with project
   }
   assert.equal(pendle.capabilities.hasUnlocks, false);
   assert.equal(crv.capabilities.hasUnlocks, true);
+});
+
+
+test("MNT and NEAR share the ecosystem-growth template with distinct capabilities", () => {
+  const mnt = getProjectProfile(PROJECTS.mnt);
+  const near = getProjectProfile(PROJECTS.near);
+  for (const profile of [mnt, near]) {
+    assert.equal(profile.category, PROJECT_CATEGORIES.ECOSYSTEM_GROWTH);
+    assert.equal(profile.analysisProfile, ANALYSIS_PROFILES.INFRA_ECOSYSTEM_GROWTH);
+    for (const capability of ["hasTvl", "hasStablecoins", "hasChainFees", "hasDexVolume", "hasTokenomics", "hasNarrativeNews", "hasLiquidityData", "hasTokenUtilityData"]) assert.equal(profile.capabilities[capability], true);
+  }
+  assert.equal(mnt.capabilities.hasAdoptionData, false);
+  assert.equal(near.capabilities.hasAdoptionData, true);
+  assert.equal(getSectionSelection(PROJECTS.mnt).sections.utility_and_adoption.status, SECTION_VISIBILITY.DISABLED_BY_PROFILE);
+  assert.ok(getSectionSelection(PROJECTS.near).enabledSections.includes("utility_and_adoption"));
+  assert.equal(PROJECTS.mnt.marketSymbols.tradingView, "BYBIT:MNTUSDT");
+  assert.equal(PROJECTS.near.marketSymbols.tradingView, "BINANCE:NEARUSDT");
 });

@@ -146,3 +146,20 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
     assert.deepEqual(link.chart_slots.map(({ key }) => key), ["price_history", "volume_history", "market_cap_history"]);
   });
 });
+
+test("buildReport keeps MNT and NEAR on the shared ecosystem-growth template", async () => {
+  await withUnavailableSources(async () => {
+    const [mnt, near] = await Promise.all([buildReport(PROJECTS.mnt), buildReport(PROJECTS.near)]);
+    for (const report of [mnt, near]) {
+      assert.equal(report.meta.project_profile.category, "ecosystem_growth");
+      assert.equal(report.meta.project_profile.analysisProfile, "infra_ecosystem_growth");
+      assert.ok(report.meta.section_selection.enabledSections.includes("tvl_and_capital"));
+      assert.ok(report.meta.section_selection.enabledSections.includes("financials"));
+      assert.deepEqual(report.meta.section_order.slice(-3), ["summary", "final_verdict", "narrative_and_news"]);
+    }
+    assert.equal(mnt.meta.market_symbols.tradingView, "BYBIT:MNTUSDT");
+    assert.equal(near.meta.market_symbols.tradingView, "BINANCE:NEARUSDT");
+    assert.doesNotMatch(mnt.final_verdict.paragraphs.join(" "), /AI/i);
+    assert.match(near.final_verdict.paragraphs.join(" "), /нарратив|usage/i);
+  });
+});

@@ -300,3 +300,16 @@ test("revenue-driven DeFi category template keeps common order and project-speci
   assert.match(pendle.final_verdict.paragraphs.join(" "), /PT \/ YT|product|usage/i);
   assert.match(crv.final_verdict.paragraphs.join(" "), /emissions|veCRV|liquidity/i);
 });
+
+
+test("MNT and NEAR use a shared ecosystem-growth template without identical investment logic", () => {
+  const mnt = applyProfileAwareSemantics(baseReport(), PROJECTS.mnt);
+  const near = applyProfileAwareSemantics(baseReport(), PROJECTS.near);
+  assert.deepEqual(mnt.meta.section_order, ["tokenomics", "financials", "tvl_and_capital", "utility_and_adoption", "summary", "final_verdict", "narrative_and_news"]);
+  assert.deepEqual(mnt.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins", "fees", "token_utility"]);
+  assert.deepEqual(near.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "tvl", "fees", "adoption", "stablecoins"]);
+  assert.match(mnt.final_verdict.paragraphs.join(" "), /value|захватывает|MNT/i);
+  assert.match(near.final_verdict.paragraphs.join(" "), /нарратив|usage|NEAR/i);
+  assert.doesNotMatch(mnt.final_verdict.paragraphs.join(" "), /AI/i);
+  assert.ok(near.utility_adoption.items.some((item) => /AI-related|narrative/i.test(item)));
+});

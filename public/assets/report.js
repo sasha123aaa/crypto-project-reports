@@ -315,6 +315,8 @@ function projectIconHtml(meta = {}, compact = false) {
     hyperliquid:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#97fce4" stroke-width="12" stroke-linecap="round" d="M12 58c9-25 20-25 29 0s20 25 29 0 14-24 18-16"/></svg>`,
     pendle:`<span class="brand-word">P</span>`,
     curve:`<span class="brand-word">CRV</span>`,
+    mantle:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#d7ff3f" stroke-width="10" stroke-linejoin="round" d="M12 76V24l19 26 19-26 19 26 19-26v52"/></svg>`,
+    near:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#7cf7c4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" d="M18 78V22l64 56V22L18 78"/></svg>`,
   };
   const remote = typeof branding.iconUrl === "string" && /^https:\/\//i.test(branding.iconUrl)
     ? `<img src="${escapeHtml(branding.iconUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`

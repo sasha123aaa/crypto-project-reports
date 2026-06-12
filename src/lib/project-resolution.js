@@ -34,6 +34,8 @@ const KNOWN_PROJECT_BRANDING = Object.freeze({
   doge: { iconKey:"dogecoin", accent:"#c2a633" },
   pepe: { iconKey:"pepe", accent:"#63b86b" },
   link: { iconKey:"chainlink", accent:"#5578ff" },
+  mnt: { iconKey:"mantle", accent:"#d7ff3f" },
+  near: { iconKey:"near", accent:"#7cf7c4" },
 });
 
 const KNOWN_MARKET_SYMBOLS = Object.freeze({
@@ -43,6 +45,8 @@ const KNOWN_MARKET_SYMBOLS = Object.freeze({
   doge: createMarketSymbols("DOGE"),
   pepe: createMarketSymbols("PEPE"),
   link: createMarketSymbols("LINK"),
+  mnt: createMarketSymbols("MNT", { exchanges:["BYBIT", "GATEIO"] }),
+  near: createMarketSymbols("NEAR"),
 });
 
 const KNOWN_PROJECT_NEWS_FEEDS = Object.freeze({
