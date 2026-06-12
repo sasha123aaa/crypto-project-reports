@@ -41,6 +41,7 @@ async function handleHybridReportApi(request, env, url) {
   const report = staticJson.data;
   report.meta = report.meta || {};
   report.meta.project_resolution = project.resolution;
+  report.meta.branding = project.branding || report.meta.branding || null;
   applySectionSelection(report, project);
 
   try {
@@ -83,6 +84,7 @@ async function handleRuntimeReport(project) {
     const report = await buildReport(project);
     report.meta = report.meta || {};
     report.meta.project_resolution = project.resolution;
+    report.meta.branding = project.branding || report.meta.branding || null;
     report.meta.data_status = "runtime-partial";
     report.meta.generated_at = new Date().toISOString();
     return json(report, 200, { cacheControl:resolveReportCacheControl(report.meta.data_status) });

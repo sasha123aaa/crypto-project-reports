@@ -52,6 +52,8 @@ test("resolver returns a conservative profiled fallback when discovery is unavai
     assert.equal(project.capabilities.hasTvl, false);
     assert.ok(project.preferredSections.includes("narrative_and_news"));
     assert.deepEqual(project.categories, []);
+    assert.equal(project.newsRelevance.mode, "strict");
+    assert.ok(project.branding.iconKey);
     assert.deepEqual(project.resolution, {
       mode: "runtime",
       source: "fallback",
@@ -88,7 +90,7 @@ function discoveryFor(coin, coinDetails, { chains = [], stablecoins = [], protoc
 test("runtime discovery infers cautious profiles for doge, pepe, and link", async () => {
   const doge = await resolveProject("doge", discoveryFor(
     { id:"dogecoin", symbol:"doge", name:"Dogecoin", market_cap_rank:9 },
-    { categories:["Meme", "Dog-Themed Coins"], market_data:{ circulating_supply:150_000_000_000, total_volume:{ usd:1_000_000 } } },
+    { categories:["Meme", "Dog-Themed Coins", "Solana Ecosystem"], image:{ large:"https://assets.test/doge.png" }, market_data:{ circulating_supply:150_000_000_000, total_volume:{ usd:1_000_000 } } },
     { chains:[{ name:"Dogecoin", tokenSymbol:"DOGE", tvl:25_000 }] },
   ));
   const pepe = await resolveProject("pepe", discoveryFor(
@@ -104,6 +106,10 @@ test("runtime discovery infers cautious profiles for doge, pepe, and link", asyn
   assert.equal(doge.category, PROJECT_CATEGORIES.MEME);
   assert.equal(doge.analysisProfile, ANALYSIS_PROFILES.MEME_ASSET);
   assert.equal(doge.capabilities.hasNarrativeMomentum, true);
+  assert.deepEqual(doge.categories, ["Meme", "Dog-Themed Coins"]);
+  assert.equal(doge.newsRelevance.mode, "strict");
+  assert.equal(doge.branding.iconKey, "dogecoin");
+  assert.equal(doge.branding.iconUrl, "https://assets.test/doge.png");
   assert.equal(pepe.category, PROJECT_CATEGORIES.MEME);
   assert.equal(pepe.capabilities.hasTvl, false);
   assert.equal(link.category, PROJECT_CATEGORIES.UTILITY);

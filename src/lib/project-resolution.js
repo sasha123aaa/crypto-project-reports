@@ -24,6 +24,49 @@ const DEFI_CATEGORY = /decentralized finance|\bdefi\b|decentralized exchange|\bd
 const CONSUMER_CATEGORY = /gaming|metaverse|social|consumer|entertainment|fan token|nft|play to earn/i;
 const KNOWN_MEME_IDENTITIES = new Set(["doge", "dogecoin", "pepe", "shib", "shiba-inu"]);
 
+
+const KNOWN_PROJECT_BRANDING = Object.freeze({
+  eth: { iconKey:"ethereum", accent:"#8c9eff" },
+  sol: { iconKey:"solana", accent:"#14f195" },
+  doge: { iconKey:"dogecoin", accent:"#c2a633" },
+  pepe: { iconKey:"pepe", accent:"#63b86b" },
+  link: { iconKey:"chainlink", accent:"#4a6cff" },
+});
+
+const KNOWN_NEWS_CONTEXT = Object.freeze({
+  doge: ["dogecoin", "doge", "dogecoin payment", "dogecoin adoption", "doge whale", "doge listing", "elon musk dogecoin", "elon musk doge"],
+  pepe: ["pepe", "pepe coin", "pepe whale", "pepe liquidity", "pepe listing", "pepe sentiment"],
+  link: ["chainlink", "link", "chainlink ccip", "chainlink oracle", "chainlink staking"],
+});
+
+function runtimeBranding(coin, ticker) {
+  const known = KNOWN_PROJECT_BRANDING[String(ticker || "").toLowerCase()] || KNOWN_PROJECT_BRANDING[String(coin?.id || "").toLowerCase()];
+  const iconUrl = coin?.image?.large || coin?.image?.small || coin?.image?.thumb;
+  return { ...(known || {}), ...(typeof iconUrl === "string" && /^https:\/\//i.test(iconUrl) ? { iconUrl } : {}) };
+}
+
+function runtimeNewsRelevance(coin, ticker) {
+  const key = String(ticker || "").toLowerCase();
+  const directTerms = [...new Set([coin?.name, coin?.id, coin?.symbol, ticker].filter(Boolean))];
+  return {
+    mode:"strict",
+    directTerms,
+    contextTerms: KNOWN_NEWS_CONTEXT[key] || directTerms,
+    competingTerms: ["bitcoin", "btc", "ethereum", "ether", "eth", "solana", "sol", "xrp", "dogecoin", "doge", "pepe"].filter((term) => !directTerms.map((value) => String(value).toLowerCase()).includes(term)),
+  };
+}
+
+function runtimeCategories(categories, category) {
+  const useful = {
+    [PROJECT_CATEGORIES.MEME]: /meme|dog-themed|frog-themed|cat-themed|community token/i,
+    [PROJECT_CATEGORIES.INFRA]: /layer[ -]?1|layer[ -]?2|smart contract|blockchain infrastructure/i,
+    [PROJECT_CATEGORIES.DEFI]: /defi|decentralized exchange|lending|yield|staking|derivatives/i,
+    [PROJECT_CATEGORIES.UTILITY]: /oracle|interoperability|data availability|storage|identity|utility/i,
+    [PROJECT_CATEGORIES.CONSUMER]: /gaming|social|consumer|entertainment|nft/i,
+  }[category];
+  return categories.filter((value) => useful?.test(String(value))).slice(0, 3);
+}
+
 const DEFAULT_DISCOVERY = Object.freeze({
   searchCoinGeckoProjects,
   fetchCoinGeckoProject,
@@ -157,13 +200,15 @@ export function buildRuntimeProjectConfig(input, discovery) {
     ticker,
     subtitle: `${ticker} • runtime ${category} profile`,
     projectType,
-    categories: categories.slice(0, 4),
+    categories: runtimeCategories(categories, category),
     coingeckoId: coin.id,
     ...(chain ? { defillamaChain:chain.name } : {}),
     ...(stablecoinChain ? { stablecoinChain:stablecoinChain.name || stablecoinChain.gecko_id } : {}),
     ...(protocol ? { defillamaProtocol:protocol.slug || protocol.name } : {}),
     bybitSymbol: `${ticker}USDT`,
     newsKeywords: [coin.name, coin.symbol, coin.id].filter(Boolean),
+    newsRelevance: runtimeNewsRelevance(coin, ticker),
+    branding: runtimeBranding(coinDetails, ticker),
     resolution: { mode:"runtime", source:"discovery", input:String(input ?? "").trim(), normalized:{ slug:normalizeProjectInput(coin.symbol || input), ticker }, signals },
     runtimeData: { tvl:chain?.tvl ?? protocol?.tvl ?? null },
   }, profile);
@@ -184,6 +229,8 @@ export function buildRuntimeProjectSkeleton(input) {
     subtitle: `${ticker} • runtime ${category} profile`,
     projectType: "runtime",
     categories: [],
+    newsRelevance: { mode:"strict", directTerms:[ticker, slug], contextTerms:[ticker, slug], competingTerms:[] },
+    branding: KNOWN_PROJECT_BRANDING[slug] || { iconKey:"fallback" },
     resolution: {
       mode: "runtime",
       source: "fallback",

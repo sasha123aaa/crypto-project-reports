@@ -112,31 +112,56 @@ export function selectDiverseNews(items, feeds = [], limit = 5, project = {}) {
   return selected.slice(0, limit);
 }
 
-export function isProjectRelevantNews(item, feeds = [], project = {}) {
-  const feed = feeds.find((candidate) => candidate.source === item.source);
-  if ((feed?.layer || "project") !== "universal") return true;
-  if (project?.newsRelevance?.mode !== "strict") return true;
+export function projectNewsRelevanceScore(item, feeds = [], project = {}) {
+  const relevance = project?.newsRelevance || {};
+  if (relevance.mode !== "strict") return 100;
 
-  const relevance = project.newsRelevance;
+  const feed = feeds.find((candidate) => candidate.source === item.source);
+  const layer = feed?.layer || "project";
   const title = normalizedField(item.title);
   const url = normalizedField(item.url);
   const snippet = normalizedField(item.snippet);
+  const source = normalizedField(item.source);
   const directTerms = normalizedTerms(relevance.directTerms || projectNewsKeywords(project));
   const contextTerms = normalizedTerms(relevance.contextTerms || []);
   const competingTerms = normalizedTerms(relevance.competingTerms || []);
   const directInTitle = countTerms(title, directTerms);
+  const contextInTitle = countTerms(title, contextTerms);
   const directInUrl = countTerms(url, directTerms);
-  const contextInTitleOrUrl = countTerms(`${title} ${url}`, contextTerms);
-  const weakSnippetMentions = countTerms(snippet, directTerms) + countTerms(snippet, contextTerms);
+  const contextInUrl = countTerms(url, contextTerms);
+  const directInSnippet = countTerms(snippet, directTerms);
+  const contextInSnippet = countTerms(snippet, contextTerms);
+  const projectInSource = layer === "project" ? countTerms(source, [...directTerms, ...contextTerms]) : 0;
   const competingInTitle = countTerms(title, competingTerms);
 
-  // A snippet-only mention is never enough for strict project feeds. Competing-asset
-  // headlines need explicit Ethereum ecosystem context, not just a side mention of ETH.
-  if (!directInTitle && !directInUrl && !contextInTitleOrUrl) return false;
-  if (competingInTitle && !contextInTitleOrUrl) return false;
+  // Title is deliberately dominant. A snippet-only side mention cannot qualify a
+  // universal market story, while a clearly project-owned feed gets provenance credit.
+  return directInTitle * 12
+    + contextInTitle * 14
+    + directInUrl * 6
+    + contextInUrl * 8
+    + Math.min(directInSnippet, 2) * 2
+    + Math.min(contextInSnippet, 2) * 3
+    + (layer === "project" ? 7 : 0)
+    + projectInSource * 2
+    - competingInTitle * 7;
+}
 
-  const score = directInTitle * 6 + directInUrl * 4 + contextInTitleOrUrl * 7 + Math.min(weakSnippetMentions, 2) - competingInTitle * 4;
-  return score >= 6;
+export function isProjectRelevantNews(item, feeds = [], project = {}) {
+  if (project?.newsRelevance?.mode !== "strict") return true;
+  const feed = feeds.find((candidate) => candidate.source === item.source);
+  const layer = feed?.layer || "project";
+  const score = projectNewsRelevanceScore(item, feeds, project);
+  const title = normalizedField(item.title);
+  const url = normalizedField(item.url);
+  const relevance = project.newsRelevance;
+  const focusTerms = normalizedTerms([...(relevance.directTerms || []), ...(relevance.contextTerms || [])]);
+  const hasHeadlineOrSlugFocus = countTerms(`${title} ${url}`, focusTerms) > 0;
+
+  // Universal publishers must demonstrate focus in the headline or URL. Project-owned
+  // sources may qualify by provenance, but still pass through the same score function.
+  if (layer === "universal" && !hasHeadlineOrSlugFocus) return false;
+  return score >= (layer === "universal" ? 10 : 7);
 }
 
 function normalizedTerms(terms) {
