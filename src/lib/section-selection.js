@@ -51,6 +51,7 @@ export function getReportDataAvailability(report = {}, { strict = false } = {}) 
     users_and_activity: metricBlockAvailability(report.users, { strict }),
     unlocks: metricBlockAvailability(report.tokenomics, { strict }),
     whale_activity: metricBlockAvailability(report.liquidity, { strict }),
+    utility_and_adoption: listBlockAvailability([report.utility_adoption?.items], { strict }),
     narrative_and_news: listBlockAvailability([report.news?.items, report.narrative?.items], { strict }),
     risks: listBlockAvailability([report.profile?.risks, report.risks?.items, report.watchlist?.items], { strict }),
     final_summary: listBlockAvailability([report.profile?.strengths, report.profile?.weaknesses, report.final_verdict?.paragraphs], { strict }),
