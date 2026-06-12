@@ -349,8 +349,11 @@ function chartCard(id, title, subtitle = "", controlsHtml = "", note = "") {
   return `<section class="panel"><div class="chart-head"><div><div class="section-title">${escapeHtml(title)}</div>${subtitle ? `<div class="section-sub">${escapeHtml(subtitle)}</div>` : ""}</div>${controlsHtml ? `<div class="chart-controls">${controlsHtml}</div>` : ""}</div>${note ? `<div class="chart-note">${escapeHtml(note)}</div>` : ""}<div class="chart-shell" id="${id}-wrap"><canvas id="${id}"></canvas></div></section>`;
 }
 
-function tradingViewCard() {
-  return `<section class="panel"><div class="section-title">График цены</div><div class="section-sub">Интерактивный график TradingView для проверки рыночной структуры</div><div class="tv-shell"><div id="tv-widget" style="width:100%;height:100%;"></div></div></section>`;
+function tradingViewCard(symbol) {
+  const content = symbol
+    ? `<div id="tv-widget" style="width:100%;height:100%;"></div>`
+    : `<div class="error-box">Торговая пара не найдена на поддерживаемых биржах. График не подменяется другим рынком.</div>`;
+  return `<section class="panel"><div class="section-title">График цены</div><div class="section-sub">Интерактивный график TradingView для проверки рыночной структуры</div><div class="tv-shell">${content}</div></section>`;
 }
 
 function normalizeLlamaSeries(rows = [], key) {
@@ -598,13 +601,12 @@ async function loadReport() {
       return;
     }
 
-    const reportTicker = String(data?.meta?.ticker || slug).toUpperCase().replace(/[^A-Z0-9]/g, "");
-    const tradingViewSymbol = data?.meta?.market_symbols?.tradingView || (reportTicker ? `BINANCE:${reportTicker}USDT` : null);
+    const tradingViewSymbol = data?.meta?.market_symbols?.tradingView || null;
     app.innerHTML = `<div class="layout"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="sidebar-project-mark">${projectIconHtml(data.meta, true)}<div class="project-main">${escapeHtml(data.meta.project_name)}</div></div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
       <section class="panel hero-overview"><div class="hero-heading">${projectIconHtml(data.meta)}<div class="hero-identity"><div class="hero-title-row"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><span class="hero-ticker">${escapeHtml(data.meta.ticker)}</span></div>${data.hero.subtitle && data.hero.subtitle !== data.meta.ticker ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}</div></div><p class="lead hero-lead">${escapeHtml(data.hero.lead)}</p>
       <div class="hero-grid hero-kpis">${heroKpisHtml(data)}</div>
       <div class="three-col hero-thesis top-gap"><div class="list-item"><strong>Главная сила</strong><span>${escapeHtml(data.hero.main_strength || "—")}</span></div><div class="list-item"><strong>Главный риск</strong><span>${escapeHtml(data.hero.main_risk || "—")}</span></div><div class="list-item"><strong>Что проверить</strong><span>${escapeHtml(data.hero.status_text || "—")}</span></div></div></section>
-      ${tradingViewCard()}
+      ${tradingViewCard(tradingViewSymbol)}
       ${marketPackHtml(data)}
       ${technicalBiasHtml(data.technical_bias)}
       ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel executive-summary"><div class="section-title">Кратко для инвестора</div><div class="section-sub">Три проверки качества инвестиционного тезиса.</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}

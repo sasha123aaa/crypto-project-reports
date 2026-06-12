@@ -3,6 +3,7 @@ import { resolveProject } from "./lib/project-resolution.js";
 import { buildReport } from "./lib/build-report.js";
 import { applySectionSelection, isSectionSelected } from "./lib/section-selection.js";
 import { getTechnicalBias } from "./adapters/bybit.js";
+import { marketTechnicalRoute } from "./lib/market-symbols.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
 import { fetchProjectNews } from "./adapters/coingecko.js";
@@ -123,7 +124,7 @@ async function fetchLiveMetrics(project) {
     project.defillamaChain && selected("tvl_and_capital") ? fetchTVLHistory(project.defillamaChain) : Promise.resolve([]),
     project.stablecoinChain && selected("stablecoins") ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve([]),
     selected("users_and_activity") ? fetchUsersMetrics(project, { toNumber }) : Promise.resolve(null),
-    getTechnicalBias(project.bybitSymbol),
+    getTechnicalBias(marketTechnicalRoute(project.marketSymbols)),
     project.rwaChain && selected("rwa") ? fetchDefiLlamaRwaActiveMcap(project.rwaChain) : Promise.resolve(null),
     selected("narrative_and_news") ? fetchProjectNews(project) : Promise.resolve(null),
   ]);

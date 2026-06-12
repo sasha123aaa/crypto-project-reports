@@ -8,6 +8,7 @@ import {
 } from "../config/projects.js";
 import { fetchCoinGeckoProject, searchCoinGeckoProjects } from "../adapters/coingecko.js";
 import { fetchDefiLlamaChains, fetchDefiLlamaProtocols, fetchStablecoinChains, stablecoinMcapUsd } from "../adapters/defillama.js";
+import { createMarketSymbols, resolveExchangeMarketSymbols } from "./market-symbols.js";
 
 const CATEGORY_PROFILES = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: ANALYSIS_PROFILES.L1_INFRA,
@@ -34,11 +35,11 @@ const KNOWN_PROJECT_BRANDING = Object.freeze({
 });
 
 const KNOWN_MARKET_SYMBOLS = Object.freeze({
-  eth: { tradingView:"BINANCE:ETHUSDT", technical:"ETHUSDT" },
-  sol: { tradingView:"BINANCE:SOLUSDT", technical:"SOLUSDT" },
-  doge: { tradingView:"BINANCE:DOGEUSDT", technical:"DOGEUSDT" },
-  pepe: { tradingView:"BINANCE:PEPEUSDT", technical:"PEPEUSDT" },
-  link: { tradingView:"BINANCE:LINKUSDT", technical:"LINKUSDT" },
+  eth: createMarketSymbols("ETH"),
+  sol: createMarketSymbols("SOL"),
+  doge: createMarketSymbols("DOGE"),
+  pepe: createMarketSymbols("PEPE"),
+  link: createMarketSymbols("LINK"),
 });
 
 const KNOWN_PROJECT_NEWS_FEEDS = Object.freeze({
@@ -86,6 +87,7 @@ const DEFAULT_DISCOVERY = Object.freeze({
   fetchDefiLlamaChains,
   fetchDefiLlamaProtocols,
   fetchStablecoinChains,
+  resolveExchangeMarketSymbols,
 });
 
 function finitePositive(value) {
@@ -207,7 +209,7 @@ export function buildRuntimeProjectConfig(input, discovery) {
   const ticker = String(coin.symbol || input).toUpperCase();
   const projectType = category === PROJECT_CATEGORIES.INFRA ? "l1" : category === PROJECT_CATEGORIES.DEFI ? "protocol" : category;
   const knownSymbols = KNOWN_MARKET_SYMBOLS[ticker.toLowerCase()];
-  const marketSymbols = knownSymbols || { tradingView:`BINANCE:${ticker}USDT`, technical:`${ticker}USDT` };
+  const marketSymbols = knownSymbols || createMarketSymbols(ticker);
 
   return withProfile({
     slug: normalizeProjectInput(coin.symbol || input),
@@ -240,7 +242,7 @@ export function buildRuntimeProjectSkeleton(input) {
   const category = inferProjectCategory(signals);
   const profile = buildProfile(category, buildCapabilitySeed(category, signals));
   const symbolTicker = ticker.replace(/[^A-Z0-9]/g, "");
-  const marketSymbols = KNOWN_MARKET_SYMBOLS[slug] || { tradingView:`BINANCE:${symbolTicker}USDT`, technical:`${symbolTicker}USDT` };
+  const marketSymbols = KNOWN_MARKET_SYMBOLS[slug] || createMarketSymbols(symbolTicker);
   return withProfile({
     slug,
     name: ticker,
@@ -294,7 +296,7 @@ export async function resolveProject(input, discovery = DEFAULT_DISCOVERY) {
 
   const registered = getRegisteredProject(normalized);
   if (registered) {
-    return {
+    const project = {
       ...registered,
       resolution: {
         mode: "registered",
@@ -303,13 +305,16 @@ export async function resolveProject(input, discovery = DEFAULT_DISCOVERY) {
         normalized: { slug:registered.slug, ticker:registered.ticker },
       },
     };
+    return discovery === DEFAULT_DISCOVERY ? { ...project, marketSymbols:await resolveExchangeMarketSymbols(project.marketSymbols) } : project;
   }
 
   try {
-    return await discoverRuntimeProject(input, discovery);
+    const project = await discoverRuntimeProject(input, discovery);
+    return project && discovery === DEFAULT_DISCOVERY ? { ...project, marketSymbols:await resolveExchangeMarketSymbols(project.marketSymbols) } : project;
   } catch {
     // Keep a conservative runtime fallback when discovery itself is unavailable.
     // A successful discovery with no exact identity match is an unknown project.
-    return buildRuntimeProjectSkeleton(input);
+    const project = buildRuntimeProjectSkeleton(input);
+    return project && discovery === DEFAULT_DISCOVERY ? { ...project, marketSymbols:await resolveExchangeMarketSymbols(project.marketSymbols) } : project;
   }
 }

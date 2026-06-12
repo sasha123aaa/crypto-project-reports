@@ -5,6 +5,7 @@ import { getUsersFallbackText } from "./fallbacks.js";
 import { fetchCoinGeckoMarket, fetchCoinGeckoChart, fetchProjectNews } from "../adapters/coingecko.js";
 import { fetchDefiLlamaChains, fetchDefiLlamaTVLHistory, fetchStablecoinHistory, fetchStablecoinChains, fetchAppFeesOverview, fetchChainFeesOverview, fetchDexOverview, normalizeStablecoinHistory, stablecoinMcapUsd } from "../adapters/defillama.js";
 import { getTechnicalBias } from "../adapters/bybit.js";
+import { marketTechnicalRoute } from "./market-symbols.js";
 import { getProjectProfile, getSectionSelection } from "../config/projects.js";
 import { applySectionSelection, isSectionSelected } from "./section-selection.js";
 import { applyProfileAwareSemantics } from "./profile-semantics.js";
@@ -26,7 +27,7 @@ export async function buildReport(project){
     project.defillamaChain && selected("financials") ? fetchAppFeesOverview(project.defillamaChain) : Promise.resolve(null),
     project.defillamaChain && selected("financials") ? fetchChainFeesOverview(project.defillamaChain) : Promise.resolve(null),
     project.defillamaChain && (selected("financials") || selected("liquidity_and_trading")) ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
-    getTechnicalBias(project.bybitSymbol),
+    getTechnicalBias(marketTechnicalRoute(project.marketSymbols)),
     selected("narrative_and_news") ? fetchProjectNews(project) : Promise.resolve(null),
   ]);
 
@@ -91,7 +92,7 @@ export async function buildReport(project){
     watchlist:{ items:["Динамику комиссий и объемов.","TVL и капитал внутри экосистемы.","Пользовательскую активность.","Изменение мультипликаторов оценки."] },
     final_verdict:{ title:"Финальная оценка", subtitle:"Инвестиционный тезис: фундаментальные метрики должны подтверждать оценку", paragraphs:[`${project.name} выглядит как сильный проект для фундаментального наблюдения, если смотреть на рынок не только через цену.`,"Главный вопрос для инвестора — подтверждают ли экономические и пользовательские метрики рыночную оценку.","Сильный тезис строится там, где цена, экономика, капитал и живая активность не противоречат друг другу."] },
     charts:{ price_history:chart?.prices || [], volume_history:chart?.total_volumes || [], market_cap_history:chart?.market_caps || [], tvl_history:Array.isArray(tvlRows)?tvlRows:[], stablecoins_history:Array.isArray(stableRows)?stableRows:[], app_fees_history:appFeesData?.totalDataChart || [], chain_fees_history:chainFeesData?.totalDataChart || [], dex_history:dexData?.totalDataChart || [] },
-    sources:[{name:"CoinGecko", used_for:["price","market cap","fdv","volume"]},{name:"DefiLlama", used_for:["tvl","stablecoins","fees","dex volume"]},{name:"Bybit", used_for:["technical bias"]}]
+    sources:[{name:"CoinGecko", used_for:["price","market cap","fdv","volume"]},{name:"DefiLlama", used_for:["tvl","stablecoins","fees","dex volume"]},{name:"Bybit / Binance / Gate.io", used_for:["exchange-aware technical bias"]}]
   };
   applyProfileAwareSemantics(report, project, { preserveCurated:Boolean(project.reportOptions?.preserveCuratedSemantics) });
   applySectionSelection(report, project);
