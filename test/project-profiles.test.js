@@ -109,3 +109,15 @@ test("available profile sections can be marked partial or disabled by report dat
   assert.ok(selection.enabledSections.includes("tokenomics"));
   assert.ok(!selection.enabledSections.includes("financials"));
 });
+
+test("LINK is a curated oracle utility profile without chain-capital capabilities", () => {
+  const profile = getProjectProfile(PROJECTS.link);
+  const selection = getSectionSelection(PROJECTS.link);
+
+  assert.equal(profile.category, PROJECT_CATEGORIES.UTILITY);
+  assert.equal(profile.analysisProfile, ANALYSIS_PROFILES.ORACLE_UTILITY);
+  for (const capability of ["hasTokenomics", "hasLiquidityData", "hasTokenUtilityData", "hasAdoptionData", "hasNarrativeNews"]) assert.equal(profile.capabilities[capability], true);
+  for (const capability of ["hasTvl", "hasStablecoins", "hasRwa", "hasProtocolFees", "hasChainFees", "hasDexVolume", "hasUsersData"]) assert.equal(profile.capabilities[capability], false);
+  assert.ok(selection.enabledSections.includes("utility_and_adoption"));
+  for (const section of ["tvl_and_capital", "stablecoins", "rwa", "financials", "users_and_activity"]) assert.equal(selection.sections[section].status, SECTION_VISIBILITY.DISABLED_BY_PROFILE);
+});

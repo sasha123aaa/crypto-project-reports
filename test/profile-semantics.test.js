@@ -236,3 +236,19 @@ test("profile semantics publishes the category section order for the renderer", 
   applyProfileAwareSemantics(report, PROJECTS.sol);
   assert.deepEqual(report.meta.section_order, getCategorySectionOrder(PROJECTS.sol));
 });
+
+test("LINK oracle profile prioritizes utility and value capture without ETH-like capital semantics", () => {
+  const report = baseReport();
+  report.semantic_metrics = {};
+  applyProfileAwareSemantics(report, PROJECTS.link);
+
+  assert.equal(report.meta.project_profile.analysisProfile, "oracle_utility");
+  assert.deepEqual(report.meta.section_order, ["tokenomics", "utility_and_adoption", "summary", "final_verdict", "narrative_and_news"]);
+  assert.match(report.hero.lead, /oracle|данных|LINK/i);
+  assert.match(report.final_verdict.paragraphs.join(" "), /value|спрос на LINK|захват/i);
+  assert.ok(report.utility_adoption.items.length >= 3);
+  assert.ok(report.hero.kpis.some(({ key }) => key === "token_utility"));
+  assert.ok(!report.hero.kpis.some(({ key }) => ["tvl", "stablecoins", "fees"].includes(key)));
+  assert.deepEqual(report.metric_slots.capital, []);
+  assert.deepEqual(report.metric_slots.financial, []);
+});

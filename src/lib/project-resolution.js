@@ -33,7 +33,7 @@ const KNOWN_PROJECT_BRANDING = Object.freeze({
   sol: { iconKey:"solana", accent:"#14f195" },
   doge: { iconKey:"dogecoin", accent:"#c2a633" },
   pepe: { iconKey:"pepe", accent:"#63b86b" },
-  link: { iconKey:"chainlink", accent:"#4a6cff" },
+  link: { iconKey:"chainlink", accent:"#5578ff" },
 });
 
 const KNOWN_MARKET_SYMBOLS = Object.freeze({
@@ -53,7 +53,7 @@ const KNOWN_PROJECT_NEWS_FEEDS = Object.freeze({
 const KNOWN_NEWS_CONTEXT = Object.freeze({
   doge: ["dogecoin", "doge", "dogecoin payment", "dogecoin adoption", "doge whale", "doge listing", "elon musk dogecoin", "elon musk doge"],
   pepe: ["pepe", "pepe coin", "pepe whale", "pepe liquidity", "pepe listing", "pepe sentiment"],
-  link: ["chainlink", "link", "chainlink ccip", "chainlink oracle", "chainlink staking"],
+  link: ["chainlink", "link token", "chainlink ccip", "chainlink integration", "chainlink data feeds", "chainlink staking", "oracle network"],
 });
 
 function runtimeBranding(coin, ticker) {

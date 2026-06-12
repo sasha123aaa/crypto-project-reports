@@ -1,0 +1,768 @@
+{
+  "meta": {
+    "slug": "link",
+    "project_name": "Chainlink",
+    "ticker": "LINK",
+    "subtitle": "LINK • oracle / utility infrastructure asset",
+    "branding": {
+      "iconKey": "chainlink",
+      "accent": "#5578ff"
+    },
+    "market_symbols": {
+      "base": "LINK",
+      "quote": "USDT",
+      "exchange": "BINANCE",
+      "tradingView": "BINANCE:LINKUSDT",
+      "technical": "LINKUSDT",
+      "routes": [
+        {
+          "exchange": "BINANCE",
+          "symbol": "LINKUSDT",
+          "tradingView": "BINANCE:LINKUSDT",
+          "source": "Binance spot"
+        },
+        {
+          "exchange": "BYBIT",
+          "symbol": "LINKUSDT",
+          "tradingView": "BYBIT:LINKUSDT",
+          "source": "Bybit spot"
+        },
+        {
+          "exchange": "GATEIO",
+          "symbol": "LINKUSDT",
+          "tradingView": "GATEIO:LINKUSDT",
+          "source": "Gate.io spot"
+        }
+      ],
+      "status": "candidate"
+    },
+    "categories": [
+      "Oracle Network",
+      "Data Infrastructure",
+      "Interoperability",
+      "Utility Token"
+    ],
+    "project_type": "oracle_utility_asset",
+    "project_profile": {
+      "category": "utility",
+      "analysisProfile": "oracle_utility",
+      "capabilities": {
+        "hasTvl": false,
+        "hasStablecoins": false,
+        "hasRwa": false,
+        "hasProtocolFees": false,
+        "hasChainFees": false,
+        "hasDexVolume": false,
+        "hasUsersData": false,
+        "hasTokenomics": true,
+        "hasUnlocks": false,
+        "hasWhaleData": false,
+        "hasNarrativeNews": true,
+        "hasLiquidityData": true,
+        "hasNarrativeMomentum": false,
+        "hasTokenUtilityData": true,
+        "hasAdoptionData": true,
+        "hasBtcValuationData": false,
+        "hasDemandFlowData": false
+      },
+      "preferredSections": [
+        "market",
+        "tokenomics",
+        "liquidity_and_trading",
+        "valuation",
+        "utility_and_adoption",
+        "risks",
+        "final_summary",
+        "narrative_and_news"
+      ],
+      "eligibleSections": [
+        "market",
+        "tokenomics",
+        "liquidity_and_trading",
+        "valuation",
+        "utility_and_adoption",
+        "narrative_and_news",
+        "risks",
+        "final_summary"
+      ]
+    },
+    "project_resolution": null,
+    "report_version": "v1.0",
+    "updated_at": "2026-06-12T00:00:00.000Z",
+    "data_status": "partial",
+    "semantic_profile": "utility",
+    "section_order": [
+      "tokenomics",
+      "utility_and_adoption",
+      "summary",
+      "final_verdict",
+      "narrative_and_news"
+    ],
+    "section_selection": {
+      "preferredSections": [
+        "market",
+        "tokenomics",
+        "liquidity_and_trading",
+        "valuation",
+        "utility_and_adoption",
+        "risks",
+        "final_summary",
+        "narrative_and_news"
+      ],
+      "eligibleSections": [
+        "market",
+        "tokenomics",
+        "liquidity_and_trading",
+        "valuation",
+        "utility_and_adoption",
+        "narrative_and_news",
+        "risks",
+        "final_summary"
+      ],
+      "enabledSections": [
+        "market",
+        "tokenomics",
+        "liquidity_and_trading",
+        "valuation",
+        "utility_and_adoption",
+        "risks",
+        "final_summary",
+        "narrative_and_news"
+      ],
+      "sections": {
+        "market": {
+          "status": "partial",
+          "reason": "required_data_partial",
+          "requiredAny": [],
+          "missingCapabilities": [],
+          "reportBlocks": [
+            "market",
+            "technical_bias"
+          ]
+        },
+        "tokenomics": {
+          "status": "partial",
+          "reason": "required_data_partial",
+          "requiredAny": [
+            "hasTokenomics"
+          ],
+          "missingCapabilities": [],
+          "reportBlocks": [
+            "tokenomics"
+          ]
+        },
+        "tvl_and_capital": {
+          "status": "disabled_by_profile",
+          "reason": "not_in_preferred_sections",
+          "requiredAny": [
+            "hasTvl"
+          ],
+          "missingCapabilities": [
+            "hasTvl"
+          ],
+          "reportBlocks": [
+            "capital"
+          ]
+        },
+        "stablecoins": {
+          "status": "disabled_by_profile",
+          "reason": "not_in_preferred_sections",
+          "requiredAny": [
+            "hasStablecoins"
+          ],
+          "missingCapabilities": [
+            "hasStablecoins"
+          ],
+          "reportBlocks": [
+            "capital"
+          ]
+        },
+        "rwa": {
+          "status": "disabled_by_profile",
+          "reason": "not_in_preferred_sections",
+          "requiredAny": [
+            "hasRwa"
+          ],
+          "missingCapabilities": [
+            "hasRwa"
+          ],
+          "reportBlocks": [
+            "capital"
+          ]
+        },
+        "financials": {
+          "status": "disabled_by_profile",
+          "reason": "not_in_preferred_sections",
+          "requiredAny": [
+            "hasProtocolFees",
+            "hasChainFees"
+          ],
+          "missingCapabilities": [
+            "hasProtocolFees",
+            "hasChainFees"
+          ],
+          "reportBlocks": [
+            "financials"
+          ]
+        },
+        "liquidity_and_trading": {
+          "status": "partial",
+          "reason": "required_data_partial",
+          "requiredAny": [
+            "hasDexVolume",
+            "hasLiquidityData"
+          ],
+          "missingCapabilities": [],
+          "reportBlocks": [
+            "liquidity"
+          ]
+        },
+        "valuation": {
+          "status": "partial",
+          "reason": "required_data_partial",
+          "requiredAny": [],
+          "missingCapabilities": [],
+          "reportBlocks": [
+            "valuation"
+          ]
+        },
+        "demand_and_flows": {
+          "status": "disabled_by_profile",
+          "reason": "not_in_preferred_sections",
+          "requiredAny": [
+            "hasDemandFlowData"
+          ],
+          "missingCapabilities": [
+            "hasDemandFlowData"
+          ],
+          "reportBlocks": [
+            "demand_flows"
+          ]
+        },
+        "users_and_activity": {
+          "status": "disabled_by_profile",
+          "reason": "not_in_preferred_sections",
+          "requiredAny": [
+            "hasUsersData"
+          ],
+          "missingCapabilities": [
+            "hasUsersData"
+          ],
+          "reportBlocks": [
+            "users"
+          ]
+        },
+        "unlocks": {
+          "status": "disabled_by_profile",
+          "reason": "not_in_preferred_sections",
+          "requiredAny": [
+            "hasUnlocks"
+          ],
+          "missingCapabilities": [
+            "hasUnlocks"
+          ],
+          "reportBlocks": [
+            "tokenomics"
+          ]
+        },
+        "whale_activity": {
+          "status": "disabled_by_profile",
+          "reason": "not_in_preferred_sections",
+          "requiredAny": [
+            "hasWhaleData"
+          ],
+          "missingCapabilities": [
+            "hasWhaleData"
+          ],
+          "reportBlocks": [
+            "liquidity"
+          ]
+        },
+        "utility_and_adoption": {
+          "status": "enabled",
+          "reason": "selected_by_profile",
+          "requiredAny": [
+            "hasTokenUtilityData",
+            "hasAdoptionData"
+          ],
+          "missingCapabilities": [],
+          "reportBlocks": [
+            "utility_adoption",
+            "semantic_metrics"
+          ]
+        },
+        "narrative_and_news": {
+          "status": "enabled",
+          "reason": "selected_by_profile",
+          "requiredAny": [
+            "hasNarrativeNews"
+          ],
+          "missingCapabilities": [],
+          "reportBlocks": [
+            "narrative"
+          ]
+        },
+        "risks": {
+          "status": "enabled",
+          "reason": "selected_by_profile",
+          "requiredAny": [],
+          "missingCapabilities": [],
+          "reportBlocks": [
+            "risks",
+            "watchlist"
+          ]
+        },
+        "final_summary": {
+          "status": "enabled",
+          "reason": "selected_by_profile",
+          "requiredAny": [],
+          "missingCapabilities": [],
+          "reportBlocks": [
+            "profile",
+            "final_verdict"
+          ]
+        }
+      }
+    }
+  },
+  "hero": {
+    "title": "Chainlink",
+    "subtitle": "Oracle / utility infrastructure asset",
+    "lead": "Chainlink оценивается через роль сети в доставке данных и межсетевом взаимодействии, масштаб интеграций и то, превращается ли использование сервисов в спрос на LINK.",
+    "main_strength": "Критически важная инфраструктурная роль в данных, oracle-сервисах и межсетевых интеграциях.",
+    "main_risk": "Рост использования сети может не полностью и не сразу отражаться в спросе и цене токена.",
+    "status_text": "Фокус: utility LINK, adoption интеграций, ликвидность и качество захвата ценности.",
+    "kpis": [
+      {
+        "key": "token_utility",
+        "label": "Роль токена",
+        "metric": {
+          "value": null,
+          "formatted": "Оплата сервисов + staking / security",
+          "status": "manual",
+          "source": "project profile"
+        }
+      },
+      {
+        "key": "adoption",
+        "label": "Использование и интеграции",
+        "metric": {
+          "value": null,
+          "formatted": "Интеграции Data Feeds, CCIP и сервисов",
+          "status": "manual",
+          "source": "project profile"
+        }
+      }
+    ]
+  },
+  "market": {
+    "price": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    },
+    "market_cap": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    },
+    "fdv": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    },
+    "volume_24h": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    },
+    "circulating_supply": {
+      "value": null,
+      "formatted": "данные временно недоступны",
+      "status": "partial",
+      "source": "CoinGecko"
+    },
+    "total_supply": {
+      "value": null,
+      "formatted": "данные временно недоступны",
+      "status": "partial",
+      "source": "CoinGecko"
+    },
+    "max_supply": {
+      "value": null,
+      "formatted": "Нет",
+      "status": "static",
+      "source": "project structure"
+    }
+  },
+  "technical_bias": {
+    "source": "Binance spot",
+    "updated_at": "2026-06-12T12:08:34.914Z",
+    "symbol": "LINKUSDT",
+    "exchange": "BINANCE",
+    "status": "resolved",
+    "timeframes": {
+      "1m": "neutral",
+      "3m": "neutral",
+      "5m": "neutral",
+      "15m": "neutral",
+      "1h": "neutral",
+      "4h": "neutral",
+      "1d": "neutral",
+      "1w": "neutral",
+      "1M": "neutral"
+    },
+    "notes": {
+      "lower_tf": "Все интервалы группы пока остаются в нейтральной зоне без подтвержденной структуры.",
+      "mid_tf": "Внутри группы диапазоны еще не сформировались, явного перекоса нет.",
+      "higher_tf": "Старший контекст еще не оформился и остается нейтральным."
+    }
+  },
+  "executive_summary": {
+    "items": [
+      "Проверить, расширяется ли реальное использование oracle-сервисов, Data Feeds и CCIP.",
+      "Отделить рост интеграций Chainlink от измеримого спроса на LINK и экономической выгоды держателя.",
+      "Сопоставить рыночную оценку и ликвидность с качеством token utility и будущим value capture."
+    ]
+  },
+  "profile": {
+    "strengths": [
+      "Значимая роль в инфраструктуре данных и межсетевого взаимодействия",
+      "Широкая интеграционная поверхность и зрелая рыночная ликвидность"
+    ],
+    "weaknesses": [
+      "Связь между ростом использования сервисов и спросом на LINK не всегда прямая",
+      "Не все adoption-сигналы дают сопоставимые количественные метрики"
+    ],
+    "risks": [
+      "Использование сети растет быстрее, чем экономическая ценность LINK",
+      "Конкуренция oracle- и interoperability-решений",
+      "Оценка опережает подтверждаемый token demand"
+    ],
+    "watch": [
+      "Новые и расширяющиеся интеграции Data Feeds, CCIP и других сервисов",
+      "Механизмы оплаты, staking и передачи сетевой ценности LINK",
+      "Оборот, ликвидность и разрыв между Market Cap и FDV"
+    ]
+  },
+  "about": {
+    "title": "Что такое Chainlink",
+    "paragraphs": [
+      "Chainlink — это криптопроект, который нужно оценивать не только по цене токена, но и по его роли в экосистеме.",
+      "Для сильного инвестиционного тезиса важно понимать, решает ли проект реальную задачу и подтверждается ли это цифрами.",
+      "Поэтому в отчете делается акцент на токеномику, экономику, капитал, активность и риски."
+    ]
+  },
+  "tokenomics": {
+    "text": [
+      "LINK нужен в экономике Chainlink для оплаты сервисов и участия в staking / security-механизмах; поэтому спрос на токен должен оцениваться вместе с реальным использованием сети.",
+      "Supply-структура, доля обращения и разрыв между Market Cap и FDV показывают потенциальное давление предложения, но не отвечают на вопрос value capture без данных о token demand.",
+      "Главный вопрос инвестора: растет ли ценность LINK вместе с полезностью Chainlink и насколько прямо сервисные платежи, staking и безопасность передают эту ценность токену."
+    ],
+    "metrics": {
+      "market_cap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "fdv": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "circulating_supply": {
+        "value": null,
+        "formatted": "данные временно недоступны",
+        "status": "partial",
+        "source": "CoinGecko"
+      },
+      "total_supply": {
+        "value": null,
+        "formatted": "данные временно недоступны",
+        "status": "partial",
+        "source": "CoinGecko"
+      },
+      "max_supply": {
+        "value": null,
+        "formatted": "Нет",
+        "status": "static",
+        "source": "project structure"
+      }
+    },
+    "conclusion": "Токеномика LINK важна не только структурой предложения: ключевой вопрос — создает ли оплата сервисов, staking и безопасность сети устойчивый спрос на токен сильнее потенциального разводнения."
+  },
+  "financials": {
+    "text": [
+      "Этот блок показывает, есть ли у проекта реальная экономика и насколько она поддерживает инвестиционный тезис.",
+      "Важно смотреть не только на комиссии, но и на устойчивость экономической активности."
+    ],
+    "metrics": {
+      "app_fees_24h": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "DefiLlama"
+      },
+      "chain_fees_24h": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "DefiLlama"
+      },
+      "dex_volume_24h": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "DefiLlama"
+      },
+      "volume_market_cap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      }
+    }
+  },
+  "capital": {
+    "text": [
+      "Капитал внутри экосистемы показывает уровень доверия рынка к проекту.",
+      "Особенно важно смотреть, есть ли стабильность или заметный отток капитала."
+    ],
+    "metrics": {
+      "tvl": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "DefiLlama"
+      },
+      "stablecoins_mcap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "DefiLlama"
+      }
+    }
+  },
+  "users": {
+    "text": [
+      "Для этого типа актива пользовательские метрики пока недоступны в стабильном актуальном источнике.",
+      "Блок показывает статус частичных данных без синтетических значений."
+    ],
+    "metrics": {
+      "daily_active_addresses": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "Dune"
+      },
+      "new_addresses": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "Dune"
+      },
+      "transactions": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "Dune"
+      }
+    }
+  },
+  "liquidity": {
+    "text": [
+      "Ликвидность показывает, насколько удобно крупному и среднему капиталу входить и выходить из позиции.",
+      "Для зрелого актива это один из ключевых плюсов, потому что снижает риск тонкого рынка."
+    ],
+    "metrics": {
+      "spot_volume": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "dex_volume_24h": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "DefiLlama"
+      }
+    },
+    "conclusion": "Ликвидность и оборот делают LINK доступным для крупного рынка, но сами по себе не доказывают value capture."
+  },
+  "valuation": {
+    "text": [
+      "Оценку utility-токена важно сопоставлять с ликвидностью, оборотом и тем, создает ли использование продукта спрос на токен.",
+      "Market Cap / TVL не используется как основной ориентир, если токен не представляет капитал внутри собственного протокола или сети."
+    ],
+    "metrics": {
+      "market_cap_tvl": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      },
+      "volume_market_cap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      },
+      "stablecoins_tvl": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      },
+      "valuation_status": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "profile semantics"
+      }
+    },
+    "conclusion": "Оценку LINK следует сопоставлять с ликвидностью, adoption и качеством связи между использованием сервисов и спросом на токен, а не с TVL чужих сетей."
+  },
+  "narrative": {
+    "items": [
+      "Рынок поддерживает интерес к проектам, которые сохраняют подтверждаемую полезность и ликвидность.",
+      "Для сильного тезиса важно, чтобы нарратив подтверждался доступными данными, а пробелы не скрывались."
+    ],
+    "conclusion": "Приоритет имеют новости об интеграциях, Data Feeds, CCIP, staking и механизмах, меняющих использование или value capture LINK."
+  },
+  "news": {
+    "status": "unavailable",
+    "items": [],
+    "source": "Configured news feeds",
+    "source_summary": "Настроенные источники новостей временно недоступны",
+    "updated_at": "2026-06-12T12:08:34.910Z",
+    "debug": {
+      "sources": [
+        {
+          "source": "Chainlink Blog",
+          "layer": "project",
+          "ok": false,
+          "status": "failed",
+          "item_count": 0,
+          "error": "Chainlink Blog news error: 503"
+        },
+        {
+          "source": "CoinDesk",
+          "layer": "universal",
+          "ok": false,
+          "status": "failed",
+          "item_count": 0,
+          "error": "CoinDesk news error: 503"
+        },
+        {
+          "source": "Decrypt",
+          "layer": "universal",
+          "ok": false,
+          "status": "failed",
+          "item_count": 0,
+          "error": "Decrypt news error: 503"
+        },
+        {
+          "source": "Cointelegraph",
+          "layer": "universal",
+          "ok": false,
+          "status": "failed",
+          "item_count": 0,
+          "error": "Cointelegraph news error: 503"
+        }
+      ]
+    }
+  },
+  "risks": {
+    "items": [
+      "Использование сети растет быстрее, чем экономическая ценность LINK",
+      "Конкуренция oracle- и interoperability-решений",
+      "Оценка опережает подтверждаемый token demand"
+    ]
+  },
+  "watchlist": {
+    "items": [
+      "Новые и расширяющиеся интеграции Data Feeds, CCIP и других сервисов",
+      "Механизмы оплаты, staking и передачи сетевой ценности LINK",
+      "Оборот, ликвидность и разрыв между Market Cap и FDV"
+    ]
+  },
+  "final_verdict": {
+    "title": "Финальная оценка",
+    "subtitle": "Инвестиционный тезис: инфраструктурная полезность должна превращаться в спрос на LINK",
+    "paragraphs": [
+      "Chainlink обладает сильной инфраструктурной значимостью и широким adoption-потенциалом, но инвестиционный тезис требует доказательства, что использование oracle-сервисов, данных и CCIP создает устойчивый спрос на LINK. Главный риск — рост полезности сети без пропорционального захвата ценности токеном."
+    ]
+  },
+  "charts": {
+    "price_history": [],
+    "volume_history": [],
+    "market_cap_history": [],
+    "tvl_history": [],
+    "stablecoins_history": [],
+    "app_fees_history": [],
+    "chain_fees_history": [],
+    "dex_history": []
+  },
+  "sources": [
+    {
+      "name": "CoinGecko",
+      "used_for": [
+        "price",
+        "market cap",
+        "fdv",
+        "volume"
+      ]
+    },
+    {
+      "name": "DefiLlama",
+      "used_for": [
+        "tvl",
+        "stablecoins",
+        "fees",
+        "dex volume"
+      ]
+    },
+    {
+      "name": "Bybit / Binance / Gate.io",
+      "used_for": [
+        "exchange-aware technical bias"
+      ]
+    }
+  ],
+  "semantic_metrics": {
+    "token_utility": {
+      "value": null,
+      "formatted": "Оплата сервисов + staking / security",
+      "status": "manual",
+      "source": "project profile"
+    },
+    "adoption": {
+      "value": null,
+      "formatted": "Интеграции Data Feeds, CCIP и сервисов",
+      "status": "manual",
+      "source": "project profile"
+    }
+  },
+  "utility_adoption": {
+    "items": [
+      "Chainlink связывает смарт-контракты с внешними данными и межсетевыми сообщениями; Data Feeds и CCIP — ключевые направления проверки adoption.",
+      "LINK используется в экономике сервисов и staking / security-механизмах, но степень прямой передачи роста использования держателю токена остается главным вопросом.",
+      "Количество интеграций само по себе не равно выручке или token demand; без надежной сопоставимой live-метрики отчет не подменяет этот пробел выдуманным KPI."
+    ],
+    "conclusion": "Интеграции и инфраструктурная значимость подтверждают полезность Chainlink; инвестиционная ценность зависит от того, насколько эта полезность превращается в спрос на LINK."
+  },
+  "metric_slots": {
+    "market": [],
+    "tokenomics": [],
+    "financial": [],
+    "capital": []
+  },
+  "chart_slots": []
+}
