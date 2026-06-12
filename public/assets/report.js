@@ -311,6 +311,17 @@ function tokenomicsSectionHtml(report) {
   return `<section class="panel section-flow tokenomics-section"><div class="section-title">Токеномика</div><div class="section-sub">Предложение и механики влияния на держателя.</div><div class="hero-grid">${metricSlotsHtml(report, "tokenomics")}</div>${insightHtml(report.tokenomics)}</section>`;
 }
 
+function utilityAdoptionSectionHtml(report) {
+  if (!shouldRenderSection(report, "utility_and_adoption")) return "";
+  const block = report?.utility_adoption || {};
+  const items = Array.isArray(block.items) ? block.items : [];
+  const metrics = [
+    ["Роль токена", report?.semantic_metrics?.token_utility],
+    ["Adoption / интеграции", report?.semantic_metrics?.adoption],
+  ].filter(([, metric]) => metric);
+  return `<section class="panel section-flow utility-adoption-section"><div class="section-title">Utility, adoption и роль в инфраструктуре</div><div class="section-sub">Как использование oracle-сервисов и интеграций может превращаться в спрос на токен.</div>${metrics.length ? `<div class="hero-grid">${metrics.map(([label, metric]) => metricHtml(label, metric)).join("")}</div>` : ""}<div class="list-wrap top-gap">${listHtml(items)}</div>${insightHtml(block)}</section>`;
+}
+
 function financialsSectionHtml(report) {
   if (!shouldRenderSection(report, "financials")) return "";
   const hybrid = report?.meta?.semantic_profile === "hybrid_ecosystem";
@@ -345,6 +356,7 @@ function orderedReportSectionsHtml(report) {
     tokenomics: () => tokenomicsSectionHtml(report),
     demand_and_flows: () => demandFlowsSectionHtml(report),
     financials: () => financialsSectionHtml(report),
+    utility_and_adoption: () => utilityAdoptionSectionHtml(report),
     tvl_and_capital: () => capitalSectionHtml(report),
     users_and_activity: () => usersSectionHtml(report),
     summary: () => summarySectionHtml(report),
