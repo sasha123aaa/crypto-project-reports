@@ -32,3 +32,13 @@ test("report renderer follows profile section order and keeps news in the closin
   assert.ok(source.indexOf("summary: () =>") < source.indexOf("final_verdict: () =>"));
   assert.ok(source.indexOf("final_verdict: () =>") < source.indexOf("narrative_and_news: () =>"));
 });
+
+test("report renderer uses unified product-language labels", async () => {
+  const source = await readFile(new URL("../public/assets/report.js", import.meta.url), "utf8");
+  assert.match(source, /<div class="section-title">Финальная оценка<\/div>/);
+  assert.match(source, /<strong>Краткий вывод<\/strong>/);
+  assert.match(source, /<h3>Ограничения<\/h3>/);
+  assert.match(source, /<h3>Риски<\/h3>/);
+  assert.match(source, /Источник: \${escapeHtml\(sourceLabel\(metric\?\.source\)\)}/);
+  assert.doesNotMatch(source, /АКТУАЛЬНО|СТАТИКА|ВРУЧНУЮ|РАСЧЕТ|НЕИЗВЕСТНО/);
+});

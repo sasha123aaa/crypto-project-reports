@@ -54,7 +54,7 @@ function injectEnhancementStyles() {
     .bias-chip.neutral .bias-dot{background:#9aa4ba}
     .metric-top-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .metric-status-line{font-size:12px;color:#d5def5;margin-top:10px}
-    .status-chip{display:inline-flex;align-items:center;justify-content:center;min-width:68px;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.08em;border:1px solid var(--line);background:rgba(255,255,255,.04);color:#dce6ff}
+    .status-chip{display:inline-flex;align-items:center;justify-content:center;min-width:68px;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.02em;text-transform:none;border:1px solid var(--line);background:rgba(255,255,255,.04);color:#dce6ff}
     .status-chip.live{background:rgba(84,211,138,.14);color:#8cf0b4;border-color:rgba(84,211,138,.35)}
     .status-chip.static{background:rgba(154,117,255,.14);color:#cdbaff;border-color:rgba(154,117,255,.35)}
     .status-chip.manual{background:rgba(180,188,205,.10);color:#d9e1f2;border-color:rgba(180,188,205,.22)}
@@ -90,7 +90,7 @@ function escapeHtml(value) {
 }
 
 function statusChip(status = "unknown") {
-  const labelMap = { live:"АКТУАЛЬНО", static:"СТАТИКА", manual:"ВРУЧНУЮ", calculated:"РАСЧЕТ", partial:"ЧАСТИЧНО", unavailable:"НЕТ ДАННЫХ", unknown:"НЕИЗВЕСТНО" };
+  const labelMap = { live:"Актуально", static:"Статика", manual:"Вручную", calculated:"Расчет", partial:"Частично", unavailable:"Нет данных", unknown:"Неизвестно" };
   const titleMap = {
     live:"Получено из актуального внешнего источника.",
     static:"Структурная характеристика протокола. Не требует регулярного обновления.",
@@ -99,7 +99,7 @@ function statusChip(status = "unknown") {
     unavailable:"Данные временно недоступны.",
     manual:"Заполнено вручную и требует периодической проверки.",
   };
-  return `<span class="status-chip ${escapeHtml(status)}" title="${escapeHtml(titleMap[status] || "Статус данных")}">${labelMap[status] || status.toUpperCase()}</span>`;
+  return `<span class="status-chip ${escapeHtml(status)}" title="${escapeHtml(titleMap[status] || "Статус данных")}">${labelMap[status] || status}</span>`;
 }
 
 function hasNoLiveUsers(metrics) {
@@ -159,7 +159,7 @@ function marketPackHtml(report) {
   const heroKeys = category === "meme" && Array.isArray(report?.hero?.kpis) ? report.hero.kpis.map((item) => item.key) : [];
   const metrics = metricSlotsExcludingHtml(report, "market", heroKeys);
   if (!metrics && !marketCharts) return "";
-  return `<section class="panel section-flow market-pack-section"><div class="section-title">Рынок и торговля</div><div class="section-sub">Ликвидность, оборот и качество рынка без повторения ключевых показателей</div>${metrics ? `<div class="hero-grid market-kpis">${metrics}</div>` : ""}${marketCharts ? `<div class="capital-charts">${marketCharts}</div>` : ""}${insightHtml(report.liquidity)}</section>`;
+  return `<section class="panel section-flow market-pack-section"><div class="section-title">Рынок и торговля</div><div class="section-sub">Ликвидность, оборот и качество рынка.</div>${metrics ? `<div class="hero-grid market-kpis">${metrics}</div>` : ""}${marketCharts ? `<div class="capital-charts">${marketCharts}</div>` : ""}${insightHtml(report.liquidity)}</section>`;
 }
 
 function heroKpisHtml(report) {
@@ -176,7 +176,7 @@ function finalVerdictHtml(report) {
   if (!shouldRenderSection(report, "final_summary")) return "";
   const verdict = report?.final_verdict;
   if (!Array.isArray(verdict?.paragraphs) || !verdict.paragraphs.length) return "";
-  return `<section class="panel final-verdict"><div class="section-title">${escapeHtml(verdict.title || "Финальный вывод")}</div>${verdict.subtitle ? `<div class="section-sub">${escapeHtml(verdict.subtitle)}</div>` : ""}${verdict.paragraphs.map((paragraph) => `<p class="lead compact-lead">${escapeHtml(paragraph)}</p>`).join("")}</section>`;
+  return `<section class="panel final-verdict"><div class="section-title">Финальная оценка</div>${verdict.subtitle ? `<div class="section-sub">${escapeHtml(verdict.subtitle)}</div>` : ""}${verdict.paragraphs.map((paragraph) => `<p class="lead compact-lead">${escapeHtml(paragraph)}</p>`).join("")}</section>`;
 }
 
 function usersSectionHtml(report) {
@@ -231,6 +231,12 @@ function isRenderableMetric(metric) {
     && !formatted.includes("временно недоступ");
 }
 
+function sourceLabel(source) {
+  const normalized = String(source || "").trim();
+  const labels = { calc:"Расчет", analyst:"Аналитическая оценка", "project structure":"Структура проекта", "profile semantics":"Семантика профиля" };
+  return labels[normalized.toLowerCase()] || normalized || "Не указан";
+}
+
 function metricHtml(title, metric) {
   if (!isRenderableMetric(metric)) return "";
   const help = METRIC_HELP[title]
@@ -238,7 +244,7 @@ function metricHtml(title, metric) {
     : "";
   const freshness = metric?.updated_at ? ` · ${escapeHtml(formatShortDate(metric.updated_at))}` : "";
   const valueClass = String(metricFormattedValue(metric)).length > 18 ? " metric-value-long" : "";
-  return `<div class="metric-box"><div class="metric-top-row"><div class="metric-title">${escapeHtml(title)} ${help}</div>${statusChip(metric?.status || "unknown")}</div><div class="metric-value${valueClass}">${escapeHtml(metricFormattedValue(metric))}</div><div class="metric-status-line">${escapeHtml(metric?.source || "—")}${freshness}</div></div>`;
+  return `<div class="metric-box"><div class="metric-top-row"><div class="metric-title">${escapeHtml(title)} ${help}</div>${statusChip(metric?.status || "unknown")}</div><div class="metric-value${valueClass}">${escapeHtml(metricFormattedValue(metric))}</div><div class="metric-status-line">Источник: ${escapeHtml(sourceLabel(metric?.source))}${freshness}</div></div>`;
 }
 
 function optionalMetricHtml(title, metric) {
@@ -277,30 +283,30 @@ function projectIconHtml(meta = {}, compact = false) {
 }
 function tokenomicsSectionHtml(report) {
   if (!shouldRenderSection(report, "tokenomics")) return "";
-  return `<section class="panel section-flow tokenomics-section"><div class="section-title">Токеномика</div><div class="section-sub">Предложение и механики, влияющие на держателя ${escapeHtml(report.meta.ticker)}</div><div class="hero-grid">${metricSlotsHtml(report, "tokenomics")}</div>${insightHtml(report.tokenomics)}</section>`;
+  return `<section class="panel section-flow tokenomics-section"><div class="section-title">Токеномика</div><div class="section-sub">Предложение и механики влияния на держателя.</div><div class="hero-grid">${metricSlotsHtml(report, "tokenomics")}</div>${insightHtml(report.tokenomics)}</section>`;
 }
 
 function financialsSectionHtml(report) {
   if (!shouldRenderSection(report, "financials")) return "";
-  return `<section class="panel section-flow finance-section"><div class="section-title">Экономика сети</div><div class="section-sub">Платный спрос и торговая активность экосистемы</div><div class="hero-grid finance-kpis">${metricSlotsHtml(report, "financial")}</div>${selectedChartGroupHtml(report, "financial-fee-charts", [["app_fees_history", "appFeesChart", "App Fees", "Платная активность приложений"], ["chain_fees_history", "chainFeesChart", "Chain Fees", "Платный спрос на базовый слой"]])}${selectedChartGroupHtml(report, "chart-stack", [["dex_history", "dexChart", "DEX-оборот", "Торговый оборот внутри сети"]])}${insightHtml(report.financials)}</section>`;
+  return `<section class="panel section-flow finance-section"><div class="section-title">Экономика сети</div><div class="section-sub">Платный спрос и устойчивость экономической активности.</div><div class="hero-grid finance-kpis">${metricSlotsHtml(report, "financial")}</div>${selectedChartGroupHtml(report, "financial-fee-charts", [["app_fees_history", "appFeesChart", "App Fees", "Платная активность приложений"], ["chain_fees_history", "chainFeesChart", "Chain Fees", "Платный спрос на базовый слой"]])}${selectedChartGroupHtml(report, "chart-stack", [["dex_history", "dexChart", "DEX-оборот", "Торговый оборот внутри сети"]])}${insightHtml(report.financials)}</section>`;
 }
 
 function capitalSectionHtml(report) {
   if (!shouldRenderSection(report, "tvl_and_capital")) return "";
-  return `<section class="panel section-flow capital-section"><div class="section-title">Капитал в сети</div><div class="section-sub">Устойчивость TVL и расчетной ликвидности</div><div class="hero-grid capital-kpis">${metricSlotsHtml(report, "capital")}</div>${selectedChartGroupHtml(report, "capital-charts", [["tvl_history", "tvlChart", "TVL", "Капитал в приложениях сети"], ["stablecoins_history", "stableChart", "Stablecoins", "Ликвидность для расчетов и торговли"]])}${insightHtml(report.capital)}</section>`;
+  return `<section class="panel section-flow capital-section"><div class="section-title">Капитал в сети</div><div class="section-sub">TVL и ликвидность внутри экосистемы.</div><div class="hero-grid capital-kpis">${metricSlotsHtml(report, "capital")}</div>${selectedChartGroupHtml(report, "capital-charts", [["tvl_history", "tvlChart", "TVL", "Капитал в приложениях сети"], ["stablecoins_history", "stableChart", "Stablecoins", "Ликвидность для расчетов и торговли"]])}${insightHtml(report.capital)}</section>`;
 }
 
 function summarySectionHtml(report) {
   if (!shouldRenderSection(report, "risks") && !shouldRenderSection(report, "final_summary")) return "";
-  return `<section class="panel summary-panel"><div class="section-title">Резюме</div><div class="section-sub">Сильные стороны, ограничения и контрольные сигналы без повторения отчета</div><div class="columns-4 profile-grid"><div><h3>Сильные стороны</h3>${listHtml(report.profile.strengths)}</div><div><h3>Ограничения</h3>${listHtml(report.profile.weaknesses)}</div><div><h3>Сценарии риска</h3>${listHtml(report.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(report.profile.watch)}</div></div></section>`;
+  return `<section class="panel summary-panel"><div class="section-title">Резюме</div><div class="section-sub">Сильные стороны, ограничения, риски и сигналы для наблюдения.</div><div class="columns-4 profile-grid"><div><h3>Сильные стороны</h3>${listHtml(report.profile.strengths)}</div><div><h3>Ограничения</h3>${listHtml(report.profile.weaknesses)}</div><div><h3>Риски</h3>${listHtml(report.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(report.profile.watch)}</div></div></section>`;
 }
 
 function newsHtml(news = {}, report = {}) {
   if (!shouldRenderSection(report, "narrative_and_news")) return "";
   const items = Array.isArray(news.items) ? news.items : [];
   const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span class="news-source">${escapeHtml(item.source || news.source || "Источник")}</span><span class="news-date">${escapeHtml(formatShortDate(item.date))}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">${escapeHtml(news.source_summary || "Свежих релевантных новостей за выбранный период не найдено")}</div>`;
-  const freshness = news.updated_at ? `Обновлено ${new Date(news.updated_at).toLocaleString("ru-RU")}` : "Live-лента";
-  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Только новости, релевантные ${escapeHtml(report?.meta?.project_name || report?.meta?.ticker || "проекту")} · ${escapeHtml(freshness)}</div>${body}${insightHtml(report.narrative)}</section>`;
+  const freshness = news.updated_at ? `Обновлено ${new Date(news.updated_at).toLocaleString("ru-RU")}` : "Актуальная лента";
+  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">События, способные изменить тезис по ${escapeHtml(report?.meta?.project_name || report?.meta?.ticker || "проекту")}. · ${escapeHtml(freshness)}</div>${body}${insightHtml(report.narrative)}</section>`;
 }
 
 function orderedReportSectionsHtml(report) {
@@ -330,7 +336,7 @@ function explanationListHtml(items = []) {
 function insightHtml(block = {}) {
   const conclusion = block?.conclusion;
   if (!conclusion) return "";
-  return `<div class="list-item section-insight top-gap"><strong>Вывод</strong><span>${escapeHtml(conclusion)}</span></div>`;
+  return `<div class="list-item section-insight top-gap"><strong>Краткий вывод</strong><span>${escapeHtml(conclusion)}</span></div>`;
 }
 
 function insightPanelHtml(block = {}) {
@@ -528,7 +534,7 @@ function technicalBiasHtml(bias) {
 
 function buildUsersStatusCard(metrics) {
   const status = metrics?.daily_active_addresses?.status || "partial";
-  return `<div class="list-item"><strong>Статус данных</strong><br>${statusChip(status)}<div class="metric-status-line">Надежный live-источник пользовательских метрик пока недоступен. Блок обновится автоматически после подключения.</div></div>`;
+  return `<div class="list-item"><strong>Статус данных</strong><br>${statusChip(status)}<div class="metric-status-line">Надежный актуальный источник пользовательских метрик пока недоступен. Блок обновится автоматически после подключения.</div></div>`;
 }
 
 function loadTradingViewScript() {
@@ -588,7 +594,7 @@ async function loadReport() {
       ${tradingViewCard()}
       ${marketPackHtml(data)}
       ${technicalBiasHtml(data.technical_bias)}
-      ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel executive-summary"><div class="section-title">Кратко для инвестора</div><div class="section-sub">Три проверки, которые определяют качество тезиса</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
+      ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel executive-summary"><div class="section-title">Кратко для инвестора</div><div class="section-sub">Три проверки качества инвестиционного тезиса.</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
       ${orderedReportSectionsHtml(data)}
     </main></div>`;
 

@@ -167,6 +167,8 @@ test("project-specific copy separates ETH, SOL, DOGE, and PEPE investor framing"
   assert.notDeepEqual(eth.executive_summary.items, sol.executive_summary.items);
   assert.notDeepEqual(doge.executive_summary.items, pepe.executive_summary.items);
   assert.ok([eth, sol, doge, pepe].every((report) => report.executive_summary.items.length >= 3 && report.executive_summary.items.length <= 4));
+  assert.ok([eth, sol, doge, pepe].every((report) => report.final_verdict.title === "Финальная оценка"));
+  assert.ok([eth, sol, doge, pepe].every((report) => report.final_verdict.subtitle.startsWith("Инвестиционный тезис:")));
   assert.ok([eth, sol, doge, pepe].every((report) => report.final_verdict.paragraphs.length === 1));
   assert.ok([eth, sol, doge, pepe].every((report) => Object.values(report.profile).every((items) => items.length <= 2)));
 });
