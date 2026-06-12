@@ -1,5 +1,20 @@
 import { PROJECT_CATEGORIES, getProjectProfile } from "../config/projects.js";
 
+const CLOSING_SECTION_ORDER = Object.freeze(["summary", "final_verdict", "narrative_and_news"]);
+
+export const CATEGORY_SECTION_ORDER = Object.freeze({
+  [PROJECT_CATEGORIES.INFRA]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
+  [PROJECT_CATEGORIES.DEFI]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
+  [PROJECT_CATEGORIES.MEME]: Object.freeze(["tokenomics", ...CLOSING_SECTION_ORDER]),
+  [PROJECT_CATEGORIES.UTILITY]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
+  [PROJECT_CATEGORIES.CONSUMER]: Object.freeze(["users_and_activity", "tokenomics", "financials", ...CLOSING_SECTION_ORDER]),
+});
+
+export function getCategorySectionOrder(project) {
+  const category = getProjectProfile(project).category;
+  return [...(CATEGORY_SECTION_ORDER[category] || CATEGORY_SECTION_ORDER[PROJECT_CATEGORIES.UTILITY])];
+}
+
 const KPI_DEFINITIONS = Object.freeze({
   price: { label: "Цена", path: "market.price" },
   market_cap: { label: "Рыночная капитализация", path: "market.market_cap" },
@@ -216,7 +231,7 @@ export function applyProfileAwareSemantics(report, project, { preserveCurated = 
   const ticker = project.ticker || report.meta?.ticker || "TOKEN";
   const useGeneratedCopy = !preserveCurated;
 
-  report.meta = { ...(report.meta || {}), project_profile:profile, semantic_profile:profile.category };
+  report.meta = { ...(report.meta || {}), project_profile:profile, semantic_profile:profile.category, section_order:getCategorySectionOrder(project) };
   report.hero = preserveCurated && report.hero ? report.hero : copy.hero(name);
   report.hero.kpis = selectHeroKpis(report, project);
   report.metric_slots = selectReportMetricSlots(report, project);

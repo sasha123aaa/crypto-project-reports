@@ -58,6 +58,7 @@ test("buildReport keeps curated ETH and SOL profiles and selected sections compa
       assert.equal(report.meta.market_symbols.tradingView, `BINANCE:${project.ticker}USDT`);
       assert.equal(report.meta.market_symbols.technical, `${project.ticker}USDT`);
       assert.ok(report.executive_summary.items.length <= 3);
+      assert.deepEqual(report.meta.section_order.slice(-3), ["summary", "final_verdict", "narrative_and_news"]);
     }
   });
 });
@@ -118,6 +119,7 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
       assert.doesNotMatch(report.executive_summary.items.join(" "), /TVL|инфраструктур|сетевая экономика/i);
       assert.ok(report.executive_summary.items.length <= 3);
       assert.equal(report.meta.market_symbols.tradingView, `BINANCE:${report.meta.ticker}USDT`);
+      assert.deepEqual(report.meta.section_order, ["tokenomics", "summary", "final_verdict", "narrative_and_news"]);
       assert.equal(report.meta.market_symbols.technical, `${report.meta.ticker}USDT`);
       assert.match(report.final_verdict.subtitle, /ликвидность|импульс/i);
       assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "trading_quality"]);

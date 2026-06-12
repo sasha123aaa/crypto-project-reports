@@ -275,12 +275,47 @@ function projectIconHtml(meta = {}, compact = false) {
     : "";
   return `<span class="project-icon${compact ? " project-icon-compact" : ""}" aria-label="${label}" style="--project-accent:${accent}">${remote}${icons[key] || fallback}</span>`;
 }
+function tokenomicsSectionHtml(report) {
+  if (!shouldRenderSection(report, "tokenomics")) return "";
+  return `<section class="panel section-flow tokenomics-section"><div class="section-title">Токеномика</div><div class="section-sub">Предложение и механики, влияющие на держателя ${escapeHtml(report.meta.ticker)}</div><div class="hero-grid">${metricSlotsHtml(report, "tokenomics")}</div>${insightHtml(report.tokenomics)}</section>`;
+}
+
+function financialsSectionHtml(report) {
+  if (!shouldRenderSection(report, "financials")) return "";
+  return `<section class="panel section-flow finance-section"><div class="section-title">Экономика сети</div><div class="section-sub">Платный спрос и торговая активность экосистемы</div><div class="hero-grid finance-kpis">${metricSlotsHtml(report, "financial")}</div>${selectedChartGroupHtml(report, "financial-fee-charts", [["app_fees_history", "appFeesChart", "App Fees", "Платная активность приложений"], ["chain_fees_history", "chainFeesChart", "Chain Fees", "Платный спрос на базовый слой"]])}${selectedChartGroupHtml(report, "chart-stack", [["dex_history", "dexChart", "DEX-оборот", "Торговый оборот внутри сети"]])}${insightHtml(report.financials)}</section>`;
+}
+
+function capitalSectionHtml(report) {
+  if (!shouldRenderSection(report, "tvl_and_capital")) return "";
+  return `<section class="panel section-flow capital-section"><div class="section-title">Капитал в сети</div><div class="section-sub">Устойчивость TVL и расчетной ликвидности</div><div class="hero-grid capital-kpis">${metricSlotsHtml(report, "capital")}</div>${selectedChartGroupHtml(report, "capital-charts", [["tvl_history", "tvlChart", "TVL", "Капитал в приложениях сети"], ["stablecoins_history", "stableChart", "Stablecoins", "Ликвидность для расчетов и торговли"]])}${insightHtml(report.capital)}</section>`;
+}
+
+function summarySectionHtml(report) {
+  if (!shouldRenderSection(report, "risks") && !shouldRenderSection(report, "final_summary")) return "";
+  return `<section class="panel summary-panel"><div class="section-title">Резюме</div><div class="section-sub">Сильные стороны, ограничения и контрольные сигналы без повторения отчета</div><div class="columns-4 profile-grid"><div><h3>Сильные стороны</h3>${listHtml(report.profile.strengths)}</div><div><h3>Ограничения</h3>${listHtml(report.profile.weaknesses)}</div><div><h3>Сценарии риска</h3>${listHtml(report.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(report.profile.watch)}</div></div></section>`;
+}
+
 function newsHtml(news = {}, report = {}) {
   if (!shouldRenderSection(report, "narrative_and_news")) return "";
   const items = Array.isArray(news.items) ? news.items : [];
   const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span class="news-source">${escapeHtml(item.source || news.source || "Источник")}</span><span class="news-date">${escapeHtml(formatShortDate(item.date))}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">${escapeHtml(news.source_summary || "Свежих релевантных новостей за выбранный период не найдено")}</div>`;
   const freshness = news.updated_at ? `Обновлено ${new Date(news.updated_at).toLocaleString("ru-RU")}` : "Live-лента";
   return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Только новости, релевантные ${escapeHtml(report?.meta?.project_name || report?.meta?.ticker || "проекту")} · ${escapeHtml(freshness)}</div>${body}${insightHtml(report.narrative)}</section>`;
+}
+
+function orderedReportSectionsHtml(report) {
+  const renderers = {
+    tokenomics: () => tokenomicsSectionHtml(report),
+    financials: () => financialsSectionHtml(report),
+    tvl_and_capital: () => capitalSectionHtml(report),
+    users_and_activity: () => usersSectionHtml(report),
+    summary: () => summarySectionHtml(report),
+    final_verdict: () => finalVerdictHtml(report),
+    narrative_and_news: () => newsHtml(report.news, report),
+  };
+  const fallbackOrder = ["tokenomics", "financials", "tvl_and_capital", "users_and_activity", "summary", "final_verdict", "narrative_and_news"];
+  const order = Array.isArray(report?.meta?.section_order) ? report.meta.section_order : fallbackOrder;
+  return order.map((section) => renderers[section]?.() || "").join("");
 }
 
 function listHtml(items = []) {
@@ -554,13 +589,7 @@ async function loadReport() {
       ${marketPackHtml(data)}
       ${technicalBiasHtml(data.technical_bias)}
       ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel executive-summary"><div class="section-title">Кратко для инвестора</div><div class="section-sub">Три проверки, которые определяют качество тезиса</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
-      ${shouldRenderSection(data, "tokenomics") ? `<section class="panel section-flow tokenomics-section"><div class="section-title">Токеномика</div><div class="section-sub">Предложение и механики, влияющие на держателя ${escapeHtml(data.meta.ticker)}</div><div class="hero-grid">${metricSlotsHtml(data, "tokenomics")}</div>${insightHtml(data.tokenomics)}</section>` : ""}
-      ${shouldRenderSection(data, "financials") ? `<section class="panel section-flow finance-section"><div class="section-title">Экономика сети</div><div class="section-sub">Платный спрос и торговая активность экосистемы</div><div class="hero-grid finance-kpis">${metricSlotsHtml(data, "financial")}</div>${selectedChartGroupHtml(data, "financial-fee-charts", [["app_fees_history", "appFeesChart", "App Fees", "Платная активность приложений"], ["chain_fees_history", "chainFeesChart", "Chain Fees", "Платный спрос на базовый слой"]])}${selectedChartGroupHtml(data, "chart-stack", [["dex_history", "dexChart", "DEX-оборот", "Торговый оборот внутри сети"]])}${insightHtml(data.financials)}</section>` : ""}
-      ${shouldRenderSection(data, "tvl_and_capital") ? `<section class="panel section-flow capital-section"><div class="section-title">Капитал в сети</div><div class="section-sub">Устойчивость TVL и расчетной ликвидности</div><div class="hero-grid capital-kpis">${metricSlotsHtml(data, "capital")}</div>${selectedChartGroupHtml(data, "capital-charts", [["tvl_history", "tvlChart", "TVL", "Капитал в приложениях сети"], ["stablecoins_history", "stableChart", "Stablecoins", "Ликвидность для расчетов и торговли"]])}${insightHtml(data.capital)}</section>` : ""}
-      ${usersSectionHtml(data)}
-      ${newsHtml(data.news, data)}
-      ${shouldRenderSection(data, "risks") || shouldRenderSection(data, "final_summary") ? `<section class="panel summary-panel"><div class="section-title">Резюме</div><div class="section-sub">Сильные стороны, ограничения и контрольные сигналы без повторения отчета</div><div class="columns-4 profile-grid"><div><h3>Сильные стороны</h3>${listHtml(data.profile.strengths)}</div><div><h3>Ограничения</h3>${listHtml(data.profile.weaknesses)}</div><div><h3>Сценарии риска</h3>${listHtml(data.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(data.profile.watch)}</div></div></section>` : ""}
-      ${finalVerdictHtml(data)}
+      ${orderedReportSectionsHtml(data)}
     </main></div>`;
 
     const tvlSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.tvl_history, "totalLiquidityUSD"), { trimLeadingZeroes:true });
