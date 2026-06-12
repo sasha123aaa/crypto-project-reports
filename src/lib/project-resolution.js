@@ -10,6 +10,7 @@ import { fetchCoinGeckoProject, searchCoinGeckoProjects } from "../adapters/coin
 import { fetchDefiLlamaChains, fetchDefiLlamaProtocols, fetchStablecoinChains, stablecoinMcapUsd } from "../adapters/defillama.js";
 import { createMarketSymbols, resolveExchangeMarketSymbols } from "./market-symbols.js";
 import { inferRuntimeLabels } from "./label-inference.js";
+import { inferTitleSubtitle } from "./title-subtitle-inference.js";
 
 const CATEGORY_PROFILES = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: ANALYSIS_PROFILES.L1_INFRA,
@@ -208,13 +209,13 @@ export function buildRuntimeProjectConfig(input, discovery) {
   const knownSymbols = KNOWN_MARKET_SYMBOLS[ticker.toLowerCase()];
   const marketSymbols = knownSymbols || createMarketSymbols(ticker);
 
-  return withProfile({
+  const labels = inferRuntimeLabels({ coinDetails, protocol, chain, category, signals });
+  const baseProject = withProfile({
     slug: normalizeProjectInput(coin.symbol || input),
     name: coin.name || ticker,
     ticker,
-    subtitle: `${ticker} • runtime ${category} profile`,
     projectType,
-    categories: inferRuntimeLabels({ coinDetails, protocol, chain, category, signals }),
+    categories: labels,
     coingeckoId: coin.id,
     ...(chain ? { defillamaChain:chain.name } : {}),
     ...(stablecoinChain ? { stablecoinChain:stablecoinChain.name || stablecoinChain.gecko_id } : {}),
@@ -228,6 +229,8 @@ export function buildRuntimeProjectConfig(input, discovery) {
     resolution: { mode:"runtime", source:"discovery", input:String(input ?? "").trim(), normalized:{ slug:normalizeProjectInput(coin.symbol || input), ticker }, signals },
     runtimeData: { tvl:chain?.tvl ?? protocol?.tvl ?? null },
   }, profile);
+  const presentation = inferTitleSubtitle(baseProject, { labels, categories, tags:coinDetails?.tags, description:coinDetails?.description, protocol, chain, signals });
+  return { ...baseProject, subtitle:presentation.typeLine, presentation };
 }
 
 export function buildRuntimeProjectSkeleton(input) {
@@ -240,11 +243,10 @@ export function buildRuntimeProjectSkeleton(input) {
   const profile = buildProfile(category, buildCapabilitySeed(category, signals));
   const symbolTicker = ticker.replace(/[^A-Z0-9]/g, "");
   const marketSymbols = KNOWN_MARKET_SYMBOLS[slug] || createMarketSymbols(symbolTicker);
-  return withProfile({
+  const baseProject = withProfile({
     slug,
     name: ticker,
     ticker,
-    subtitle: `${ticker} • runtime ${category} profile`,
     projectType: "runtime",
     categories: [],
     marketSymbols,
@@ -260,6 +262,8 @@ export function buildRuntimeProjectSkeleton(input) {
       signals,
     },
   }, profile);
+  const presentation = inferTitleSubtitle(baseProject, { signals });
+  return { ...baseProject, subtitle:presentation.typeLine, presentation };
 }
 
 async function discoverRuntimeProject(input, discovery) {
