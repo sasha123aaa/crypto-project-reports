@@ -313,6 +313,8 @@ function projectIconHtml(meta = {}, compact = false) {
     bnb:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="#f3ba2f" d="M50 5 65 20 50 35 35 20zm-30 30 15 15-15 15L5 50zm60 0 15 15-15 15-15-15zM50 65l15 15-15 15-15-15zm0-30 15 15-15 15-15-15z"/></svg>`,
     chainlink:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#5578ff" stroke-width="15" d="M50 8 86 29v42L50 92 14 71V29z"/></svg>`,
     hyperliquid:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#97fce4" stroke-width="12" stroke-linecap="round" d="M12 58c9-25 20-25 29 0s20 25 29 0 14-24 18-16"/></svg>`,
+    pendle:`<span class="brand-word">P</span>`,
+    curve:`<span class="brand-word">CRV</span>`,
   };
   const remote = typeof branding.iconUrl === "string" && /^https:\/\//i.test(branding.iconUrl)
     ? `<img src="${escapeHtml(branding.iconUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
@@ -339,16 +341,19 @@ function financialsSectionHtml(report) {
   if (!shouldRenderSection(report, "financials")) return "";
   const hybrid = report?.meta?.semantic_profile === "hybrid_ecosystem";
   const tradingVenue = report?.meta?.semantic_profile === "trading_venue";
-  const title = tradingVenue ? "Экономика протокола" : (hybrid ? "Экономика BNB ecosystem" : "Экономика сети");
-  const subtitle = tradingVenue ? "Комиссии, торговый оборот, value capture и оценка относительно роста продукта." : (hybrid ? "On-chain экономика BNB Chain и сигналы спроса вокруг Binance ecosystem." : "Платный спрос и устойчивость экономической активности.");
+  const productDefi = report?.meta?.project_profile?.analysisProfile === "product_defi_economics";
+  const protocolEconomics = tradingVenue || productDefi;
+  const title = protocolEconomics ? "Экономика протокола" : (hybrid ? "Экономика BNB ecosystem" : "Экономика сети");
+  const subtitle = protocolEconomics ? "Комиссии, торговая активность, value capture и оценка относительно использования продукта." : (hybrid ? "On-chain экономика BNB Chain и сигналы спроса вокруг Binance ecosystem." : "Платный спрос и устойчивость экономической активности.");
   return `<section class="panel section-flow finance-section"><div class="section-title">${title}</div><div class="section-sub">${subtitle}</div><div class="hero-grid finance-kpis">${metricSlotsHtml(report, "financial")}</div>${selectedChartGroupHtml(report, "financial-fee-charts", [["app_fees_history", "appFeesChart", "App Fees", "Платная активность приложений"], ["chain_fees_history", "chainFeesChart", "Chain Fees", "Платный спрос на базовый слой"]])}${selectedChartGroupHtml(report, "chart-stack", [["dex_history", "dexChart", "DEX-оборот", "Торговый оборот внутри сети"]])}${insightHtml(report.financials)}</section>`;
 }
 
 function capitalSectionHtml(report) {
   if (!shouldRenderSection(report, "tvl_and_capital")) return "";
   const hybrid = report?.meta?.semantic_profile === "hybrid_ecosystem";
-  const title = hybrid ? "BNB Chain / капитал экосистемы" : "Капитал в сети";
-  const subtitle = hybrid ? "TVL и стейблкоины как важный, но не единственный слой спроса на BNB." : "TVL и ликвидность внутри экосистемы.";
+  const protocolAsset = ["trading_venue", "defi"].includes(report?.meta?.semantic_profile);
+  const title = hybrid ? "BNB Chain / капитал экосистемы" : (protocolAsset ? "Капитал / TVL / ликвидность" : "Капитал в сети");
+  const subtitle = hybrid ? "TVL и стейблкоины как важный, но не единственный слой спроса на BNB." : (protocolAsset ? "Капитал и ликвидность, которые поддерживают использование продукта и его оценку." : "TVL и ликвидность внутри экосистемы.");
   return `<section class="panel section-flow capital-section"><div class="section-title">${title}</div><div class="section-sub">${subtitle}</div><div class="hero-grid capital-kpis">${metricSlotsHtml(report, "capital")}</div>${selectedChartGroupHtml(report, "capital-charts", [["tvl_history", "tvlChart", "TVL", "Капитал в приложениях сети"], ["stablecoins_history", "stableChart", "Stablecoins", "Ликвидность для расчетов и торговли"]])}${insightHtml(report.capital)}</section>`;
 }
 

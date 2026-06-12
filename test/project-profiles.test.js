@@ -129,5 +129,22 @@ test("HYPE is a curated trading venue growth and revenue profile", () => {
   assert.equal(profile.capabilities.hasProtocolFees, true);
   assert.equal(profile.capabilities.hasDexVolume, true);
   assert.equal(profile.capabilities.hasValueCaptureData, true);
-  assert.deepEqual(profile.preferredSections, ["market", "tokenomics", "financials", "liquidity_and_trading", "tvl_and_capital", "final_summary", "risks", "narrative_and_news"]);
+  assert.deepEqual(profile.preferredSections, ["market", "tokenomics", "financials", "liquidity_and_trading", "tvl_and_capital", "stablecoins", "final_summary", "risks", "narrative_and_news"]);
+});
+
+test("PENDLE and CRV use the product-driven DeFi economics template with project-specific capabilities", () => {
+  const pendle = getProjectProfile(PROJECTS.pendle);
+  const crv = getProjectProfile(PROJECTS.crv);
+  assert.equal(pendle.category, PROJECT_CATEGORIES.DEFI);
+  assert.equal(crv.category, PROJECT_CATEGORIES.DEFI);
+  assert.equal(pendle.analysisProfile, ANALYSIS_PROFILES.PRODUCT_DEFI_ECONOMICS);
+  assert.equal(crv.analysisProfile, ANALYSIS_PROFILES.PRODUCT_DEFI_ECONOMICS);
+  for (const profile of [pendle, crv]) {
+    assert.equal(profile.capabilities.hasTvl, true);
+    assert.equal(profile.capabilities.hasProtocolFees, true);
+    assert.equal(profile.capabilities.hasDexVolume, true);
+    assert.equal(profile.capabilities.hasTokenomics, true);
+  }
+  assert.equal(pendle.capabilities.hasUnlocks, false);
+  assert.equal(crv.capabilities.hasUnlocks, true);
 });

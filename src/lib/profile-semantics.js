@@ -15,6 +15,9 @@ export const CATEGORY_SECTION_ORDER = Object.freeze({
 
 export function getCategorySectionOrder(project) {
   const profile = getProjectProfile(project);
+  if (profile.analysisProfile === ANALYSIS_PROFILES.PRODUCT_DEFI_ECONOMICS) {
+    return ["tokenomics", "financials", "tvl_and_capital", ...CLOSING_SECTION_ORDER];
+  }
   if (profile.analysisProfile === ANALYSIS_PROFILES.ORACLE_UTILITY) {
     return ["tokenomics", "utility_and_adoption", ...CLOSING_SECTION_ORDER];
   }
@@ -52,6 +55,9 @@ const KPI_DEFINITIONS = Object.freeze({
   momentum: { label: "Рыночный импульс", path: "semantic_metrics.narrative_momentum", capability: "hasNarrativeMomentum" },
   token_utility: { label: "Роль токена", path: "semantic_metrics.token_utility", capability: "hasTokenUtilityData" },
   adoption: { label: "Использование и интеграции", path: "semantic_metrics.adoption", capability: "hasAdoptionData" },
+  protocol_usage: { label: "Использование протокола", path: "semantic_metrics.protocol_usage", capability: "hasAdoptionData" },
+  emission_pressure: { label: "Давление эмиссии", path: "semantic_metrics.emission_pressure", capability: "hasUnlocks" },
+  governance_role: { label: "Роль governance", path: "semantic_metrics.governance_role", capability: "hasTokenUtilityData" },
   exchange_utility: { label: "Utility в Binance", path: "semantic_metrics.exchange_utility", capability: "hasTokenUtilityData" },
   users: { label: "Активные пользователи", path: "users.metrics.daily_active_addresses", capability: "hasUsersData" },
   mvrv: { label: "MVRV", path: "valuation.metrics.mvrv", capability: "hasBtcValuationData" },
@@ -103,7 +109,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.INFRA]: ["tvl", "stablecoins", "rwa", "stablecoins_tvl", "market_cap_tvl"],
     [PROJECT_CATEGORIES.DEFI]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
-    [PROJECT_CATEGORIES.TRADING_VENUE]: ["tvl", "market_cap_tvl"],
+    [PROJECT_CATEGORIES.TRADING_VENUE]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
     default: [],
   },
 });
@@ -224,6 +230,24 @@ const PROJECT_COPY = Object.freeze({
     verdict:{ title:"Финальная оценка", subtitle:"Инвестиционный тезис: быстрый рост должен стать устойчивым спросом на SOL", paragraphs:["SOL выглядит убедительно, пока экосистема удерживает капитал и создает повторяемые комиссии; главный риск — быстрое охлаждение активности после смены цикла."]},
     conclusions:{ tokenomics:"Спрос на SOL должен перекрывать давление предложения по мере роста сети.", financials:"Качество комиссий важнее рекордного числа дешевых операций.", capital:"Удержание TVL и стейблкоинов покажет, переживает ли рост Solana смену цикла.", liquidity:"Сильный оборот полезен, пока рынок сохраняет глубину при выходе капитала.", narrative:"Темп роста значим, если превращается в устойчивую экономику базового слоя."},
   },
+  hype: {
+    executive:["Hyperliquid нужно оценивать как торговый продукт с измеримыми оборотом и комиссиями, а HYPE — как growth / revenue asset с механизмом value capture.", "Рыночная цена должна подтверждаться устойчивостью DEX-оборота, комиссий, TVL и спроса трейдеров, а не только нарративом.", "Supply-риск и качество Assistance Fund важны не меньше текущего роста продукта."],
+    profile:{ strengths:["Сильный продуктовый спрос и торговая активность", "Понятный канал value capture через Assistance Fund"], weaknesses:["Доходы чувствительны к торговому циклу", "Будущее предложение повышает требования к росту"], risks:["Снижение оборота и комиссий", "Ослабление или изменение value capture", "Рост FDV быстрее продуктовой экономики"], watch:["Комиссии и DEX-оборот одновременно", "TVL и расчетную ликвидность", "Покупки Assistance Fund и динамику предложения"] },
+    verdict:{ title:"Финальная оценка", subtitle:"Инвестиционный тезис: продуктовая экономика должна оправдывать growth-оценку", paragraphs:["HYPE выглядит сильным revenue-driven growth asset, пока Hyperliquid удерживает торговый оборот, комиссии и ликвидность, а Assistance Fund сохраняет понятный value capture. Главный риск — рост оценки и будущего предложения быстрее устойчивой продуктовой экономики."] },
+    conclusions:{ tokenomics:"Числовая структура предложения показывает supply-риск, а Assistance Fund объясняет канал value capture; buyback не отменяет возможное давление emissions и распределений.", financials:"Комиссии и DEX-оборот должны расти совместно: именно это подтверждает платящий продуктовый спрос и качество revenue-тезиса.", capital:"TVL, расчетная ликвидность и Market Cap / TVL показывают, достаточно ли капитала поддерживает торговый продукт относительно оценки HYPE.", narrative:"В ленте остаются только события Hyperliquid, меняющие оборот, комиссии, ликвидность, продукт или value capture." },
+  },
+  pendle: {
+    executive:["Pendle оценивается через полезность рынка доходности и востребованность механики PT / YT.", "TVL, торговая активность и комиссии должны подтверждать, что продукт используется за пределами краткосрочных incentive-циклов.", "Инвестиционный тезис зависит от того, превращается ли usage в устойчивый спрос и value capture PENDLE при разумной оценке."],
+    profile:{ strengths:["Уникальная продуктовая механика PT / YT", "TVL и usage дают измеримые сигналы product-market fit"], weaknesses:["Спрос чувствителен к доходностям и DeFi-циклу", "Связь usage с ценностью токена требует постоянной проверки"], risks:["Снижение спроса на yield trading", "Оценка опережает комиссии и usage", "Конкуренция и фрагментация ликвидности"], watch:["TVL и торговую активность PT / YT", "Комиссии и revenue", "Value capture и valuation относительно usage"] },
+    verdict:{ title:"Финальная оценка", subtitle:"Инвестиционный тезис: PT / YT utility должна превращаться в устойчивый token capture", paragraphs:["PENDLE — продуктовый DeFi-актив с понятной специализацией на торговле доходностью. Сильный тезис требует устойчивых TVL, usage и комиссий, а также доказательства, что оценка и спрос на токен не опережают реальное использование PT / YT."] },
+    conclusions:{ tokenomics:"Предложение PENDLE нужно сопоставлять с utility и token capture: продуктовый рост ценен для держателя только при достаточном спросе на токен.", financials:"Комиссии и торговая активность показывают, насколько PT / YT используются как реальный продукт, а не только как временный incentive trade.", capital:"TVL подтверждает капитал в продукте; Market Cap / TVL помогает увидеть, насколько чувствительна оценка PENDLE к замедлению usage.", narrative:"Приоритет имеют события, меняющие PT / YT usage, TVL, комиссии, интеграции или token capture." },
+  },
+  crv: {
+    executive:["Curve следует оценивать через его роль в DeFi-ликвидности, DEX-активность и устойчивость TVL.", "veCRV делает governance и распределение emissions центральной частью инвестиционного тезиса.", "Сильная роль протокола не гарантирует сильный CRV: value capture должен перекрывать давление предложения и конкуренцию."],
+    profile:{ strengths:["Системная роль в DeFi-ликвидности", "veCRV связывает governance с направлением incentives"], weaknesses:["Постоянное давление emissions", "Ценность протокола не всегда прямо переходит держателю CRV"], risks:["Ослабление TVL и DEX-активности", "Emissions превосходят органический спрос", "Конкуренция за ликвидность и governance relevance"], watch:["Темп emissions и структуру предложения", "TVL, DEX-оборот и комиссии", "Спрос на veCRV и качество value capture"] },
+    verdict:{ title:"Финальная оценка", subtitle:"Инвестиционный тезис: роль в ликвидности должна перекрывать tokenomics pressure", paragraphs:["CRV сохраняет значимую роль через Curve liquidity и veCRV governance, но инвестиционный тезис остается чувствительным к emissions. Позитивный сценарий требует устойчивых TVL, DEX-активности и комиссий, которые создают спрос и value capture быстрее давления предложения."] },
+    conclusions:{ tokenomics:"Для CRV tokenomics — центральный риск: veCRV усиливает governance utility, но emissions и supply pressure должны перекрываться органическим спросом.", financials:"DEX-оборот и комиссии показывают экономическую актуальность Curve; высокая активность протокола важна только при достаточном value capture токена.", capital:"TVL показывает роль Curve в DeFi-ликвидности, а Market Cap / TVL помогает сопоставить эту роль с оценкой CRV.", narrative:"Приоритет имеют новости о Curve liquidity, veCRV governance, emissions, комиссиях и конкуренции." },
+  },
   doge: {
     executive:["Сопоставить узнаваемость DOGE с реальным торговым оборотом.", "Проверить глубину выхода для планируемого размера позиции.", "Следить за концентрацией и устойчивостью внимания между циклами."],
     profile:{ strengths:["Самый узнаваемый meme-актив","Глубокий и давно работающий рынок"], weaknesses:["Нет фундаментального денежного потока","Предложение продолжает расти"], risks:["Длительное снижение торгового интереса","Крупные продажи при ослаблении глубины рынка"], watch:["Оборот к капитализации","Глубину рынка в периоды снижения"]},
@@ -250,7 +274,9 @@ export function isAvailableMetric(metric, { requireValue = false } = {}) {
   return Boolean(formatted) && !EMPTY_METRIC_FORMATS.has(formatted) && !formatted.includes("временно недоступ") && !formatted.includes("unknown");
 }
 
-function prioritiesFor(slot, profile) {
+function prioritiesFor(slot, profile, project) {
+  const configured = project?.reportOptions?.[`${slot}Kpis`];
+  if (Array.isArray(configured)) return configured;
   if (profile.analysisProfile === ANALYSIS_PROFILES.ORACLE_UTILITY) {
     const oracle = {
       hero:["price", "market_cap", "fdv", "volume_24h", "trading_quality", "token_utility", "adoption", "circulating_supply", "liquidity"],
@@ -266,7 +292,7 @@ function prioritiesFor(slot, profile) {
 
 export function selectMetricSlots(report, project, slot, limit = Infinity) {
   const profile = getProjectProfile(project);
-  return prioritiesFor(slot, profile).flatMap((key) => {
+  return prioritiesFor(slot, profile, project).flatMap((key) => {
     const definition = KPI_DEFINITIONS[key];
     const metric = definition ? getPath(report, definition.path) : null;
     return definition && supports(definition, profile.capabilities) && isAvailableMetric(metric, definition)
@@ -275,7 +301,7 @@ export function selectMetricSlots(report, project, slot, limit = Infinity) {
   }).slice(0, limit);
 }
 
-export function selectHeroKpis(report, project, limit = 6) {
+export function selectHeroKpis(report, project, limit = project?.reportOptions?.heroKpiLimit || 6) {
   return selectMetricSlots(report, project, "hero", limit);
 }
 
@@ -370,6 +396,30 @@ export function applyProfileAwareSemantics(report, project, { preserveCurated = 
       "Торговая активность должна подтверждать продуктовый спрос: важны не только обороты HYPE на рынке, но и DEX-оборот самой площадки.",
       "Устойчивый тезис требует совместного движения объемов и комиссий; рост токена без подтверждения продуктовой активностью повышает риск переоценки.",
     ];
+  }
+
+  if (profile.analysisProfile === ANALYSIS_PROFILES.PRODUCT_DEFI_ECONOMICS) {
+    const isPendle = project.slug === "pendle";
+    report.semantic_metrics = {
+      ...(report.semantic_metrics || {}),
+      token_utility:{ value:null, formatted:isPendle ? "PT / YT markets + vePENDLE incentives" : "veCRV locking + gauges + governance", status:"static", source:"project structure" },
+      protocol_usage:{ value:null, formatted:isPendle ? "PT / YT trading and yield markets" : "Liquidity pools, swaps and gauges", status:"static", source:"project structure" },
+      value_capture:{ value:null, formatted:isPendle ? "vePENDLE incentives and protocol economics" : "veCRV fees, gauges and governance", status:"static", source:"project structure" },
+      ...(isPendle ? {} : {
+        emission_pressure:{ value:null, formatted:"Ongoing CRV emissions", status:"static", source:"token structure" },
+        governance_role:{ value:null, formatted:"veCRV gauges and governance", status:"static", source:"project structure" },
+      }),
+    };
+    report.tokenomics = report.tokenomics || { metrics:{} };
+    report.tokenomics.text = isPendle ? [
+      "PENDLE получает utility через рынки PT / YT и vePENDLE incentives; ключевой вопрос — превращается ли product usage в устойчивый спрос и value capture токена.",
+      "Circulating supply, total supply, max supply и FDV задают числовой каркас supply-рискa; их нужно сопоставлять с TVL, торговой активностью и комиссиями.",
+    ] : [
+      "CRV нельзя анализировать без veCRV: блокировка токена дает governance-влияние и контроль над gauges, связывая спрос с распределением ликвидности и incentives.",
+      "Одновременно emissions создают постоянное давление предложения, поэтому circulating, total и max supply нужно оценивать вместе с органическим спросом и value capture.",
+    ];
+    report.valuation = report.valuation || { text:[], metrics:{} };
+    report.valuation.text = isPendle ? ["Оценка PENDLE должна подтверждаться TVL, PT / YT usage, торговой активностью, комиссиями и качеством token capture."] : ["Оценка CRV должна учитывать роль Curve в ликвидности, но дисконтировать emissions pressure, конкуренцию и неполную передачу ценности токену."];
   }
 
   if (profile.analysisProfile === ANALYSIS_PROFILES.ORACLE_UTILITY) {

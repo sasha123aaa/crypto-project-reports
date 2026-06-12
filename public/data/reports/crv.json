@@ -1,17 +1,17 @@
 {
   "meta": {
-    "slug": "hype",
-    "project_name": "Hyperliquid",
-    "ticker": "HYPE",
-    "subtitle": "HYPE • trading venue / revenue-driven growth asset",
+    "slug": "crv",
+    "project_name": "Curve",
+    "ticker": "CRV",
+    "subtitle": "CRV • DeFi liquidity / ve-tokenomics asset",
     "categories": [
+      "DeFi",
       "DEX",
-      "Perpetuals",
-      "Trading Venue",
-      "Revenue",
-      "Value Capture"
+      "Liquidity",
+      "veCRV",
+      "Governance"
     ],
-    "project_type": "trading_venue_asset",
+    "project_type": "liquidity_protocol_asset",
     "report_version": "v1.0",
     "updated_at": "2026-06-12T00:00:00Z",
     "data_status": "curated-starter"
@@ -59,10 +59,10 @@
     "watch": []
   },
   "about": {
-    "title": "Что такое HYPE",
+    "title": "Что такое CRV",
     "paragraphs": [
-      "HYPE — актив торговой площадки Hyperliquid, который следует анализировать через реальный спрос трейдеров, оборот, комиссии и механику value capture.",
-      "Главный инвестиционный вопрос — растет ли ценность токена вместе с продуктовой экономикой или рыночная оценка опережает устойчивые объемы и комиссии."
+      "Curve — инфраструктура DeFi-ликвидности, а CRV — governance и incentive-актив вокруг модели veCRV.",
+      "Инвестиционный тезис требует, чтобы роль Curve, TVL и DEX-активность перекрывали emissions pressure и конкуренцию."
     ]
   },
   "tokenomics": {
@@ -88,22 +88,16 @@
       },
       "net_issuance": {
         "value": null,
-        "formatted": "Будущие emissions / распределения требуют мониторинга",
+        "formatted": "Постоянные CRV emissions",
         "status": "static",
         "source": "token structure"
-      },
-      "market_buyback": {
-        "value": null,
-        "formatted": "Assistance Fund buys HYPE",
-        "status": "static",
-        "source": "Hyperliquid mechanism"
       }
     }
   },
   "financials": {
     "text": [
-      "Экономика протокола — центральный блок HYPE: комиссии и DEX-оборот показывают, есть ли реальный платящий спрос.",
-      "Мультипликаторы к капитализации помогают проверить, не обгоняет ли оценка продуктовый рост."
+      "Экономика протокола показывает актуальность Curve через DEX-оборот и комиссии.",
+      "Для держателя CRV важно, насколько эта активность превращается в value capture."
     ],
     "metrics": {
       "app_fees_24h": {
@@ -128,16 +122,10 @@
   },
   "capital": {
     "text": [
-      "TVL, расчетная ликвидность и Market Cap / TVL показывают глубину капитала относительно оценки HYPE."
+      "TVL показывает системную роль Curve в DeFi-ликвидности; Market Cap / TVL сопоставляет эту роль с оценкой CRV."
     ],
     "metrics": {
       "tvl": {
-        "value": null,
-        "formatted": "—",
-        "status": "unavailable",
-        "source": "DefiLlama"
-      },
-      "stablecoins_mcap": {
         "value": null,
         "formatted": "—",
         "status": "unavailable",
@@ -196,22 +184,46 @@
     }
   },
   "semantic_metrics": {
+    "token_utility": {
+      "value": null,
+      "formatted": "veCRV locking + gauges + governance",
+      "status": "static",
+      "source": "project structure"
+    },
+    "protocol_usage": {
+      "value": null,
+      "formatted": "Liquidity pools, swaps and gauges",
+      "status": "static",
+      "source": "project structure"
+    },
     "value_capture": {
       "value": null,
-      "formatted": "Assistance Fund market buybacks",
+      "formatted": "veCRV fees, gauges and governance",
       "status": "static",
-      "source": "Hyperliquid mechanism"
+      "source": "project structure"
+    },
+    "emission_pressure": {
+      "value": null,
+      "formatted": "Ongoing CRV emissions",
+      "status": "static",
+      "source": "token structure"
+    },
+    "governance_role": {
+      "value": null,
+      "formatted": "veCRV gauges and governance",
+      "status": "static",
+      "source": "project structure"
     }
   },
   "narrative": {
     "items": [
-      "Релевантный нарратив HYPE должен подтверждаться объемами, комиссиями, продуктовой активностью и изменениями value capture."
+      "Новости CRV релевантны, если меняют Curve liquidity, veCRV governance, emissions, комиссии или конкуренцию."
     ]
   },
   "news": {
     "status": "partial",
     "items": [],
-    "source_summary": "Свежие релевантные новости о Hyperliquid временно недоступны",
+    "source_summary": "Свежие релевантные новости о Curve временно недоступны",
     "updated_at": "2026-06-12T00:00:00Z"
   },
   "risks": {
