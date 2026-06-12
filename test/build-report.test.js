@@ -77,7 +77,11 @@ async function withRuntimeMarketSources(markets, run) {
       return new Response(JSON.stringify([markets[id]]), { status:200, headers:{ "content-type":"application/json" } });
     }
     if (url.pathname.includes("/market_chart")) {
-      return new Response(JSON.stringify({ prices:[[1_700_000_000_000, 1]] }), { status:200, headers:{ "content-type":"application/json" } });
+      return new Response(JSON.stringify({
+        prices:[[1_700_000_000_000, 1], [1_700_086_400_000, 1.1]],
+        total_volumes:[[1_700_000_000_000, 10], [1_700_086_400_000, 12]],
+        market_caps:[[1_700_000_000_000, 100], [1_700_086_400_000, 110]],
+      }), { status:200, headers:{ "content-type":"application/json" } });
     }
     return new Response("unavailable", { status:503 });
   };
@@ -110,7 +114,8 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
       assert.equal(report.meta.section_selection.sections.financials.status, "disabled_by_profile");
       assert.doesNotMatch(report.executive_summary.items.join(" "), /TVL|инфраструктур|сетевая экономика/i);
       assert.match(report.final_verdict.subtitle, /Meme/);
-      assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "trading_quality"]);
+      assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "trading_quality", "circulating_supply", "total_supply"]);
+      assert.deepEqual(report.chart_slots.map(({ key }) => key), ["price_history", "volume_history", "market_cap_history"]);
     }
 
     assert.equal(link.meta.project_profile.category, "utility");
@@ -120,6 +125,7 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
     assert.match(link.final_verdict.subtitle, /Utility/);
     assert.match(link.valuation.text.join(" "), /utility-токена/i);
     assert.equal(link.valuation.metrics.valuation_status.status, "unavailable");
-    assert.deepEqual(link.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "fdv"]);
+    assert.deepEqual(link.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply"]);
+    assert.deepEqual(link.chart_slots.map(({ key }) => key), ["price_history", "volume_history", "market_cap_history"]);
   });
 });

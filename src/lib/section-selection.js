@@ -44,7 +44,7 @@ export function getReportDataAvailability(report = {}, { strict = false } = {}) 
     tvl_and_capital: metricBlockAvailability(report.capital, { strict, metricKeys:["tvl"] }),
     stablecoins: metricBlockAvailability(report.capital, { strict, metricKeys:["stablecoins_mcap"] }),
     rwa: metricBlockAvailability(report.capital, { strict, metricKeys:["rwa_active_mcap"] }),
-    financials: metricBlockAvailability(report.financials, { strict, metricKeys:["chain_fees_24h", "dex_volume_24h"] }),
+    financials: metricBlockAvailability(report.financials, { strict, metricKeys:["app_fees_24h", "chain_fees_24h", "dex_volume_24h"] }),
     liquidity_and_trading: metricBlockAvailability(report.liquidity, { strict }),
     valuation: metricBlockAvailability(report.valuation, { strict }),
     users_and_activity: metricBlockAvailability(report.users, { strict }),
