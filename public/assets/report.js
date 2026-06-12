@@ -152,7 +152,7 @@ function marketPackHtml(report) {
   if (!["meme", "utility", "defi"].includes(category) && !marketCharts) return "";
   const metrics = metricSlotsHtml(report, "market");
   if (!metrics && !marketCharts) return "";
-  return `<section class="panel section-flow market-pack-section"><div class="section-title">Рынок и торговля</div><div class="section-sub">Категорийный набор рыночных метрик: показываются только доступные данные</div>${metrics ? `<div class="hero-grid market-kpis">${metrics}</div>` : ""}${marketCharts ? `<div class="capital-charts">${marketCharts}</div>` : ""}</section>`;
+  return `<section class="panel section-flow market-pack-section"><div class="section-title">Рынок и торговля</div><div class="section-sub">Категорийный набор рыночных метрик: показываются только доступные данные</div>${metrics ? `<div class="hero-grid market-kpis">${metrics}</div>` : ""}${marketCharts ? `<div class="capital-charts">${marketCharts}</div>` : ""}${insightHtml(report.liquidity)}</section>`;
 }
 
 function heroKpisHtml(report) {
@@ -273,7 +273,7 @@ function newsHtml(news = {}, report = {}) {
   const items = Array.isArray(news.items) ? news.items : [];
   const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span class="news-source">${escapeHtml(item.source || news.source || "Источник")}</span><span class="news-date">${escapeHtml(formatShortDate(item.date))}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">Свежих релевантных новостей за выбранный период не найдено</div>`;
   const freshness = news.updated_at ? `Обновлено ${new Date(news.updated_at).toLocaleString("ru-RU")}` : "Live-лента";
-  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Только новости, релевантные ${escapeHtml(report?.meta?.project_name || report?.meta?.ticker || "проекту")} · ${escapeHtml(freshness)}</div>${body}</section>`;
+  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Только новости, релевантные ${escapeHtml(report?.meta?.project_name || report?.meta?.ticker || "проекту")} · ${escapeHtml(freshness)}</div>${body}${insightHtml(report.narrative)}</section>`;
 }
 
 function listHtml(items = []) {

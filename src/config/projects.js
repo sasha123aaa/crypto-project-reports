@@ -125,7 +125,7 @@ export const PROJECTS = {
       { url: "https://weekinethereumnews.com/feed/", source: "Week in Ethereum News", priority: 2, audience: "ecosystem" },
       { url: "https://medium.com/feed/ethereum-cat-herders", source: "Ethereum Cat Herders", priority: 3, audience: "ecosystem" },
     ],
-    reportOptions: { hideExecutiveSummary: true, compactTokenomics: true, integratedFinancials: true, preserveCuratedSemantics: true },
+    reportOptions: { compactTokenomics: true, integratedFinancials: true },
     usersSource: {
       type: "none",
       chain: "Ethereum",

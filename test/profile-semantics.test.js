@@ -137,3 +137,31 @@ test("category chart packs only select available relevant series", async () => {
   assert.deepEqual(selectChartSlots({ charts }, meme).map(({ key }) => key), ["price_history", "volume_history", "market_cap_history"]);
   assert.deepEqual(selectChartSlots({ charts }, infra).map(({ key }) => key), ["price_history", "chain_fees_history", "tvl_history"]);
 });
+
+test("project-specific copy separates ETH, SOL, DOGE, and PEPE investor framing", () => {
+  const projects = [
+    PROJECTS.eth,
+    PROJECTS.sol,
+    { slug:"doge", name:"Dogecoin", ticker:"DOGE", projectProfile:{ category:"meme", capabilities:{} } },
+    { slug:"pepe", name:"Pepe", ticker:"PEPE", projectProfile:{ category:"meme", capabilities:{} } },
+  ];
+  const [eth, sol, doge, pepe] = projects.map((project) => applyProfileAwareSemantics(baseReport(), project));
+
+  assert.match(eth.executive_summary.items.join(" "), /L1, L2|расчетный слой/i);
+  assert.match(sol.executive_summary.items.join(" "), /быстрый рост|приток капитала/i);
+  assert.match(doge.executive_summary.items.join(" "), /зрелый attention-актив|ликвидным рынком/i);
+  assert.match(pepe.executive_summary.items.join(" "), /narrative-driven|импульс/i);
+  assert.notDeepEqual(eth.executive_summary.items, sol.executive_summary.items);
+  assert.notDeepEqual(doge.executive_summary.items, pepe.executive_summary.items);
+  assert.ok([eth, sol, doge, pepe].every((report) => report.executive_summary.items.length >= 3 && report.executive_summary.items.length <= 4));
+});
+
+test("category-aware semantics attach concise section conclusions", () => {
+  const utility = applyProfileAwareSemantics({ ...baseReport(), tokenomics:{}, liquidity:{}, narrative:{} }, PROJECT_PROFILE_EXAMPLES.utility);
+  const meme = applyProfileAwareSemantics({ ...baseReport(), tokenomics:{}, liquidity:{}, narrative:{} }, { name:"Meme", ticker:"MEME", projectProfile:{ category:"meme", capabilities:{} } });
+
+  assert.match(utility.tokenomics.conclusion, /потребностью в токене/i);
+  assert.match(utility.narrative.conclusion, /использование токена/i);
+  assert.match(meme.liquidity.conclusion, /unwind/i);
+  assert.match(meme.narrative.conclusion, /внимания/i);
+});
