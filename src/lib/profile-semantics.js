@@ -9,6 +9,7 @@ export const CATEGORY_SECTION_ORDER = Object.freeze({
   [PROJECT_CATEGORIES.MEME]: Object.freeze(["tokenomics", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.UTILITY]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.CONSUMER]: Object.freeze(["users_and_activity", "tokenomics", "financials", ...CLOSING_SECTION_ORDER]),
+  [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", ...CLOSING_SECTION_ORDER]),
 });
 
 export function getCategorySectionOrder(project) {
@@ -26,6 +27,7 @@ const KPI_DEFINITIONS = Object.freeze({
   max_supply: { label: "Максимальное предложение", path: "tokenomics.metrics.max_supply", capability: "hasTokenomics", requireValue: true },
   net_issuance: { label: "Чистая эмиссия", path: "tokenomics.metrics.net_issuance", capability: "hasTokenomics" },
   burn_mechanism: { label: "Механизм сжигания", path: "tokenomics.metrics.burn_mechanism", capability: "hasTokenomics" },
+  burn_target: { label: "Целевое предложение после burn", path: "tokenomics.metrics.burn_target", capability: "hasTokenomics" },
   market_buyback: { label: "Выкуп с рынка", path: "tokenomics.metrics.market_buyback", capability: "hasTokenomics" },
   tvl: { label: "TVL", path: "capital.metrics.tvl", capability: "hasTvl" },
   stablecoins: { label: "Стейблкоины в сети", path: "capital.metrics.stablecoins_mcap", capability: "hasStablecoins" },
@@ -41,6 +43,7 @@ const KPI_DEFINITIONS = Object.freeze({
   momentum: { label: "Рыночный импульс", path: "semantic_metrics.narrative_momentum", capability: "hasNarrativeMomentum" },
   token_utility: { label: "Роль токена", path: "semantic_metrics.token_utility", capability: "hasTokenUtilityData" },
   adoption: { label: "Использование и интеграции", path: "semantic_metrics.adoption", capability: "hasAdoptionData" },
+  exchange_utility: { label: "Utility в Binance", path: "semantic_metrics.exchange_utility", capability: "hasTokenUtilityData" },
   users: { label: "Активные пользователи", path: "users.metrics.daily_active_addresses", capability: "hasUsersData" },
 });
 
@@ -52,6 +55,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "trading_quality", "liquidity", "concentration", "momentum"],
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "token_utility", "liquidity", "adoption", "concentration"],
     [PROJECT_CATEGORIES.CONSUMER]: ["price", "market_cap", "volume_24h", "users", "adoption", "momentum", "liquidity"],
+    [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["price", "market_cap", "fdv", "volume_24h", "burn_mechanism", "tvl", "exchange_utility", "stablecoins", "fees", "dex_volume"],
   },
   market: {
     [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality"],
@@ -59,23 +63,27 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.DEFI]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity"],
     [PROJECT_CATEGORIES.MEME]: ["liquidity", "concentration", "momentum"],
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity", "token_utility", "adoption"],
+    [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity", "exchange_utility"],
     default: ["price", "market_cap", "fdv", "volume_24h", "trading_quality"],
   },
   tokenomics: {
-    default: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply", "net_issuance", "burn_mechanism", "market_buyback"],
+    default: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply", "net_issuance", "burn_mechanism", "burn_target", "market_buyback"],
     [PROJECT_CATEGORIES.MEME]: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply"],
     [PROJECT_CATEGORIES.MACRO]: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply"],
+    [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["burn_mechanism", "burn_target", "circulating_supply", "total_supply", "max_supply", "market_cap", "fdv"],
   },
   financial: {
     [PROJECT_CATEGORIES.INFRA]: ["fees", "app_fees", "dex_volume", "trading_quality"],
     [PROJECT_CATEGORIES.DEFI]: ["app_fees", "fees", "dex_volume", "trading_quality"],
     [PROJECT_CATEGORIES.MEME]: [],
     [PROJECT_CATEGORIES.MACRO]: ["trading_quality"],
+    [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["fees", "dex_volume", "trading_quality"],
     default: ["trading_quality", "dex_volume", "fees"],
   },
   capital: {
     [PROJECT_CATEGORIES.INFRA]: ["tvl", "stablecoins", "rwa", "stablecoins_tvl", "market_cap_tvl"],
     [PROJECT_CATEGORIES.DEFI]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
+    [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
     default: [],
   },
 });
@@ -101,6 +109,7 @@ export const CHART_PACK_PRIORITIES = Object.freeze({
   [PROJECT_CATEGORIES.MEME]: ["price_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.UTILITY]: ["price_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.CONSUMER]: ["price_history", "volume_history", "market_cap_history"],
+  [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["price_history", "chain_fees_history", "dex_history", "tvl_history", "stablecoins_history", "volume_history"],
 });
 
 const PROFILE_COPY = Object.freeze({
@@ -138,6 +147,13 @@ const PROFILE_COPY = Object.freeze({
     profile: { strengths:["Понятная роль токена в продукте","Рост использования способен создавать спрос"], weaknesses:["Токен может оказаться необязательным","Ликвидность может быть ограниченной"], risks:["Продукт растет без спроса на токен","Оценка опережает реальное использование"], watch:["Необходимость токена в продукте","Связь использования со спросом на токен"] },
     verdict: (name, ticker) => ({ title:"Финальная оценка", subtitle:"Инвестиционный тезис: использование продукта должно создавать спрос на токен", paragraphs:[`${name} убедителен при измеримой связи продукта со спросом на токен; главный риск — рост использования без выгоды для держателя.`] }),
     conclusions: { tokenomics:"Предложение имеет смысл оценивать вместе с реальной потребностью в токене.", financials:"Экономика продукта важна лишь в той мере, в какой поддерживает спрос на токен.", capital:"Капитал подтверждает полезность только при связи с использованием продукта.", liquidity:"Достаточная ликвидность снижает риск выхода из позиции.", narrative:"Интеграции ценны, когда превращаются в измеримое использование токена." },
+  },
+  [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: {
+    hero: (name) => ({ title:name, subtitle:"Hybrid: биржевая utility + BNB Chain", lead:`${name} оценивается через совокупный спрос внутри Binance, роль газа и базового актива BNB Chain, а также устойчивое сокращение предложения.`, main_strength:"Несколько источников utility: биржевая экосистема, on-chain использование и burn-механика.", main_risk:"Спрос и оценка заметно зависят от Binance, регулирования и способности экосистемы передавать ценность токену.", status_text:"Фокус: utility Binance, burn, капитал BNB Chain и устойчивость совокупного спроса." }),
+    executive: () => ["Разделить спрос на BNB со стороны Binance ecosystem и использование токена внутри BNB Chain.", "Проверить, поддерживают ли burn и сокращение предложения долгосрочную ценность, не подменяя реальный спрос.", "Сопоставить оценку с капиталом, комиссиями и торговой активностью BNB Chain, учитывая регуляторную зависимость от Binance."],
+    profile: { strengths:["Многослойная utility в Binance и BNB Chain","Burn-механика поддерживает тезис сокращения предложения"], weaknesses:["Высокая зависимость от одной экосистемы","Не вся ценность Binance и BNB Chain автоматически достается BNB"], risks:["Регуляторное или операционное давление на Binance","Ослабление utility, burn или активности BNB Chain"], watch:["Темп burn и динамику предложения","Спрос внутри Binance и капитал BNB Chain"] },
+    verdict: (name) => ({ title:"Финальная оценка", subtitle:"Инвестиционный тезис: utility, burn и chain-слой должны поддерживать друг друга", paragraphs:[`${name} остается сильным hybrid-активом, пока utility внутри Binance, использование BNB Chain и сокращение предложения вместе создают устойчивый спрос; главный риск — зависимость этой связки от Binance и регулирования.`] }),
+    conclusions: { tokenomics:"BNB получает поддержку от Auto-Burn и сжигания части gas fees, но сокращение предложения важно оценивать вместе с реальным спросом в Binance и BNB Chain.", financials:"Комиссии и DEX-оборот BNB Chain подтверждают on-chain слой тезиса, но не измеряют всю экономику Binance ecosystem.", capital:"TVL и стейблкоины показывают капитал BNB Chain как вторичный, но важный слой спроса на BNB.", liquidity:"Биржевая ликвидность поддерживает доступность BNB, одновременно усиливая зависимость от Binance ecosystem.", narrative:"Для BNB релевантны новости о burn, utility, Binance ecosystem, BNB Chain и регулировании, способном изменить спрос на токен." },
   },
   [PROJECT_CATEGORIES.CONSUMER]: {
     hero: (name) => ({ title:name, subtitle:"Пользовательский проект", lead:`${name} оценивается через удержание аудитории и связь продукта с токеном.`, main_strength:"Повторяемое использование и потенциал сетевого эффекта.", main_risk:"Рост аудитории может не поддержать экономику токена.", status_text:"Фокус: удержание, повторное использование и монетизация." }),

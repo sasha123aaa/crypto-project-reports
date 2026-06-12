@@ -13,7 +13,7 @@ import {
 } from "../src/config/projects.js";
 
 test("project taxonomy exposes the stage-one categories", () => {
-  assert.deepEqual(Object.values(PROJECT_CATEGORIES), ["infra", "macro", "defi", "meme", "utility", "consumer"]);
+  assert.deepEqual(Object.values(PROJECT_CATEGORIES), ["infra", "macro", "defi", "meme", "utility", "consumer", "hybrid_ecosystem"]);
 });
 
 
@@ -44,6 +44,18 @@ test("ETH resolves to a capability-rich L1 infrastructure profile", () => {
   assert.equal(profile.capabilities.hasUnlocks, false);
   assert.ok(profile.preferredSections.includes("tvl_and_capital"));
   assert.ok(profile.eligibleSections.includes("financials"));
+});
+
+test("BNB is a curated CEX + chain hybrid profile", () => {
+  const profile = getProjectProfile(PROJECTS.bnb);
+  const selection = getSectionSelection(PROJECTS.bnb);
+
+  assert.equal(profile.category, PROJECT_CATEGORIES.HYBRID_ECOSYSTEM);
+  assert.equal(profile.analysisProfile, ANALYSIS_PROFILES.CEX_CHAIN_HYBRID);
+  for (const capability of ["hasTvl", "hasStablecoins", "hasChainFees", "hasDexVolume", "hasTokenomics", "hasLiquidityData", "hasTokenUtilityData"]) assert.equal(profile.capabilities[capability], true);
+  assert.equal(profile.capabilities.hasUsersData, false);
+  for (const section of ["market", "tokenomics", "financials", "tvl_and_capital", "stablecoins", "liquidity_and_trading", "final_summary", "risks", "narrative_and_news"]) assert.ok(selection.enabledSections.includes(section));
+  for (const section of ["users_and_activity", "rwa", "unlocks", "whale_activity"]) assert.equal(selection.sections[section].status, SECTION_VISIBILITY.DISABLED_BY_PROFILE);
 });
 
 test("SOL is available as a second infrastructure profile", () => {

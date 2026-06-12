@@ -46,6 +46,24 @@ test("BTC curated identity keeps Bitcoin branding and exchange-aware symbol mapp
   assert.deepEqual(marketTechnicalRoute(PROJECTS.btc.marketSymbols), { exchange:"BYBIT", symbol:"BTCUSDT", source:"Bybit spot" });
 });
 
+
+test("BNB curated identity uses Binance-first BNBUSDT mapping and aliases", async () => {
+  for (const input of ["bnb", "BNB", "binancecoin", "binance coin"]) {
+    const project = await resolveProject(input, noDiscoveryCalls);
+    assert.equal(project.slug, PROJECTS.bnb.slug);
+    assert.deepEqual(getProjectProfile(project), getProjectProfile(PROJECTS.bnb));
+    assert.equal(project.resolution.mode, "registered");
+  }
+  assert.equal(PROJECTS.bnb.marketSymbols.base, "BNB");
+  assert.equal(PROJECTS.bnb.marketSymbols.tradingView, "BINANCE:BNBUSDT");
+  assert.equal(PROJECTS.bnb.marketSymbols.technical, "BNBUSDT");
+  assert.equal(PROJECTS.bnb.branding.iconKey, "bnb");
+  const resolved = await resolveExchangeMarketSymbols(PROJECTS.bnb.marketSymbols, async (route) => route.exchange === "BINANCE" && route.symbol === "BNBUSDT");
+  assert.equal(resolved.status, "resolved");
+  assert.equal(resolved.tradingView, "BINANCE:BNBUSDT");
+  assert.deepEqual(marketTechnicalRoute(resolved), { exchange:"BINANCE", symbol:"BNBUSDT", source:"Binance spot" });
+});
+
 test("resolver returns a conservative profiled fallback when discovery is unavailable", async () => {
   for (const input of ["doge", "pepe", "link"]) {
     const project = await resolveProject(input, noDiscoveryCalls);
@@ -142,7 +160,7 @@ test("category inference favors utility over weak protocol or market-only signal
 });
 
 test("runtime inference does not replace curated project profiles", async () => {
-  for (const input of ["btc", "eth", "sol"]) {
+  for (const input of ["btc", "eth", "sol", "bnb"]) {
     const project = await resolveProject(input, noDiscoveryCalls);
     assert.equal(project.resolution.mode, "registered");
     assert.deepEqual(getProjectProfile(project), getProjectProfile(PROJECTS[input]));

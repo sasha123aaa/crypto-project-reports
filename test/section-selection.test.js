@@ -106,3 +106,14 @@ test("BTC reference report selects macro sections and rejects ETH-like blocks", 
   }
   for (const section of ["tvl_and_capital", "stablecoins", "financials", "users_and_activity"]) assert.equal(selection.sections[section].status, "disabled_by_profile");
 });
+
+test("BNB reference report keeps hybrid economy and capital sections renderable", async () => {
+  const report = await loadReport("bnb");
+  const selection = applySectionSelection(report, PROJECTS.bnb);
+
+  for (const section of ["market", "tokenomics", "financials", "tvl_and_capital", "stablecoins", "liquidity_and_trading", "narrative_and_news", "risks", "final_summary"]) {
+    assert.ok(["enabled", "partial"].includes(selection.sections[section].status), `${section} should remain renderable`);
+  }
+  assert.equal(report.tokenomics.metrics.burn_mechanism.formatted, "Auto-Burn + BEP-95");
+  assert.equal(report.semantic_metrics.exchange_utility.formatted, "Binance ecosystem utility");
+});
