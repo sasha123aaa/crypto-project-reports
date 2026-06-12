@@ -201,8 +201,8 @@
   },
   "watchlist": {
     "items": [
-      "ETF-потоки, BTC dominance и устойчивость институционального спроса.",
-      "Биржевые резервы, глубину рынка и оборот относительно капитализации.",
+      "Ежедневные и 5-дневные spot ETF net flows вместе с BTC dominance.",
+      "Биржевые резервы — только после подключения надежного публичного источника; до этого не делать выводов по неподтвержденным данным.",
       "Цену относительно MVRV и realized price, а также темп эмиссии."
     ]
   },
@@ -210,7 +210,7 @@
     "title": "Финальная оценка",
     "subtitle": "Макро-актив",
     "paragraphs": [
-      "BTC остается отдельным классом макро-актива, пока ограниченное предложение сочетается с глубокой ликвидностью и устойчивым спросом. Главный риск — оценка, уходящая далеко вперед потоков капитала и рыночной фазы; подтверждение тезиса — устойчивые потоки, глубина рынка и отсутствие структурного ослабления спроса."
+      "BTC остается отдельным классом макро-актива, пока ограниченное предложение сочетается с глубокой ликвидностью и устойчивым спросом. Подтверждение тезиса требует согласованности spot ETF-потоков, BTC dominance и оценки относительно realized cap; риск усиливается, когда MVRV и рыночная цена растут без поддержки потоков капитала."
     ]
   },
   "charts": {
@@ -220,7 +220,9 @@
     "mvrv_history": [],
     "realized_price_history": [],
     "btc_market_price_history": [],
-    "issuance_history": []
+    "issuance_history": [],
+    "btc_etf_flow_history": [],
+    "btc_etf_cumulative_history": []
   },
   "sources": [
     {
@@ -261,11 +263,19 @@
       "used_for": [
         "BTC dominance"
       ]
+    },
+    {
+      "name": "Farside Investors",
+      "used_for": [
+        "US spot Bitcoin ETF daily net flows",
+        "recent and cumulative ETF flow charts"
+      ]
     }
   ],
   "demand_flows": {
     "text": [
-      "BTC dominance показывает относительную силу спроса на Bitcoin внутри крипторынка. ETF-потоки и биржевые резервы остаются обязательными внешними сигналами, но не публикуются без надежного подключенного источника."
+      "BTC dominance показывает относительную силу Bitcoin внутри крипторынка, а spot ETF net flows — направление институционального спроса через регулируемые продукты.",
+      "MVRV и realized price дополняют потоки: они показывают, насколько рыночная цена оторвана от совокупной on-chain себестоимости держателей."
     ],
     "metrics": {
       "btc_dominance": {
@@ -273,8 +283,26 @@
         "formatted": "—",
         "status": "unavailable",
         "source": "CoinGecko Global"
+      },
+      "etf_latest_net_flow": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "Farside Investors"
+      },
+      "etf_five_day_net_flow": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "Farside Investors"
+      },
+      "etf_cumulative_net_flow": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "Farside Investors"
       }
     },
-    "conclusion": "Спрос должен подтверждаться устойчивыми потоками капитала, относительной силой BTC и сохранением глубокой ликвидности."
+    "conclusion": "Спрос оценивается совместно по ETF-потокам, BTC dominance и положению цены относительно realized cap; одиночный сигнал не считается достаточным подтверждением."
   }
 }

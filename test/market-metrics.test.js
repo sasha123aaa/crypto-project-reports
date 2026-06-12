@@ -63,3 +63,26 @@ test("live CoinGecko tokenomics replace manual snapshot metrics consistently", (
     assert.notEqual(report.market[key].formatted, "данные временно недоступны");
   }
 });
+
+test("BTC live merge publishes valuation, ETF flow metrics, and BTC-specific charts", () => {
+  const report = {
+    market:{}, tokenomics:{ metrics:{} }, demand_flows:{ metrics:{}, text:[] }, liquidity:{ metrics:{} }, capital:{ metrics:{} },
+    financials:{ metrics:{} }, valuation:{ metrics:{} }, charts:{}, users:{ metrics:{}, text:[] },
+  };
+  const live = {
+    market:{ circulatingSupply:19_800_000 }, capital:{}, financials:{}, valuation:{}, users:{}, technicalBias:null,
+    btc:{ mvrv:2.1, realizedPrice:45_000, nupl:0.52, dominance:58, valuationSource:"Coin Metrics Community API", etfSource:"Farside Investors", etf:{ latestNetFlow:100_000_000, recentFiveDayNet:350_000_000, cumulativeNetFlow:50_000_000_000, updatedAt:"2026-06-11T00:00:00.000Z" } },
+    charts:{ mvrvHistory:[[1, 2], [2, 2.1]], realizedPriceHistory:[[1, 44_000], [2, 45_000]], btcMarketPriceHistory:[[1, 90_000], [2, 95_000]], btcEtfFlowHistory:[[1, -10_000_000], [2, 100_000_000]], btcEtfCumulativeHistory:[[1, 49_900_000_000], [2, 50_000_000_000]] },
+    news:{ status:"partial", items:[] },
+  };
+
+  mergeLiveMetrics(report, live);
+
+  assert.equal(report.valuation.metrics.mvrv.value, 2.1);
+  assert.equal(report.valuation.metrics.realized_price.value, 45_000);
+  assert.equal(report.demand_flows.metrics.etf_five_day_net_flow.value, 350_000_000);
+  assert.equal(report.demand_flows.metrics.etf_cumulative_net_flow.source, "Farside Investors");
+  assert.deepEqual(report.charts.btc_etf_flow_history, live.charts.btcEtfFlowHistory);
+  assert.deepEqual(report.charts.btc_etf_cumulative_history, live.charts.btcEtfCumulativeHistory);
+  assert.match(report.demand_flows.conclusion, /350M|MVRV 2\.10x/);
+});

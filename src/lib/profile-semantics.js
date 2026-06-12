@@ -112,11 +112,13 @@ const CHART_DEFINITIONS = Object.freeze({
   mvrv_history: { label:"MVRV", path:"charts.mvrv_history", capability:"hasBtcValuationData" },
   realized_price_history: { label:"Realized Price vs Market Price", path:"charts.realized_price_history", capability:"hasBtcValuationData" },
   issuance_history: { label:"Годовой темп эмиссии", path:"charts.issuance_history", capability:"hasBtcValuationData" },
+  btc_etf_flow_history: { label:"Spot BTC ETF Net Flow", path:"charts.btc_etf_flow_history", capability:"hasDemandFlowData" },
+  btc_etf_cumulative_history: { label:"Spot BTC ETF Cumulative Flow", path:"charts.btc_etf_cumulative_history", capability:"hasDemandFlowData" },
 });
 
 export const CHART_PACK_PRIORITIES = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: ["price_history", "chain_fees_history", "app_fees_history", "dex_history", "tvl_history", "stablecoins_history"],
-  [PROJECT_CATEGORIES.MACRO]: ["price_history", "volume_history", "market_cap_history", "mvrv_history", "realized_price_history", "issuance_history"],
+  [PROJECT_CATEGORIES.MACRO]: ["price_history", "mvrv_history", "realized_price_history", "btc_etf_flow_history", "btc_etf_cumulative_history", "issuance_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.DEFI]: ["price_history", "app_fees_history", "chain_fees_history", "dex_history", "tvl_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.MEME]: ["price_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.UTILITY]: ["price_history", "volume_history", "market_cap_history"],

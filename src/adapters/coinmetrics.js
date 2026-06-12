@@ -2,6 +2,7 @@ const COMMUNITY_API = "https://community-api.coinmetrics.io/v4";
 const BTC_METRICS = ["CapMVRVCur", "CapRealUSD", "IssContPctAnn", "PriceUSD", "SplyCur"];
 
 function toNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -9,6 +10,34 @@ function toNumber(value) {
 function toTimestamp(value) {
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function lastNumber(rows, key) {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const value = toNumber(rows[index]?.[key]);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function lastDerived(rows, derive) {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const value = derive(rows[index]);
+    if (value !== null && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function realizedPrice(row) {
+  const cap = toNumber(row?.CapRealUSD);
+  const supply = toNumber(row?.SplyCur);
+  return cap !== null && supply > 0 ? cap / supply : null;
+}
+
+function derivedMvrv(row) {
+  const price = toNumber(row?.PriceUSD);
+  const realized = realizedPrice(row);
+  return price !== null && realized > 0 ? price / realized : null;
 }
 
 function series(rows, key) {
@@ -34,27 +63,26 @@ export async function fetchBitcoinValuationHistory({ days = 365 } = {}) {
   if (!response.ok) throw new Error(`Coin Metrics asset metrics error: ${response.status}`);
   const payload = await response.json();
   const rows = Array.isArray(payload?.data) ? payload.data : [];
-  const last = rows.at(-1) || null;
-  const mvrv = toNumber(last?.CapMVRVCur);
-  const realizedCap = toNumber(last?.CapRealUSD);
-  const supply = toNumber(last?.SplyCur);
+  const realizedCap = lastNumber(rows, "CapRealUSD");
+  const supply = lastNumber(rows, "SplyCur");
+  const mvrv = lastNumber(rows, "CapMVRVCur") ?? lastDerived(rows, derivedMvrv);
+  const currentRealizedPrice = lastDerived(rows, realizedPrice);
 
   return {
     current: {
       mvrv,
       realizedCap,
-      realizedPrice: realizedCap !== null && supply > 0 ? realizedCap / supply : null,
+      realizedPrice: currentRealizedPrice,
       nupl: mvrv > 0 ? 1 - (1 / mvrv) : null,
-      annualIssuancePercent: toNumber(last?.IssContPctAnn),
+      annualIssuancePercent: lastNumber(rows, "IssContPctAnn"),
       supply,
     },
     charts: {
       mvrv: series(rows, "CapMVRVCur"),
       realizedPrice: rows.flatMap((row) => {
         const timestamp = toTimestamp(row?.time);
-        const cap = toNumber(row?.CapRealUSD);
-        const rowSupply = toNumber(row?.SplyCur);
-        return timestamp !== null && cap !== null && rowSupply > 0 ? [[timestamp, cap / rowSupply]] : [];
+        const value = realizedPrice(row);
+        return timestamp !== null && value !== null ? [[timestamp, value]] : [];
       }),
       marketPrice: series(rows, "PriceUSD"),
       issuance: series(rows, "IssContPctAnn"),

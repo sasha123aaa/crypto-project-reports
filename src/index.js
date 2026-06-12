@@ -8,6 +8,7 @@ import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
 import { fetchCoinGeckoGlobal, fetchProjectNews } from "./adapters/coingecko.js";
 import { fetchBitcoinValuationHistory } from "./adapters/coinmetrics.js";
+import { fetchBitcoinEtfFlows } from "./adapters/farside.js";
 import { formatCompactNumber, formatMoney, formatPrice } from "./lib/formatters.js";
 import { applyProfileAwareSemantics } from "./lib/profile-semantics.js";
 
@@ -130,9 +131,10 @@ async function fetchLiveMetrics(project) {
     selected("narrative_and_news") ? fetchProjectNews(project) : Promise.resolve(null),
     project.slug === "btc" ? fetchBitcoinValuationHistory() : Promise.resolve(null),
     project.slug === "btc" ? fetchCoinGeckoGlobal() : Promise.resolve(null),
+    project.slug === "btc" ? fetchBitcoinEtfFlows() : Promise.resolve(null),
   ]);
 
-  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,appFeesOverviewRes,chainFeesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes,rwaRes,newsRes,btcValuationRes,cgGlobalRes] = results;
+  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,appFeesOverviewRes,chainFeesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes,rwaRes,newsRes,btcValuationRes,cgGlobalRes,btcEtfRes] = results;
   const cgMarket = cgMarketRes.status === "fulfilled" ? cgMarketRes.value : null;
   const cachedCoinGeckoMarket = getCoinGeckoMarketSnapshot(project.coingeckoId);
   const hasFreshCoinGeckoMarket = hasAnyCoinGeckoMarketValue(cgMarket);
@@ -158,6 +160,7 @@ async function fetchLiveMetrics(project) {
   const news = newsRes.status === "fulfilled" ? newsRes.value : { status:"unavailable", items:[], source:"Configured news feeds", source_summary:"All configured news sources are temporarily unavailable", updated_at:new Date().toISOString(), debug:{ sources:[], error:parsePromiseRejection(newsRes.reason) } };
   const btcValuation = btcValuationRes.status === "fulfilled" ? btcValuationRes.value : null;
   const btcDominance = toNumber(cgGlobalRes.status === "fulfilled" ? cgGlobalRes.value?.data?.market_cap_percentage?.btc : null);
+  const btcEtf = btcEtfRes.status === "fulfilled" ? btcEtfRes.value : null;
 
   const chainNow = findChainData(chains, project.defillamaChain);
   const stableNow = findStableChainData(stableChains, project.stablecoinChain);
@@ -203,7 +206,13 @@ async function fetchLiveMetrics(project) {
       volumeMarketCap: safePercent(volume24h, marketCap),
       stablecoinsTVL: safeDivide(stablecoins, tvl),
     },
-    btc: project.slug === "btc" ? { ...btcValuation?.current, dominance:btcDominance, source:btcValuation?.source || "Coin Metrics Community API" } : null,
+    btc: project.slug === "btc" ? {
+      ...btcValuation?.current,
+      dominance:btcDominance,
+      etf:btcEtf?.current || null,
+      valuationSource:btcValuation?.source || "Coin Metrics Community API",
+      etfSource:btcEtf?.source || "Farside Investors",
+    } : null,
     charts: {
       priceHistory: Array.isArray(cgChart?.prices) ? cgChart.prices : [],
       volumeHistory: Array.isArray(cgChart?.total_volumes) ? cgChart.total_volumes : [],
@@ -217,6 +226,8 @@ async function fetchLiveMetrics(project) {
       realizedPriceHistory: btcValuation?.charts?.realizedPrice || [],
       btcMarketPriceHistory: btcValuation?.charts?.marketPrice || [],
       issuanceHistory: btcValuation?.charts?.issuance || [],
+      btcEtfFlowHistory: btcEtf?.charts?.daily || [],
+      btcEtfCumulativeHistory: btcEtf?.charts?.cumulative || [],
     },
     technicalBias,
     news,
@@ -237,6 +248,7 @@ async function fetchLiveMetrics(project) {
       news: news?.debug || { status: newsRes.status },
       btcValuation: btcValuationRes.status,
       btcDominance: cgGlobalRes.status,
+      btcEtfFlows: btcEtfRes.status,
     },
     debugReasons: {
       cgMarket: cgMarketError,
@@ -245,6 +257,7 @@ async function fetchLiveMetrics(project) {
         snapshotTtlMs: COINGECKO_MARKET_SNAPSHOT_TTL_MS,
       },
       rwa: rwaRes.status === "fulfilled" ? rwa?.debug || null : rwaRes.reason?.debug || parsePromiseRejection(rwaRes.reason),
+      btcEtfFlows: btcEtfRes.status === "rejected" ? parsePromiseRejection(btcEtfRes.reason) : null,
     },
   };
 }
@@ -369,6 +382,8 @@ export function mergeLiveMetrics(report, live) {
   if (live.charts.realizedPriceHistory?.length) report.charts.realized_price_history = live.charts.realizedPriceHistory;
   if (live.charts.btcMarketPriceHistory?.length) report.charts.btc_market_price_history = live.charts.btcMarketPriceHistory;
   if (live.charts.issuanceHistory?.length) report.charts.issuance_history = live.charts.issuanceHistory;
+  if (live.charts.btcEtfFlowHistory?.length) report.charts.btc_etf_flow_history = live.charts.btcEtfFlowHistory;
+  if (live.charts.btcEtfCumulativeHistory?.length) report.charts.btc_etf_cumulative_history = live.charts.btcEtfCumulativeHistory;
   mergeUsersMetrics(report, live.users);
   if (live.technicalBias) report.technical_bias = live.technicalBias;
   report.news = live.news || { status:"unavailable", items:[], source_summary:"All configured news sources are temporarily unavailable", updated_at:new Date().toISOString(), debug:{ sources:[] } };
@@ -379,7 +394,7 @@ export function mergeLiveMetrics(report, live) {
 
 function mergeBitcoinMetrics(report, live) {
   if (!live?.btc) return;
-  const source = live.btc.source || "Coin Metrics Community API";
+  const source = live.btc.valuationSource || "Coin Metrics Community API";
   report.valuation = report.valuation || { text:[], metrics:{} };
   report.valuation.metrics = report.valuation.metrics || {};
   report.tokenomics = report.tokenomics || { text:[], metrics:{} };
@@ -393,6 +408,17 @@ function mergeBitcoinMetrics(report, live) {
   const circulatingShare = isValidNumber(live.market?.circulatingSupply) ? live.market.circulatingSupply / 21_000_000 * 100 : null;
   if (isValidNumber(circulatingShare)) report.tokenomics.metrics.circulating_share = calcMetric(circulatingShare, `${circulatingShare.toFixed(2)}%`);
   if (isValidNumber(live.btc.dominance)) report.demand_flows.metrics.btc_dominance = liveMetric(live.btc.dominance, `${live.btc.dominance.toFixed(1)}%`, "CoinGecko Global");
+  const etfSource = live.btc.etfSource || "Farside Investors";
+  if (isValidNumber(live.btc.etf?.latestNetFlow)) report.demand_flows.metrics.etf_latest_net_flow = liveMetric(live.btc.etf.latestNetFlow, formatMoney(live.btc.etf.latestNetFlow), etfSource, live.btc.etf.updatedAt);
+  if (isValidNumber(live.btc.etf?.recentFiveDayNet)) report.demand_flows.metrics.etf_five_day_net_flow = liveMetric(live.btc.etf.recentFiveDayNet, formatMoney(live.btc.etf.recentFiveDayNet), etfSource, live.btc.etf.updatedAt);
+  if (isValidNumber(live.btc.etf?.cumulativeNetFlow)) report.demand_flows.metrics.etf_cumulative_net_flow = liveMetric(live.btc.etf.cumulativeNetFlow, formatMoney(live.btc.etf.cumulativeNetFlow), etfSource, live.btc.etf.updatedAt);
+  const flow = live.btc.etf?.recentFiveDayNet;
+  const valuation = live.btc.mvrv;
+  if (isValidNumber(flow) || isValidNumber(valuation)) {
+    const flowText = isValidNumber(flow) ? `Суммарный net flow spot BTC ETF за последние пять торговых дней: ${formatMoney(flow)}.` : "ETF-потоки временно недоступны.";
+    const valuationText = isValidNumber(valuation) ? ` MVRV ${valuation.toFixed(2)}x показывает положение цены относительно realized cap.` : "";
+    report.demand_flows.conclusion = `${flowText}${valuationText}`;
+  }
 }
 
 function applyBlockRenderingRules(report, project, live){
