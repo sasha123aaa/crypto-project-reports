@@ -4,7 +4,7 @@ const CLOSING_SECTION_ORDER = Object.freeze(["summary", "final_verdict", "narrat
 
 export const CATEGORY_SECTION_ORDER = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
-  [PROJECT_CATEGORIES.MACRO]: Object.freeze(["tokenomics", ...CLOSING_SECTION_ORDER]),
+  [PROJECT_CATEGORIES.MACRO]: Object.freeze(["tokenomics", "demand_and_flows", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.DEFI]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.MEME]: Object.freeze(["tokenomics", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.UTILITY]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
@@ -45,12 +45,18 @@ const KPI_DEFINITIONS = Object.freeze({
   adoption: { label: "Использование и интеграции", path: "semantic_metrics.adoption", capability: "hasAdoptionData" },
   exchange_utility: { label: "Utility в Binance", path: "semantic_metrics.exchange_utility", capability: "hasTokenUtilityData" },
   users: { label: "Активные пользователи", path: "users.metrics.daily_active_addresses", capability: "hasUsersData" },
+  mvrv: { label: "MVRV", path: "valuation.metrics.mvrv", capability: "hasBtcValuationData" },
+  realized_price: { label: "Realized Price", path: "valuation.metrics.realized_price", capability: "hasBtcValuationData" },
+  nupl: { label: "NUPL", path: "valuation.metrics.nupl", capability: "hasBtcValuationData" },
+  btc_dominance: { label: "BTC Dominance", path: "demand_flows.metrics.btc_dominance", capability: "hasDemandFlowData" },
+  circulating_share: { label: "В обращении от 21M", path: "tokenomics.metrics.circulating_share", capability: "hasBtcValuationData" },
+  issuance_rate: { label: "Годовой темп эмиссии", path: "tokenomics.metrics.issuance_rate", capability: "hasBtcValuationData" },
 });
 
 export const METRIC_SLOT_PRIORITIES = Object.freeze({
   hero: {
     [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins", "fees", "app_fees", "dex_volume", "users"],
-    [PROJECT_CATEGORIES.MACRO]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "max_supply"],
+    [PROJECT_CATEGORIES.MACRO]: ["price", "market_cap", "fdv", "volume_24h", "mvrv", "realized_price", "btc_dominance", "trading_quality", "circulating_supply", "circulating_share", "max_supply"],
     [PROJECT_CATEGORIES.DEFI]: ["price", "market_cap", "fdv", "tvl", "app_fees", "fees", "dex_volume", "users", "trading_quality", "liquidity"],
     [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "trading_quality", "liquidity", "concentration", "momentum"],
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "token_utility", "liquidity", "adoption", "concentration"],
@@ -69,7 +75,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
   tokenomics: {
     default: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply", "net_issuance", "burn_mechanism", "burn_target", "market_buyback"],
     [PROJECT_CATEGORIES.MEME]: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply"],
-    [PROJECT_CATEGORIES.MACRO]: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply"],
+    [PROJECT_CATEGORIES.MACRO]: ["circulating_supply", "max_supply", "circulating_share", "issuance_rate", "market_cap", "fdv"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["burn_mechanism", "burn_target", "circulating_supply", "total_supply", "max_supply", "market_cap", "fdv"],
   },
   financial: {
@@ -100,11 +106,14 @@ const CHART_DEFINITIONS = Object.freeze({
   dex_history: { label:"DEX-оборот", path:"charts.dex_history", capability:"hasDexVolume" },
   tvl_history: { label:"TVL", path:"charts.tvl_history", capability:"hasTvl" },
   stablecoins_history: { label:"Stablecoins", path:"charts.stablecoins_history", capability:"hasStablecoins" },
+  mvrv_history: { label:"MVRV", path:"charts.mvrv_history", capability:"hasBtcValuationData" },
+  realized_price_history: { label:"Realized Price vs Market Price", path:"charts.realized_price_history", capability:"hasBtcValuationData" },
+  issuance_history: { label:"Годовой темп эмиссии", path:"charts.issuance_history", capability:"hasBtcValuationData" },
 });
 
 export const CHART_PACK_PRIORITIES = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: ["price_history", "chain_fees_history", "app_fees_history", "dex_history", "tvl_history", "stablecoins_history"],
-  [PROJECT_CATEGORIES.MACRO]: ["price_history", "volume_history", "market_cap_history"],
+  [PROJECT_CATEGORIES.MACRO]: ["price_history", "volume_history", "market_cap_history", "mvrv_history", "realized_price_history", "issuance_history"],
   [PROJECT_CATEGORIES.DEFI]: ["price_history", "app_fees_history", "chain_fees_history", "dex_history", "tvl_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.MEME]: ["price_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.UTILITY]: ["price_history", "volume_history", "market_cap_history"],
@@ -167,9 +176,9 @@ const PROFILE_COPY = Object.freeze({
 const PROJECT_COPY = Object.freeze({
   btc: {
     executive:["Оценить, сохраняет ли BTC глубокую ликвидность при росте волатильности.", "Сопоставить оценку с оборотом, доступным предложением и фазой рыночного цикла.", "Следить за институциональными потоками, ETF-спросом и макроусловиями."],
-    profile:{ strengths:["Эталонная ликвидность и узнаваемость крипторынка","Предсказуемое максимальное предложение в 21 млн BTC"], weaknesses:["Нет денежного потока для классической оценки","Высокая зависимость цены от глобального аппетита к риску и ликвидности"], risks:["Циклическая переоценка и глубокие просадки","Снижение институциональных потоков","Регуляторные ограничения на рыночный доступ"], watch:["Объем к капитализации и глубину рынка","Циркулирующее предложение и темп эмиссии","ETF-потоки, корпоративный спрос и макрофон"]},
-    verdict:{ title:"Финальная оценка", subtitle:"Инвестиционный тезис: глобальная денежная роль должна поддерживаться ликвидностью и спросом", paragraphs:["BTC остается базовым макро-активом крипторынка благодаря ограниченному предложению, глобальной ликвидности и институциональному доступу; главный риск — цена, опережающая устойчивый спрос на поздней фазе цикла."]},
-    conclusions:{ tokenomics:"Для BTC ключевыми являются ограниченное максимальное предложение, темп эмиссии и доля монет в обращении.", liquidity:"Оборот и глубина рынка — основная проверка способности BTC обслуживать крупный капитал.", narrative:"Приоритет имеют события, меняющие ETF-потоки, институциональный спрос, доступ к рынку и макроусловия."},
+    profile:{ strengths:["Эталонная ликвидность и узнаваемость крипторынка","Предсказуемое максимальное предложение в 21 млн BTC"], weaknesses:["Нет денежного потока для классической оценки","Высокая зависимость цены от глобального аппетита к риску и ликвидности"], risks:["Циклическая переоценка и глубокие просадки","Снижение институциональных потоков","Регуляторные ограничения на рыночный доступ"], watch:["ETF-потоки, BTC dominance и устойчивость институционального спроса","Биржевые резервы, глубину рынка и оборот относительно капитализации","Цену относительно MVRV и realized price, а также темп эмиссии"]},
+    verdict:{ title:"Финальная оценка", subtitle:"Инвестиционный тезис: глобальная денежная роль должна поддерживаться ликвидностью и спросом", paragraphs:["BTC остается базовым макро-активом крипторынка благодаря ограниченному предложению, глобальной ликвидности и институциональному доступу; главный риск — оценка, уходящая далеко вперед устойчивого спроса и рыночной фазы. Подтверждение тезиса — устойчивые потоки капитала, глубина рынка и отсутствие структурного ослабления спроса."]},
+    conclusions:{ tokenomics:"Фиксированный предел 21 млн BTC, уже выпущенная доля предложения и предсказуемое замедление эмиссии формируют scarcity-тезис без произвольного разводнения.", demand_flows:"Спрос подтверждается не единичным ростом цены, а устойчивыми потоками капитала, BTC dominance и способностью глубокой ликвидности принимать крупные позиции.", liquidity:"Оборот и глубина рынка — основная проверка способности BTC обслуживать крупный капитал.", narrative:"Приоритет имеют события, меняющие ETF-потоки, институциональный спрос, доступ к рынку и макроусловия."},
   },
   eth: {
     executive:["Проверить, удерживает ли Ethereum расчетный капитал между L1, L2 и приложениями.", "Сопоставить комиссионный спрос и активность с оценкой ETH.", "Следить за выпуском и сжиганием как итогом спроса на блокспейс."],

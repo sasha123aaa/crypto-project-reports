@@ -6,7 +6,8 @@ import { getTechnicalBias } from "./adapters/bybit.js";
 import { marketTechnicalRoute } from "./lib/market-symbols.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
-import { fetchProjectNews } from "./adapters/coingecko.js";
+import { fetchCoinGeckoGlobal, fetchProjectNews } from "./adapters/coingecko.js";
+import { fetchBitcoinValuationHistory } from "./adapters/coinmetrics.js";
 import { formatCompactNumber, formatMoney, formatPrice } from "./lib/formatters.js";
 import { applyProfileAwareSemantics } from "./lib/profile-semantics.js";
 
@@ -127,9 +128,11 @@ async function fetchLiveMetrics(project) {
     getTechnicalBias(marketTechnicalRoute(project.marketSymbols)),
     project.rwaChain && selected("rwa") ? fetchDefiLlamaRwaActiveMcap(project.rwaChain) : Promise.resolve(null),
     selected("narrative_and_news") ? fetchProjectNews(project) : Promise.resolve(null),
+    project.slug === "btc" ? fetchBitcoinValuationHistory() : Promise.resolve(null),
+    project.slug === "btc" ? fetchCoinGeckoGlobal() : Promise.resolve(null),
   ]);
 
-  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,appFeesOverviewRes,chainFeesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes,rwaRes,newsRes] = results;
+  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,appFeesOverviewRes,chainFeesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes,rwaRes,newsRes,btcValuationRes,cgGlobalRes] = results;
   const cgMarket = cgMarketRes.status === "fulfilled" ? cgMarketRes.value : null;
   const cachedCoinGeckoMarket = getCoinGeckoMarketSnapshot(project.coingeckoId);
   const hasFreshCoinGeckoMarket = hasAnyCoinGeckoMarketValue(cgMarket);
@@ -153,6 +156,8 @@ async function fetchLiveMetrics(project) {
   const technicalBias = technicalBiasRes.status === "fulfilled" ? technicalBiasRes.value : null;
   const rwa = rwaRes.status === "fulfilled" ? rwaRes.value : null;
   const news = newsRes.status === "fulfilled" ? newsRes.value : { status:"unavailable", items:[], source:"Configured news feeds", source_summary:"All configured news sources are temporarily unavailable", updated_at:new Date().toISOString(), debug:{ sources:[], error:parsePromiseRejection(newsRes.reason) } };
+  const btcValuation = btcValuationRes.status === "fulfilled" ? btcValuationRes.value : null;
+  const btcDominance = toNumber(cgGlobalRes.status === "fulfilled" ? cgGlobalRes.value?.data?.market_cap_percentage?.btc : null);
 
   const chainNow = findChainData(chains, project.defillamaChain);
   const stableNow = findStableChainData(stableChains, project.stablecoinChain);
@@ -198,6 +203,7 @@ async function fetchLiveMetrics(project) {
       volumeMarketCap: safePercent(volume24h, marketCap),
       stablecoinsTVL: safeDivide(stablecoins, tvl),
     },
+    btc: project.slug === "btc" ? { ...btcValuation?.current, dominance:btcDominance, source:btcValuation?.source || "Coin Metrics Community API" } : null,
     charts: {
       priceHistory: Array.isArray(cgChart?.prices) ? cgChart.prices : [],
       volumeHistory: Array.isArray(cgChart?.total_volumes) ? cgChart.total_volumes : [],
@@ -207,6 +213,10 @@ async function fetchLiveMetrics(project) {
       appFeesHistory,
       chainFeesHistory,
       dexHistory,
+      mvrvHistory: btcValuation?.charts?.mvrv || [],
+      realizedPriceHistory: btcValuation?.charts?.realizedPrice || [],
+      btcMarketPriceHistory: btcValuation?.charts?.marketPrice || [],
+      issuanceHistory: btcValuation?.charts?.issuance || [],
     },
     technicalBias,
     news,
@@ -225,6 +235,8 @@ async function fetchLiveMetrics(project) {
       technicalBias: technicalBiasRes.status,
       rwa: rwaRes.status,
       news: news?.debug || { status: newsRes.status },
+      btcValuation: btcValuationRes.status,
+      btcDominance: cgGlobalRes.status,
     },
     debugReasons: {
       cgMarket: cgMarketError,
@@ -344,6 +356,7 @@ export function mergeLiveMetrics(report, live) {
     report.financials.metrics.volume_market_cap = metric;
   }
   if (isValidNumber(live.valuation.stablecoinsTVL)) report.valuation.metrics.stablecoins_tvl = calcMetric(live.valuation.stablecoinsTVL, `${live.valuation.stablecoinsTVL.toFixed(2)}x`);
+  mergeBitcoinMetrics(report, live);
   if (live.charts.priceHistory?.length) report.charts.price_history = live.charts.priceHistory;
   if (live.charts.volumeHistory?.length) report.charts.volume_history = live.charts.volumeHistory;
   if (live.charts.marketCapHistory?.length) report.charts.market_cap_history = live.charts.marketCapHistory;
@@ -352,12 +365,34 @@ export function mergeLiveMetrics(report, live) {
   if (live.charts.appFeesHistory?.length) report.charts.app_fees_history = live.charts.appFeesHistory;
   if (live.charts.chainFeesHistory?.length) report.charts.chain_fees_history = live.charts.chainFeesHistory;
   if (live.charts.dexHistory?.length) report.charts.dex_history = live.charts.dexHistory;
+  if (live.charts.mvrvHistory?.length) report.charts.mvrv_history = live.charts.mvrvHistory;
+  if (live.charts.realizedPriceHistory?.length) report.charts.realized_price_history = live.charts.realizedPriceHistory;
+  if (live.charts.btcMarketPriceHistory?.length) report.charts.btc_market_price_history = live.charts.btcMarketPriceHistory;
+  if (live.charts.issuanceHistory?.length) report.charts.issuance_history = live.charts.issuanceHistory;
   mergeUsersMetrics(report, live.users);
   if (live.technicalBias) report.technical_bias = live.technicalBias;
   report.news = live.news || { status:"unavailable", items:[], source_summary:"All configured news sources are temporarily unavailable", updated_at:new Date().toISOString(), debug:{ sources:[] } };
   report.financials.conclusion = buildFinancialSummary(live);
   report.capital.conclusion = buildCapitalSummary(live);
   sanitizeUsersBlock(report, live.users);
+}
+
+function mergeBitcoinMetrics(report, live) {
+  if (!live?.btc) return;
+  const source = live.btc.source || "Coin Metrics Community API";
+  report.valuation = report.valuation || { text:[], metrics:{} };
+  report.valuation.metrics = report.valuation.metrics || {};
+  report.tokenomics = report.tokenomics || { text:[], metrics:{} };
+  report.tokenomics.metrics = report.tokenomics.metrics || {};
+  report.demand_flows = report.demand_flows || { text:[], metrics:{} };
+  report.demand_flows.metrics = report.demand_flows.metrics || {};
+  if (isValidNumber(live.btc.mvrv)) report.valuation.metrics.mvrv = liveMetric(live.btc.mvrv, `${live.btc.mvrv.toFixed(2)}x`, source);
+  if (isValidNumber(live.btc.realizedPrice)) report.valuation.metrics.realized_price = liveMetric(live.btc.realizedPrice, formatMoney(live.btc.realizedPrice), source);
+  if (isValidNumber(live.btc.nupl)) report.valuation.metrics.nupl = calcMetric(live.btc.nupl, `${(live.btc.nupl * 100).toFixed(1)}%`);
+  if (isValidNumber(live.btc.annualIssuancePercent)) report.tokenomics.metrics.issuance_rate = liveMetric(live.btc.annualIssuancePercent, `${live.btc.annualIssuancePercent.toFixed(2)}%`, source);
+  const circulatingShare = isValidNumber(live.market?.circulatingSupply) ? live.market.circulatingSupply / 21_000_000 * 100 : null;
+  if (isValidNumber(circulatingShare)) report.tokenomics.metrics.circulating_share = calcMetric(circulatingShare, `${circulatingShare.toFixed(2)}%`);
+  if (isValidNumber(live.btc.dominance)) report.demand_flows.metrics.btc_dominance = liveMetric(live.btc.dominance, `${live.btc.dominance.toFixed(1)}%`, "CoinGecko Global");
 }
 
 function applyBlockRenderingRules(report, project, live){

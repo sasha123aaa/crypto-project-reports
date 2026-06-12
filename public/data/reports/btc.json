@@ -65,7 +65,8 @@
   },
   "tokenomics": {
     "text": [
-      "Предложение BTC ограничено протоколом; ключевые проверки — циркулирующий объем, максимальное предложение и темп эмиссии."
+      "Максимальное предложение BTC зафиксировано протоколом на уровне 21 млн монет; произвольное дополнительное разводнение невозможно.",
+      "Большая часть предложения уже выпущена, а предсказуемый график эмиссии и халвинги последовательно замедляют приток новых BTC на рынок."
     ],
     "metrics": {
       "market_cap": {
@@ -97,6 +98,18 @@
         "formatted": "—",
         "status": "unavailable",
         "source": "CoinGecko"
+      },
+      "circulating_share": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "Coin Metrics Community API / calc"
+      },
+      "issuance_rate": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "Coin Metrics Community API / calc"
       }
     }
   },
@@ -140,7 +153,8 @@
   },
   "valuation": {
     "text": [
-      "Оценка BTC рассматривается через рыночный цикл, ликвидность, ограниченное предложение и устойчивость спроса."
+      "MVRV и realized price помогают отделить цену рынка от совокупной себестоимости держателей и оценить фазу цикла.",
+      "Сильный BTC-тезис требует, чтобы рост оценки подтверждался устойчивым спросом, оборотом и глубиной рынка."
     ],
     "metrics": {
       "volume_market_cap": {
@@ -154,6 +168,24 @@
         "formatted": "макро-актив",
         "status": "manual",
         "source": "profile semantics"
+      },
+      "mvrv": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "Coin Metrics Community API"
+      },
+      "realized_price": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "Coin Metrics Community API"
+      },
+      "nupl": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "Coin Metrics Community API"
       }
     }
   },
@@ -169,18 +201,26 @@
   },
   "watchlist": {
     "items": [
-      "Оборот, глубину рынка, предложение и институциональные потоки."
+      "ETF-потоки, BTC dominance и устойчивость институционального спроса.",
+      "Биржевые резервы, глубину рынка и оборот относительно капитализации.",
+      "Цену относительно MVRV и realized price, а также темп эмиссии."
     ]
   },
   "final_verdict": {
     "title": "Финальная оценка",
     "subtitle": "Макро-актив",
-    "paragraphs": []
+    "paragraphs": [
+      "BTC остается отдельным классом макро-актива, пока ограниченное предложение сочетается с глубокой ликвидностью и устойчивым спросом. Главный риск — оценка, уходящая далеко вперед потоков капитала и рыночной фазы; подтверждение тезиса — устойчивые потоки, глубина рынка и отсутствие структурного ослабления спроса."
+    ]
   },
   "charts": {
     "price_history": [],
     "volume_history": [],
-    "market_cap_history": []
+    "market_cap_history": [],
+    "mvrv_history": [],
+    "realized_price_history": [],
+    "btc_market_price_history": [],
+    "issuance_history": []
   },
   "sources": [
     {
@@ -205,6 +245,36 @@
       "used_for": [
         "Bitcoin-focused news"
       ]
+    },
+    {
+      "name": "Coin Metrics Community API",
+      "used_for": [
+        "MVRV",
+        "realized price",
+        "NUPL",
+        "annual issuance rate",
+        "BTC valuation charts"
+      ]
+    },
+    {
+      "name": "CoinGecko Global",
+      "used_for": [
+        "BTC dominance"
+      ]
     }
-  ]
+  ],
+  "demand_flows": {
+    "text": [
+      "BTC dominance показывает относительную силу спроса на Bitcoin внутри крипторынка. ETF-потоки и биржевые резервы остаются обязательными внешними сигналами, но не публикуются без надежного подключенного источника."
+    ],
+    "metrics": {
+      "btc_dominance": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko Global"
+      }
+    },
+    "conclusion": "Спрос должен подтверждаться устойчивыми потоками капитала, относительной силой BTC и сохранением глубокой ликвидности."
+  }
 }

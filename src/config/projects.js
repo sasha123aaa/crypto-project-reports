@@ -44,6 +44,8 @@ export const CAPABILITY_DEFAULTS = Object.freeze({
   hasNarrativeMomentum: false,
   hasTokenUtilityData: false,
   hasAdoptionData: false,
+  hasBtcValuationData: false,
+  hasDemandFlowData: false,
 });
 
 // Section rules are the shared contract between project profiles, report builders, and rendering.
@@ -56,6 +58,7 @@ export const SECTION_RULES = Object.freeze({
   financials: { requiredAny: ["hasProtocolFees", "hasChainFees"], reportBlocks: ["financials"] },
   liquidity_and_trading: { requiredAny: ["hasDexVolume", "hasLiquidityData"], reportBlocks: ["liquidity"] },
   valuation: { requiredAny: [], reportBlocks: ["valuation"] },
+  demand_and_flows: { requiredAny: ["hasDemandFlowData"], reportBlocks: ["demand_flows"] },
   users_and_activity: { requiredAny: ["hasUsersData"], reportBlocks: ["users"] },
   unlocks: { requiredAny: ["hasUnlocks"], reportBlocks: ["tokenomics"] },
   whale_activity: { requiredAny: ["hasWhaleData"], reportBlocks: ["liquidity"] },
@@ -88,12 +91,15 @@ export const PROJECTS = {
         hasTokenomics: true,
         hasNarrativeNews: true,
         hasLiquidityData: true,
+        hasBtcValuationData: true,
+        hasDemandFlowData: true,
       },
       preferredSections: [
         "market",
         "tokenomics",
         "liquidity_and_trading",
         "valuation",
+        "demand_and_flows",
         "narrative_and_news",
         "risks",
         "final_summary",

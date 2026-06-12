@@ -8,6 +8,12 @@ export async function fetchCoinGeckoMarket(coingeckoId){
   if(!res.ok) throw new Error(`CoinGecko market error: ${res.status}`);
   const data=await res.json(); return data?.[0]||null;
 }
+export async function fetchCoinGeckoGlobal(){
+  const res=await fetch(`${BASE_URL}/global`,{headers:HEADERS});
+  if(!res.ok) throw new Error(`CoinGecko global error: ${res.status}`);
+  return res.json();
+}
+
 export async function fetchCoinGeckoChart(coingeckoId,days=365){
   const url=`${BASE_URL}/coins/${encodeURIComponent(coingeckoId)}/market_chart?vs_currency=usd&days=${days}&interval=daily`;
   const res=await fetch(url,{headers:HEADERS});

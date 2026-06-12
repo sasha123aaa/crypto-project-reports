@@ -22,7 +22,7 @@ test("BTC macro semantics prioritize market structure and supply without infra m
 
   assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply"]);
   assert.deepEqual(report.chart_slots.map(({ key }) => key), ["price_history", "volume_history", "market_cap_history"]);
-  assert.deepEqual(report.meta.section_order, ["tokenomics", "summary", "final_verdict", "narrative_and_news"]);
+  assert.deepEqual(report.meta.section_order, ["tokenomics", "demand_and_flows", "summary", "final_verdict", "narrative_and_news"]);
   assert.match(report.hero.lead, /рыночную роль/i);
   assert.match(report.final_verdict.paragraphs.join(" "), /макро-активом/i);
   assert.doesNotMatch(JSON.stringify(report.executive_summary), /TVL|DeFi|блокспейс/i);

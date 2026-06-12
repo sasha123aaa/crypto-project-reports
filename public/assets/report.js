@@ -25,7 +25,13 @@ const METRIC_HELP = {
   "Активные адреса за день": "Количество активных адресов за день.",
   "Новые адреса": "Количество новых адресов за период.",
   "Транзакции": "Количество транзакций за период.",
-  "Статус оценки": "Краткая качественная оценка текущей стадии актива."
+  "Статус оценки": "Краткая качественная оценка текущей стадии актива.",
+  "MVRV": "Отношение рыночной капитализации BTC к realized cap; помогает оценивать фазу рынка.",
+  "Realized Price": "Средняя on-chain стоимость приобретения BTC, рассчитанная из realized cap.",
+  "NUPL": "Нереализованная прибыль или убыток рынка относительно рыночной капитализации.",
+  "BTC Dominance": "Доля Bitcoin в общей капитализации крипторынка.",
+  "В обращении от 21M": "Доля максимального предложения Bitcoin, уже находящаяся в обращении.",
+  "Годовой темп эмиссии": "Текущий годовой темп выпуска новых BTC относительно предложения."
 };
 
 
@@ -170,6 +176,23 @@ function heroKpisHtml(report) {
     ["FDV", report?.market?.fdv], ["Объем 24ч", report?.market?.volume_24h],
     ["TVL", report?.capital?.metrics?.tvl], ["Stablecoins Mcap", report?.capital?.metrics?.stablecoins_mcap],
   ].map(([label, metric]) => metricHtml(label, metric)).join("");
+}
+
+function demandFlowsSectionHtml(report) {
+  if (!shouldRenderSection(report, "demand_and_flows") || !report?.demand_flows) return "";
+  const metrics = [
+    ["BTC Dominance", report.demand_flows?.metrics?.btc_dominance],
+    ["MVRV", report.valuation?.metrics?.mvrv],
+    ["Realized Price", report.valuation?.metrics?.realized_price],
+    ["NUPL", report.valuation?.metrics?.nupl],
+  ].filter(([, metric]) => metric);
+  const charts = selectedChartGroupHtml(report, "capital-charts", [
+    ["mvrv_history", "mvrvChart", "MVRV", "Рыночная оценка относительно realized cap"],
+    ["realized_price_history", "realizedPriceChart", "Realized Price vs Market Price", "Рыночная цена относительно средней on-chain стоимости"],
+    ["issuance_history", "issuanceChart", "Годовой темп эмиссии", "Предсказуемое замедление выпуска новых BTC"],
+  ]);
+  const text = Array.isArray(report.demand_flows.text) ? report.demand_flows.text.map((line) => `<p class="lead compact-lead">${escapeHtml(line)}</p>`).join("") : "";
+  return `<section class="panel section-flow"><div class="section-title">Спрос и потоки</div><div class="section-sub">Рыночная фаза, относительная сила и сигналы устойчивости спроса.</div>${text}<div class="hero-grid">${metrics.map(([label, metric]) => metricHtml(label, metric)).join("")}</div>${charts}${insightHtml(report.demand_flows)}</section>`;
 }
 
 function finalVerdictHtml(report) {
@@ -320,6 +343,7 @@ function newsHtml(news = {}, report = {}) {
 function orderedReportSectionsHtml(report) {
   const renderers = {
     tokenomics: () => tokenomicsSectionHtml(report),
+    demand_and_flows: () => demandFlowsSectionHtml(report),
     financials: () => financialsSectionHtml(report),
     tvl_and_capital: () => capitalSectionHtml(report),
     users_and_activity: () => usersSectionHtml(report),
@@ -461,19 +485,19 @@ function timelineLabel(ts, compact = false) {
   return new Intl.DateTimeFormat("ru-RU", compact ? { month:"short", year:"2-digit" } : { year:"numeric" }).format(date);
 }
 
-function dashboardChartOptions(timestamps) {
+function dashboardChartOptions(timestamps, { prefix = "$", suffix = "" } = {}) {
   return {
     responsive:true, maintainAspectRatio:false, animation:{ duration:500 }, interaction:{ intersect:false, mode:"index" },
     layout:{ padding:{ top:8, right:8, bottom:2, left:2 } },
-    plugins:{ legend:{ display:false }, tooltip:{ backgroundColor:"rgba(13,17,25,.96)", borderColor:"rgba(134,172,255,.28)", borderWidth:1, padding:12, titleColor:"#a8b2c7", bodyColor:"#f4f7ff", displayColors:false, callbacks:{ title(items){ return items.length ? new Date(timestamps[items[0].dataIndex]).toLocaleDateString("ru-RU", { day:"numeric", month:"long", year:"numeric" }) : ""; }, label(context){ return context.parsed.y == null ? `${context.dataset.label}: —` : `${context.dataset.label}: $${formatAxisValue(context.parsed.y)}`; } } } },
+    plugins:{ legend:{ display:false }, tooltip:{ backgroundColor:"rgba(13,17,25,.96)", borderColor:"rgba(134,172,255,.28)", borderWidth:1, padding:12, titleColor:"#a8b2c7", bodyColor:"#f4f7ff", displayColors:false, callbacks:{ title(items){ return items.length ? new Date(timestamps[items[0].dataIndex]).toLocaleDateString("ru-RU", { day:"numeric", month:"long", year:"numeric" }) : ""; }, label(context){ return context.parsed.y == null ? `${context.dataset.label}: —` : `${context.dataset.label}: ${prefix}${formatAxisValue(context.parsed.y)}${suffix}`; } } } },
     scales:{
       x:{ offset:false, ticks:{ color:"#8490a7", maxTicksLimit:7, maxRotation:0, autoSkip:true, callback(value){ const ts=timestamps[Number(value)]; const years=(timestamps.at(-1)-timestamps[0])/31557600000; return timelineLabel(ts, years < 2); } }, grid:{ display:false }, border:{ display:false } },
-      y:{ beginAtZero:true, grace:"6%", ticks:{ color:"#8490a7", maxTicksLimit:5, padding:10, callback(value){ return `$${formatAxisValue(Number(value))}`; } }, grid:{ color:"rgba(255,255,255,.055)", drawTicks:false }, border:{ display:false } }
+      y:{ beginAtZero:true, grace:"6%", ticks:{ color:"#8490a7", maxTicksLimit:5, padding:10, callback(value){ return `${prefix}${formatAxisValue(Number(value))}${suffix}`; } }, grid:{ color:"rgba(255,255,255,.055)", drawTicks:false }, border:{ display:false } }
     }
   };
 }
 
-function createDashboardChart(canvasId, series, label, { color = "#65a0ff" } = {}) {
+function createDashboardChart(canvasId, series, label, { color = "#65a0ff", prefix = "$", suffix = "" } = {}) {
   const el = document.getElementById(canvasId);
   if (!el || !series?.length) { showChartEmpty(canvasId, "Данные временно недоступны"); return null; }
   const normalized = [...series].filter((point) => Number.isFinite(point.ts) && Number.isFinite(point.value)).sort((a, b) => a.ts - b.ts);
@@ -495,7 +519,7 @@ function createDashboardChart(canvasId, series, label, { color = "#65a0ff" } = {
     const visible = normalized.slice(start, end + 1);
     const { timestamps, prepared } = mergeSeriesByTimestamp([{ label, series:visible, color }]);
     chart.data.labels = timestamps; chart.data.datasets = prepared;
-    chart.options = dashboardChartOptions(timestamps); chart.update("none");
+    chart.options = dashboardChartOptions(timestamps, { prefix, suffix }); chart.update("none");
     const rangeNode = document.getElementById(`${canvasId}-range-label`);
     if (rangeNode) rangeNode.textContent = rangeLabel;
   };
@@ -523,6 +547,31 @@ function createDashboardChart(canvasId, series, label, { color = "#65a0ff" } = {
   startInput?.addEventListener("input", onNavigatorInput); endInput?.addEventListener("input", onNavigatorInput);
   applyPreset(DEFAULT_CHART_RANGE);
   return chart;
+}
+
+function createDashboardMultiChart(canvasId, datasets) {
+  const el = document.getElementById(canvasId);
+  const normalized = datasets.map((dataset) => ({ ...dataset, series:sanitizeSeries(normalizeMarketSeries(dataset.series)) })).filter((dataset) => dataset.series.length);
+  if (!el || normalized.length < 2) { showChartEmpty(canvasId, "Данные временно недоступны"); return null; }
+  const timestamps = [...new Set(normalized.flatMap((dataset) => dataset.series.map((point) => point.ts)))].sort((a, b) => a - b);
+  const chart = new Chart(el, { type:"line", data:{ labels:[], datasets:[] }, options:dashboardChartOptions([]) });
+  const render = (range = "ALL") => {
+    const last = timestamps.at(-1); const date = new Date(last); let start = 0;
+    if (range === "1M") start = last - 31 * 86400000;
+    if (range === "3M") start = last - 92 * 86400000;
+    if (range === "6M") start = last - 183 * 86400000;
+    if (range === "1Y") start = last - 365 * 86400000;
+    if (range === "YTD") start = Date.UTC(date.getUTCFullYear(), 0, 1);
+    const visible = normalized.map((dataset) => ({ ...dataset, series:dataset.series.filter((point) => !start || point.ts >= start) }));
+    const merged = mergeSeriesByTimestamp(visible);
+    chart.data.labels = merged.timestamps; chart.data.datasets = merged.prepared;
+    chart.options = dashboardChartOptions(merged.timestamps); chart.options.plugins.legend.display = true; chart.update("none");
+    const label = document.getElementById(`${canvasId}-range-label`); if (label) label.textContent = range;
+    document.querySelectorAll(`[data-chart="${canvasId}"]`).forEach((button) => button.classList.toggle("active", button.dataset.range === range));
+  };
+  document.querySelectorAll(`[data-chart="${canvasId}"]`).forEach((button) => button.addEventListener("click", () => render(button.dataset.range)));
+  document.getElementById(`${canvasId}-navigator`)?.remove();
+  render(); return chart;
 }
 
 function technicalBiasHtml(bias) {
@@ -630,6 +679,10 @@ async function loadReport() {
     const dexSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.dex_history), { trimLeadingZeroes:true });
     const volumeHistorySeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.volume_history), { trimLeadingZeroes:true });
     const marketCapHistorySeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.market_cap_history), { trimLeadingZeroes:true });
+    const mvrvSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.mvrv_history));
+    const realizedPriceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.realized_price_history));
+    const btcMarketPriceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.btc_market_price_history));
+    const issuanceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.issuance_history));
 
     createDashboardChart("volumeHistoryChart", volumeHistorySeries, "Объем торгов", { color:"#60a5fa" });
     createDashboardChart("marketCapHistoryChart", marketCapHistorySeries, "Рыночная капитализация", { color:"#a78bfa" });
@@ -638,6 +691,12 @@ async function loadReport() {
     createDashboardChart("dexChart", dexSeries, "DEX Volume", { color:"#60a5fa" });
     createDashboardChart("tvlChart", tvlSeries, "TVL", { color:"#65a0ff" });
     createDashboardChart("stableChart", stableSeries, "Stablecoins", { color:"#55d6a5" });
+    createDashboardChart("mvrvChart", mvrvSeries, "MVRV", { color:"#f7931a", prefix:"", suffix:"x" });
+    createDashboardMultiChart("realizedPriceChart", [
+      { label:"Market Price", series:btcMarketPriceSeries, color:"#f7931a" },
+      { label:"Realized Price", series:realizedPriceSeries, color:"#65a0ff" },
+    ]);
+    createDashboardChart("issuanceChart", issuanceSeries, "Годовой темп эмиссии", { color:"#55d6a5", prefix:"", suffix:"%" });
     if (tradingViewSymbol) initTradingView(tradingViewSymbol);
   } catch {
     app.innerHTML = reportStateHtml("error", "Не удалось загрузить отчет", "Проверьте соединение и попробуйте еще раз.");
