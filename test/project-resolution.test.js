@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ANALYSIS_PROFILES, PROJECT_CATEGORIES, PROJECTS, getProjectProfile, getRegisteredProject, normalizeProjectInput } from "../src/config/projects.js";
 import { buildRuntimeProjectConfig, buildRuntimeProjectSkeleton, inferProjectCategory, resolveProject } from "../src/lib/project-resolution.js";
+import { MARKET_EXCHANGE_PRIORITY, createMarketSymbols, marketTechnicalRoute, resolveExchangeMarketSymbols } from "../src/lib/market-symbols.js";
 
 const noDiscoveryCalls = new Proxy({}, {
   get() { return () => { throw new Error("project resolution must not perform runtime discovery"); }; },
@@ -140,9 +141,9 @@ test("runtime inference does not replace curated project profiles", async () => 
 
 test("runtime symbol mapping is project-specific for DOGE, PEPE, and LINK", () => {
   const cases = [
-    ["doge", "dogecoin", "Dogecoin", "DOGE", "BINANCE:DOGEUSDT"],
-    ["pepe", "pepe", "Pepe", "PEPE", "BINANCE:PEPEUSDT"],
-    ["link", "chainlink", "Chainlink", "LINK", "BINANCE:LINKUSDT"],
+    ["doge", "dogecoin", "Dogecoin", "DOGE", "BYBIT:DOGEUSDT"],
+    ["pepe", "pepe", "Pepe", "PEPE", "BYBIT:PEPEUSDT"],
+    ["link", "chainlink", "Chainlink", "LINK", "BYBIT:LINKUSDT"],
   ];
   for (const [input, id, name, symbol, tradingView] of cases) {
     const project = buildRuntimeProjectConfig(input, { coin:{ id, name, symbol:symbol.toLowerCase() }, coinDetails:{ categories:[] } });
@@ -159,4 +160,36 @@ test("successful discovery with no exact match returns project-not-found", async
   });
 
   assert.equal(project, null);
+});
+
+
+test("market symbols keep project symbol separate and prefer Bybit", () => {
+  for (const ticker of ["ETH", "SOL", "DOGE", "PEPE", "LINK"]) {
+    const symbols = createMarketSymbols(ticker);
+    assert.equal(symbols.base, ticker);
+    assert.equal(symbols.technical, `${ticker}USDT`);
+    assert.equal(symbols.exchange, "BYBIT");
+    assert.equal(symbols.tradingView, `BYBIT:${ticker}USDT`);
+    assert.deepEqual(symbols.routes.map(({ exchange }) => exchange), MARKET_EXCHANGE_PRIORITY);
+  }
+});
+
+test("exchange routing follows Bybit, Binance, Gate.io priority and keeps technical route aligned", async () => {
+  const checked = [];
+  const resolved = await resolveExchangeMarketSymbols(createMarketSymbols("PEPE"), async (route) => {
+    checked.push(route.exchange);
+    return route.exchange === "GATEIO";
+  });
+  assert.deepEqual(checked, ["BYBIT", "BINANCE", "GATEIO"]);
+  assert.equal(resolved.tradingView, "GATEIO:PEPEUSDT");
+  assert.deepEqual(marketTechnicalRoute(resolved), { exchange:"GATEIO", symbol:"PEPEUSDT", source:"Gate.io spot" });
+});
+
+test("exchange routing returns an honest unavailable state without another asset", async () => {
+  const resolved = await resolveExchangeMarketSymbols(createMarketSymbols("NOTLISTED"), async () => false);
+  assert.equal(resolved.status, "unavailable");
+  assert.equal(resolved.exchange, null);
+  assert.equal(resolved.tradingView, null);
+  assert.equal(resolved.technical, null);
+  assert.equal(marketTechnicalRoute(resolved), null);
 });

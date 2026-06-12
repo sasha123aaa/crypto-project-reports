@@ -365,6 +365,39 @@ async function fetchBybitCandles(symbol, timeframe) {
   return list.slice().reverse().map(parseBybitKlineRow).filter(Boolean);
 }
 
+function parseBinanceKlineRow(row) {
+  return parseBybitKlineRow(row);
+}
+
+function parseGateKlineRow(row) {
+  if (!Array.isArray(row) || row.length < 6) return null;
+  return parseBybitKlineRow([Number(row[0]) * 1000, row[5], row[3], row[4], row[2]]);
+}
+
+async function fetchBinanceCandles(symbol, timeframe) {
+  const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(timeframe)}&limit=500`);
+  if (!response.ok) throw new Error(`Binance kline HTTP ${response.status}`);
+  const json = await response.json();
+  return (Array.isArray(json) ? json : []).map(parseBinanceKlineRow).filter(Boolean);
+}
+
+async function fetchGateCandles(symbol, timeframe) {
+  const interval = { "1m":"1m", "3m":"5m", "5m":"5m", "15m":"15m", "1h":"1h", "4h":"4h", "1d":"1d", "1w":"7d", "1M":"30d" }[timeframe];
+  if (!interval) return [];
+  const pair = `${symbol.slice(0, -4)}_${symbol.slice(-4)}`;
+  const response = await fetch(`https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=${encodeURIComponent(pair)}&interval=${encodeURIComponent(interval)}&limit=500`);
+  if (!response.ok) throw new Error(`Gate.io kline HTTP ${response.status}`);
+  const json = await response.json();
+  return (Array.isArray(json) ? json : []).slice().reverse().map(parseGateKlineRow).filter(Boolean);
+}
+
+async function fetchMarketCandles(route, timeframe) {
+  if (route.exchange === "BYBIT") return fetchBybitCandles(route.symbol, timeframe);
+  if (route.exchange === "BINANCE") return fetchBinanceCandles(route.symbol, timeframe);
+  if (route.exchange === "GATEIO") return fetchGateCandles(route.symbol, timeframe);
+  return [];
+}
+
 function stateFromRange(range) {
   if (!Array.isArray(range) || typeof range[4] !== "boolean") return "neutral";
   return range[4] ? "bullish" : "bearish";
@@ -588,20 +621,26 @@ function phraseForHigher(states) {
   return pickRandom(HIGHER_PHRASES[type] || HIGHER_PHRASES.higher_mixed);
 }
 
-export async function getTechnicalBias(bybitSymbol) {
-  const symbol = String(bybitSymbol || "").toUpperCase();
+export async function getTechnicalBias(routeInput) {
+  const route = typeof routeInput === "string"
+    ? { exchange:"BYBIT", symbol:String(routeInput).toUpperCase(), source:"Bybit spot" }
+    : routeInput;
+  const symbol = String(route?.symbol || "").toUpperCase();
+  const source = route?.source || (route?.exchange ? `${route.exchange} spot` : "Market route unavailable");
   const timeframes = Object.fromEntries(TIMEFRAMES.map((tf) => [tf, "neutral"]));
 
-  if (!symbol) {
+  if (!symbol || !route?.exchange) {
     return {
-      source: "Bybit spot",
+      source,
       updated_at: new Date().toISOString(),
       symbol: null,
+      exchange: null,
+      status: "unavailable",
       timeframes,
       notes: {
-        lower_tf: "Символ проекта не задан, поэтому младшая группа остается нейтральной.",
-        mid_tf: "Символ проекта не задан, поэтому средняя группа остается нейтральной.",
-        higher_tf: "Символ проекта не задан, поэтому старший контекст не определен.",
+        lower_tf: "Торговая пара не найдена на поддерживаемых биржах, поэтому младшая группа остается нейтральной.",
+        mid_tf: "Торговая пара не найдена на поддерживаемых биржах, поэтому средняя группа остается нейтральной.",
+        higher_tf: "Торговая пара не найдена на поддерживаемых биржах, поэтому старший контекст не определен.",
       },
     };
   }
@@ -609,13 +648,8 @@ export async function getTechnicalBias(bybitSymbol) {
   await Promise.all(
     TIMEFRAMES.map(async (tf) => {
       try {
-        const candles = await fetchBybitCandles(symbol, tf);
-        const result = detectRangesWithPreview(
-          candles,
-          RANGE_PARAMS.correctionPct,
-          RANGE_PARAMS.maxRects,
-          RANGE_PARAMS.minBars
-        );
+        const candles = await fetchMarketCandles({ ...route, symbol }, tf);
+        const result = detectRangesWithPreview(candles, RANGE_PARAMS.correctionPct, RANGE_PARAMS.maxRects, RANGE_PARAMS.minBars);
         timeframes[tf] = stateFromResult(result, candles);
       } catch {
         timeframes[tf] = "neutral";
@@ -624,9 +658,11 @@ export async function getTechnicalBias(bybitSymbol) {
   );
 
   return {
-    source: "Bybit spot",
+    source,
     updated_at: new Date().toISOString(),
     symbol,
+    exchange:route.exchange,
+    status:"resolved",
     timeframes,
     notes: {
       lower_tf: phraseForTriple([timeframes["1m"], timeframes["3m"], timeframes["5m"]]),

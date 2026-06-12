@@ -1,3 +1,4 @@
+import { createMarketSymbols } from "../lib/market-symbols.js";
 const USERS_SOURCE_EXAMPLES = {
   custom_json: {
     type: "custom_json",
@@ -127,7 +128,7 @@ export const PROJECTS = {
       chain: "Ethereum",
       label: "Users provider is not configured"
     },
-    marketSymbols: { tradingView: "BINANCE:ETHUSDT", technical: "ETHUSDT" },
+    marketSymbols: createMarketSymbols("ETH"),
     bybitSymbol: "ETHUSDT",
     tags: ["L1", "DeFi", "Smart Contracts"]
   },
@@ -184,7 +185,7 @@ export const PROJECTS = {
       chain: "Solana",
       label: "Users provider is not configured"
     },
-    marketSymbols: { tradingView: "BINANCE:SOLUSDT", technical: "SOLUSDT" },
+    marketSymbols: createMarketSymbols("SOL"),
     bybitSymbol: "SOLUSDT",
     tags: ["L1", "DeFi", "Smart Contracts"]
   }
