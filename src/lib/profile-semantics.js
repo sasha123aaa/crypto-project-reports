@@ -10,6 +10,7 @@ export const CATEGORY_SECTION_ORDER = Object.freeze({
   [PROJECT_CATEGORIES.UTILITY]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.CONSUMER]: Object.freeze(["users_and_activity", "tokenomics", "financials", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", ...CLOSING_SECTION_ORDER]),
+  [PROJECT_CATEGORIES.TRADING_VENUE]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", ...CLOSING_SECTION_ORDER]),
 });
 
 export function getCategorySectionOrder(project) {
@@ -32,6 +33,9 @@ const KPI_DEFINITIONS = Object.freeze({
   burn_mechanism: { label: "Механизм сжигания", path: "tokenomics.metrics.burn_mechanism", capability: "hasTokenomics" },
   burn_target: { label: "Целевое предложение после burn", path: "tokenomics.metrics.burn_target", capability: "hasTokenomics" },
   market_buyback: { label: "Выкуп с рынка", path: "tokenomics.metrics.market_buyback", capability: "hasTokenomics" },
+  value_capture: { label: "Value capture", path: "semantic_metrics.value_capture", capability: "hasValueCaptureData" },
+  annualized_app_fees_market_cap: { label: "Annualized Fees / Market Cap", path: "valuation.metrics.annualized_app_fees_market_cap", capability: "hasProtocolFees" },
+  dex_volume_market_cap: { label: "DEX Volume / Market Cap", path: "valuation.metrics.dex_volume_market_cap", capability: "hasDexVolume" },
   tvl: { label: "TVL", path: "capital.metrics.tvl", capability: "hasTvl" },
   stablecoins: { label: "Стейблкоины в сети", path: "capital.metrics.stablecoins_mcap", capability: "hasStablecoins" },
   rwa: { label: "Активные RWA", path: "capital.metrics.rwa_active_mcap", capability: "hasRwa" },
@@ -39,6 +43,7 @@ const KPI_DEFINITIONS = Object.freeze({
   stablecoins_tvl: { label: "Stablecoins / TVL", path: "valuation.metrics.stablecoins_tvl", capability: "hasStablecoins" },
   annualized_chain_fees_market_cap: { label: "Annualized Chain Fees / Market Cap", path: "valuation.metrics.annualized_chain_fees_market_cap", capability: "hasChainFees" },
   app_fees: { label: "Комиссии приложений 24ч", path: "financials.metrics.app_fees_24h", capability: "hasProtocolFees" },
+  protocol_fees: { label: "Комиссии протокола 24ч", path: "financials.metrics.app_fees_24h", capability: "hasProtocolFees" },
   fees: { label: "Сетевые комиссии 24ч", path: "financials.metrics.chain_fees_24h", capability: "hasChainFees" },
   dex_volume: { label: "DEX-оборот 24ч", path: "financials.metrics.dex_volume_24h", capability: "hasDexVolume" },
   trading_quality: { label: "Объем 24ч / капитализация", path: "financials.metrics.volume_market_cap" },
@@ -66,6 +71,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "token_utility", "liquidity", "adoption", "concentration"],
     [PROJECT_CATEGORIES.CONSUMER]: ["price", "market_cap", "volume_24h", "users", "adoption", "momentum", "liquidity"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["price", "market_cap", "volume_24h", "burn_mechanism", "exchange_utility", "tvl", "stablecoins", "fees", "dex_volume", "fdv"],
+    [PROJECT_CATEGORIES.TRADING_VENUE]: ["price", "market_cap", "fdv", "volume_24h", "protocol_fees", "dex_volume", "value_capture", "market_buyback", "annualized_app_fees_market_cap", "dex_volume_market_cap", "trading_quality"],
   },
   market: {
     [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality"],
@@ -74,6 +80,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.MEME]: ["liquidity", "concentration", "momentum"],
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity", "token_utility", "adoption"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity", "exchange_utility"],
+    [PROJECT_CATEGORIES.TRADING_VENUE]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity"],
     default: ["price", "market_cap", "fdv", "volume_24h", "trading_quality"],
   },
   tokenomics: {
@@ -81,6 +88,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.MEME]: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply"],
     [PROJECT_CATEGORIES.MACRO]: ["circulating_supply", "max_supply", "circulating_share", "issuance_rate", "market_cap", "fdv"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["burn_mechanism", "burn_target", "circulating_supply", "total_supply", "max_supply", "market_cap", "fdv"],
+    [PROJECT_CATEGORIES.TRADING_VENUE]: ["value_capture", "market_buyback", "circulating_supply", "total_supply", "max_supply", "market_cap", "fdv"],
   },
   financial: {
     [PROJECT_CATEGORIES.INFRA]: ["fees", "app_fees", "dex_volume", "trading_quality"],
@@ -88,12 +96,14 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.MEME]: [],
     [PROJECT_CATEGORIES.MACRO]: ["trading_quality"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["fees", "annualized_chain_fees_market_cap", "dex_volume", "trading_quality"],
+    [PROJECT_CATEGORIES.TRADING_VENUE]: ["protocol_fees", "dex_volume", "annualized_app_fees_market_cap", "dex_volume_market_cap", "trading_quality"],
     default: ["trading_quality", "dex_volume", "fees"],
   },
   capital: {
     [PROJECT_CATEGORIES.INFRA]: ["tvl", "stablecoins", "rwa", "stablecoins_tvl", "market_cap_tvl"],
     [PROJECT_CATEGORIES.DEFI]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
+    [PROJECT_CATEGORIES.TRADING_VENUE]: ["tvl", "market_cap_tvl"],
     default: [],
   },
 });
@@ -125,6 +135,7 @@ export const CHART_PACK_PRIORITIES = Object.freeze({
   [PROJECT_CATEGORIES.UTILITY]: ["price_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.CONSUMER]: ["price_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["price_history", "chain_fees_history", "dex_history", "tvl_history", "stablecoins_history", "volume_history"],
+  [PROJECT_CATEGORIES.TRADING_VENUE]: ["price_history", "app_fees_history", "dex_history", "volume_history", "market_cap_history", "tvl_history"],
 });
 
 const PROFILE_COPY = Object.freeze({
@@ -169,6 +180,13 @@ const PROFILE_COPY = Object.freeze({
     profile: { strengths:["Многослойная utility в Binance и BNB Chain","Burn-механика поддерживает тезис сокращения предложения"], weaknesses:["Высокая зависимость от одной экосистемы","Не вся ценность Binance и BNB Chain автоматически достается BNB"], risks:["Регуляторное или операционное давление на Binance","Ослабление utility, burn или активности BNB Chain"], watch:["Темп burn и динамику предложения","Спрос внутри Binance и капитал BNB Chain"] },
     verdict: (name) => ({ title:"Финальная оценка", subtitle:"Инвестиционный тезис: utility, burn и chain-слой должны поддерживать друг друга", paragraphs:[`${name} остается сильным hybrid-активом, пока utility внутри Binance, использование BNB Chain и сокращение предложения вместе создают устойчивый спрос; главный риск — зависимость этой связки от Binance и регулирования.`] }),
     conclusions: { tokenomics:"BNB получает поддержку от Auto-Burn и сжигания части gas fees, но сокращение предложения важно оценивать вместе с реальным спросом в Binance и BNB Chain.", financials:"Комиссии, Annualized Chain Fees / Market Cap, DEX-оборот и Volume / Market Cap связывают измеримый спрос с оценкой BNB, но не измеряют всю экономику Binance ecosystem.", capital:"TVL, Market Cap / TVL и Stablecoins / TVL показывают масштаб капитала и расчетной ликвидности BNB Chain как важный, но не единственный слой спроса на BNB.", valuation:"Оценка BNB сильнее, когда utility Binance и burn подтверждаются оборотом, платным on-chain спросом и устойчивым капиталом BNB Chain.", liquidity:"Биржевая ликвидность поддерживает доступность BNB, одновременно усиливая зависимость от Binance ecosystem.", narrative:"Для BNB релевантны новости о burn, utility, Binance ecosystem, BNB Chain и регулировании, способном изменить спрос на токен." },
+  },
+  [PROJECT_CATEGORIES.TRADING_VENUE]: {
+    hero: (name) => ({ title:name, subtitle:"Trading venue / revenue-driven growth asset", lead:`${name} оценивается как торговый продукт: объемы и комиссии должны расти, а value capture — связывать успех площадки с токеном.`, main_strength:"Реальный продуктовый спрос может создавать повторяемую комиссионную экономику и поддержку токена.", main_risk:"Рыночная оценка может обогнать устойчивые объемы, комиссии и фактический value capture.", status_text:"Фокус: trading activity → fees → token value capture → valuation." }),
+    executive: () => ["Проверить, держатся ли объемы и комиссии на повторяемом продуктовом спросе.", "Сопоставить капитализацию и FDV с комиссионной экономикой торговой площадки.", "Проверить, насколько buyback и другие механики реально передают рост продукта токену."],
+    profile: { strengths:["Торговый продукт с измеримыми объемами и комиссиями","Понятная связь между активностью площадки и тезисом value capture"], weaknesses:["Доходы чувствительны к торговому циклу и волатильности","Value capture зависит от сохранения и исполнения buyback-механики"], risks:["Снижение торговых объемов и комиссий после охлаждения рынка","Оценка токена опережает рост продуктовой экономики","Конкуренция и регуляторные риски для perpetuals-площадки"], watch:["DEX-оборот вместе с комиссиями","Annualized Fees / Market Cap и DEX Volume / Market Cap","Покупки Assistance Fund и изменения token mechanics","Ликвидность и устойчивость активности трейдеров"] },
+    verdict: (name) => ({ title:"Финальная оценка", subtitle:"Инвестиционный тезис: продуктовая экономика и value capture должны догонять оценку", paragraphs:[`${name} выглядит убедительно как growth / revenue asset, пока реальная торговая активность создает комиссии, а механика value capture передает часть успеха площадки токену. Главный риск — оценка, ушедшая вперед устойчивых объемов и комиссий.`] }),
+    conclusions: { tokenomics:"Токеномика сильна только тогда, когда продуктовый оборот превращается в устойчивый спрос на HYPE и компенсирует supply-риски.", financials:"Комиссии и DEX-оборот — центральная проверка продуктового спроса; их нужно сопоставлять с капитализацией, а не смотреть изолированно.", capital:"Капитал экосистемы полезен как подтверждение глубины продукта, но не заменяет комиссии и торговый оборот.", liquidity:"Устойчивый оборот должен подтверждаться ликвидностью и повторяемой активностью, а не только интересом к самому токену.", narrative:"Для тезиса важны только новости, меняющие объемы, комиссии, продукт, ликвидность или value capture." },
   },
   [PROJECT_CATEGORIES.CONSUMER]: {
     hero: (name) => ({ title:name, subtitle:"Пользовательский проект", lead:`${name} оценивается через удержание аудитории и связь продукта с токеном.`, main_strength:"Повторяемое использование и потенциал сетевого эффекта.", main_risk:"Рост аудитории может не поддержать экономику токена.", status_text:"Фокус: удержание, повторное использование и монетизация." }),
@@ -282,11 +300,12 @@ export function selectReportMetricSlots(report, project) {
   };
 
   const hybrid = profile.category === PROJECT_CATEGORIES.HYBRID_ECOSYSTEM;
+  const tradingVenue = profile.category === PROJECT_CATEGORIES.TRADING_VENUE;
   return {
     market: allocate("market", 8),
     tokenomics: allocate("tokenomics", 8),
-    financial: allocate("financial", hybrid ? 4 : 3),
-    capital: allocate("capital", 5).slice(0, hybrid ? 4 : 3),
+    financial: allocate("financial", tradingVenue ? 5 : (hybrid ? 4 : 3)),
+    capital: allocate("capital", 5).slice(0, hybrid || tradingVenue ? 4 : 3),
   };
 }
 
@@ -321,6 +340,35 @@ export function applyProfileAwareSemantics(report, project, { preserveCurated = 
     report.valuation.text = [
       "BNB нельзя оценивать только как L1 или только как биржевой токен: цену нужно сопоставлять с оборотом, комиссиями и капиталом BNB Chain, одновременно проверяя устойчивость utility внутри Binance.",
       "Volume / Market Cap отражает торговую востребованность, Annualized Chain Fees / Market Cap — масштаб платного on-chain спроса относительно оценки, а TVL и Stablecoins / TVL — глубину капитала и расчетной ликвидности BNB Chain.",
+    ];
+  }
+
+  if (profile.analysisProfile === ANALYSIS_PROFILES.TRADING_ECONOMICS && project.slug === "hype") {
+    report.semantic_metrics = {
+      ...(report.semantic_metrics || {}),
+      value_capture:{ value:null, formatted:"Assistance Fund market buybacks", status:"static", source:"Hyperliquid mechanism" },
+      token_utility:{ value:null, formatted:"Trading ecosystem + staking + value capture", status:"static", source:"project structure" },
+      adoption:{ value:null, formatted:"Trading volume, liquidity and trader activity", status:"static", source:"project structure" },
+    };
+    report.tokenomics = report.tokenomics || { metrics:{} };
+    report.tokenomics.metrics = {
+      ...(report.tokenomics.metrics || {}),
+      market_buyback:{ value:null, formatted:"Assistance Fund buys HYPE", status:"static", source:"Hyperliquid mechanism" },
+    };
+    report.tokenomics.text = [
+      "HYPE связан с продуктом через экономику Hyperliquid: торговая активность создает комиссии, а Assistance Fund использует часть экономики площадки для покупок HYPE на рынке.",
+      "Value capture нужно проверять по фактическим комиссиям, устойчивости buyback-механики и тому, создает ли рост площадки повторяемый спрос на токен.",
+      "Circulating supply, total supply и FDV показывают supply-риск; сильный продуктовый рост не отменяет давление будущего предложения, emissions или распределений.",
+    ];
+    report.valuation = report.valuation || { text:[], metrics:{} };
+    report.valuation.text = [
+      "HYPE следует оценивать как growth / revenue asset: капитализация и FDV должны сопоставляться с комиссиями, DEX-оборотом и устойчивостью value capture.",
+      "Annualized Fees / Market Cap и DEX Volume / Market Cap помогают проверить, не ушла ли оценка вперед продуктовой экономики; они не заменяют анализ качества и цикличности доходов.",
+    ];
+    report.liquidity = report.liquidity || { text:[], metrics:{} };
+    report.liquidity.text = [
+      "Торговая активность должна подтверждать продуктовый спрос: важны не только обороты HYPE на рынке, но и DEX-оборот самой площадки.",
+      "Устойчивый тезис требует совместного движения объемов и комиссий; рост токена без подтверждения продуктовой активностью повышает риск переоценки.",
     ];
   }
 

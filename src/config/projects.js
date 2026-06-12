@@ -16,6 +16,7 @@ export const PROJECT_CATEGORIES = Object.freeze({
   UTILITY: "utility",
   CONSUMER: "consumer",
   HYBRID_ECOSYSTEM: "hybrid_ecosystem",
+  TRADING_VENUE: "trading_venue",
 });
 
 export const ANALYSIS_PROFILES = Object.freeze({
@@ -27,6 +28,7 @@ export const ANALYSIS_PROFILES = Object.freeze({
   ORACLE_UTILITY: "oracle_utility",
   CONSUMER_APP: "consumer_app",
   CEX_CHAIN_HYBRID: "cex_chain_hybrid",
+  TRADING_ECONOMICS: "trading_economics",
 });
 
 export const CAPABILITY_DEFAULTS = Object.freeze({
@@ -47,6 +49,7 @@ export const CAPABILITY_DEFAULTS = Object.freeze({
   hasAdoptionData: false,
   hasBtcValuationData: false,
   hasDemandFlowData: false,
+  hasValueCaptureData: false,
 });
 
 // Section rules are the shared contract between project profiles, report builders, and rendering.
@@ -239,6 +242,58 @@ export const PROJECTS = {
     marketSymbols: createMarketSymbols("BNB", { exchanges:["BINANCE", "BYBIT", "GATEIO"] }),
     bybitSymbol: "BNBUSDT",
     tags: ["CEX Utility", "BNB Chain", "Burn", "Ecosystem Asset"],
+  },
+  hype: {
+    slug: "hype",
+    name: "Hyperliquid",
+    ticker: "HYPE",
+    aliases: ["hyperliquid", "hyperliquid hype"],
+    subtitle: "HYPE • trading venue / revenue-driven growth asset",
+    branding: { iconKey: "hyperliquid", accent: "#97fce4" },
+    projectType: "trading_venue_asset",
+    categories: ["DEX", "Perpetuals", "Trading Venue", "Revenue", "Value Capture"],
+    projectProfile: {
+      category: PROJECT_CATEGORIES.TRADING_VENUE,
+      analysisProfile: ANALYSIS_PROFILES.TRADING_ECONOMICS,
+      capabilities: {
+        hasTvl: true,
+        hasProtocolFees: true,
+        hasDexVolume: true,
+        hasTokenomics: true,
+        hasNarrativeNews: true,
+        hasLiquidityData: true,
+        hasTokenUtilityData: true,
+        hasAdoptionData: true,
+        hasValueCaptureData: true,
+      },
+      preferredSections: [
+        "market",
+        "tokenomics",
+        "financials",
+        "liquidity_and_trading",
+        "tvl_and_capital",
+        "final_summary",
+        "risks",
+        "narrative_and_news",
+      ],
+    },
+    coingeckoId: "hyperliquid",
+    defillamaChain: "Hyperliquid",
+    newsKeywords: ["hyperliquid", "hype token", "hype buyback", "hyperliquid dex"],
+    newsRelevance: {
+      mode: "strict",
+      directTerms: ["hyperliquid", "hype token", "hyperliquid dex", "hyperliquid protocol"],
+      contextTerms: ["hyperliquid volume", "hyperliquid fees", "hyperliquid revenue", "hyperliquid buyback", "assistance fund", "hyperliquid liquidity", "hyperliquid traders", "hyperliquid ecosystem", "hyperliquid update", "hyperliquid adoption"],
+      competingTerms: ["bitcoin", "btc", "ethereum", "ether", "eth", "solana", "sol", "dogecoin", "doge", "pepe", "uniswap", "aave"],
+    },
+    projectNewsFeeds: [
+      { url: "https://news.google.com/rss/search?q=%28Hyperliquid+OR+%22HYPE+token%22%29+%28volume+OR+fees+OR+revenue+OR+buyback+OR+liquidity+OR+update%29&hl=en-US&gl=US&ceid=US%3Aen", source: "Hyperliquid News", priority: 1, audience: "ecosystem" },
+    ],
+    newsLimit: 5,
+    reportOptions: { preserveCuratedSemantics: false },
+    marketSymbols: createMarketSymbols("HYPE", { exchanges:["BINANCE", "BYBIT", "GATEIO"] }),
+    bybitSymbol: "HYPEUSDT",
+    tags: ["DEX", "Perpetuals", "Trading Venue", "Revenue", "Value Capture"],
   },
   link: {
     slug: "link",

@@ -292,3 +292,12 @@ test("strict LINK relevance prioritizes Chainlink integrations, CCIP, and oracle
 
   assert.deepEqual(selected.map((item) => item.title), ["Chainlink CCIP integration expands cross-chain adoption"]);
 });
+
+test("strict HYPE relevance keeps product economics news and rejects general market stories", () => {
+  const feeds = getNewsFeeds(PROJECTS.hype);
+  const selected = selectDiverseNews([
+    { title:"Bitcoin rally lifts crypto markets", url:"https://coindesk.test/btc", date:now.toISOString(), source:"CoinDesk", snippet:"HYPE also gained." },
+    { title:"Hyperliquid fees and trading volume rise after product update", url:"https://coindesk.test/hyperliquid", date:now.toISOString(), source:"CoinDesk", snippet:"Hyperliquid traders increased activity and liquidity." },
+  ], feeds, 5, PROJECTS.hype);
+  assert.deepEqual(selected.map((item) => item.title), ["Hyperliquid fees and trading volume rise after product update"]);
+});
