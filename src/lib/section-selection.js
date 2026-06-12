@@ -47,6 +47,7 @@ export function getReportDataAvailability(report = {}, { strict = false } = {}) 
     financials: metricBlockAvailability(report.financials, { strict, metricKeys:["app_fees_24h", "chain_fees_24h", "dex_volume_24h"] }),
     liquidity_and_trading: metricBlockAvailability(report.liquidity, { strict }),
     valuation: metricBlockAvailability(report.valuation, { strict }),
+    demand_and_flows: metricBlockAvailability(report.demand_flows, { strict }),
     users_and_activity: metricBlockAvailability(report.users, { strict }),
     unlocks: metricBlockAvailability(report.tokenomics, { strict }),
     whale_activity: metricBlockAvailability(report.liquidity, { strict }),
