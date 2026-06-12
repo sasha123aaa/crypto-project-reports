@@ -319,3 +319,18 @@ test("strict CRV relevance keeps Curve liquidity and veCRV news", () => {
   ], feeds, 5, PROJECTS.crv);
   assert.deepEqual(selected.map((item) => item.title), ["Curve Finance updates veCRV gauges and liquidity incentives"]);
 });
+
+test("strict MNT and NEAR relevance keeps ecosystem-impact news and rejects side mentions", () => {
+  const date = now.toISOString();
+  const mnt = selectDiverseNews([
+    { title:"Altcoins rally with Mantle mentioned among gainers", url:"https://coindesk.test/alts", date, source:"CoinDesk", snippet:"Bitcoin led the move and MNT also rose." },
+    { title:"Mantle Network liquidity and TVL expand after ecosystem partnership", url:"https://coindesk.test/mantle", date, source:"CoinDesk", snippet:"Mantle ecosystem adoption, stablecoins and protocol relevance increased." },
+  ], getNewsFeeds(PROJECTS.mnt), 5, PROJECTS.mnt);
+  const near = selectDiverseNews([
+    { title:"AI tokens rally across crypto market", url:"https://decrypt.test/ai", date, source:"Decrypt", snippet:"NEAR was briefly mentioned." },
+    { title:"NEAR Protocol chain abstraction product records ecosystem usage growth", url:"https://decrypt.test/near", date, source:"Decrypt", snippet:"NEAR developers and adoption activity expanded." },
+  ], getNewsFeeds(PROJECTS.near), 5, PROJECTS.near);
+
+  assert.deepEqual(mnt.map((item) => item.title), ["Mantle Network liquidity and TVL expand after ecosystem partnership"]);
+  assert.deepEqual(near.map((item) => item.title), ["NEAR Protocol chain abstraction product records ecosystem usage growth"]);
+});

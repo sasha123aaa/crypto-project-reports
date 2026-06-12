@@ -10,6 +10,7 @@ export const CATEGORY_SECTION_ORDER = Object.freeze({
   [PROJECT_CATEGORIES.UTILITY]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.CONSUMER]: Object.freeze(["users_and_activity", "tokenomics", "financials", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", ...CLOSING_SECTION_ORDER]),
+  [PROJECT_CATEGORIES.ECOSYSTEM_GROWTH]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "utility_and_adoption", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.TRADING_VENUE]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", ...CLOSING_SECTION_ORDER]),
 });
 
@@ -77,6 +78,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "token_utility", "liquidity", "adoption", "concentration"],
     [PROJECT_CATEGORIES.CONSUMER]: ["price", "market_cap", "volume_24h", "users", "adoption", "momentum", "liquidity"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["price", "market_cap", "volume_24h", "burn_mechanism", "exchange_utility", "tvl", "stablecoins", "fees", "dex_volume", "fdv"],
+    [PROJECT_CATEGORIES.ECOSYSTEM_GROWTH]: ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins", "fees", "dex_volume", "token_utility", "adoption"],
     [PROJECT_CATEGORIES.TRADING_VENUE]: ["price", "market_cap", "fdv", "volume_24h", "protocol_fees", "dex_volume", "value_capture", "market_buyback", "annualized_app_fees_market_cap", "dex_volume_market_cap", "trading_quality"],
   },
   market: {
@@ -86,6 +88,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.MEME]: ["liquidity", "concentration", "momentum"],
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity", "token_utility", "adoption"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity", "exchange_utility"],
+    [PROJECT_CATEGORIES.ECOSYSTEM_GROWTH]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity", "token_utility", "adoption"],
     [PROJECT_CATEGORIES.TRADING_VENUE]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity"],
     default: ["price", "market_cap", "fdv", "volume_24h", "trading_quality"],
   },
@@ -94,6 +97,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.MEME]: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply"],
     [PROJECT_CATEGORIES.MACRO]: ["circulating_supply", "max_supply", "circulating_share", "issuance_rate", "market_cap", "fdv"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["burn_mechanism", "burn_target", "circulating_supply", "total_supply", "max_supply", "market_cap", "fdv"],
+    [PROJECT_CATEGORIES.ECOSYSTEM_GROWTH]: ["circulating_supply", "total_supply", "max_supply", "market_cap", "fdv", "token_utility"],
     [PROJECT_CATEGORIES.TRADING_VENUE]: ["value_capture", "market_buyback", "circulating_supply", "total_supply", "max_supply", "market_cap", "fdv"],
   },
   financial: {
@@ -102,6 +106,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.MEME]: [],
     [PROJECT_CATEGORIES.MACRO]: ["trading_quality"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["fees", "annualized_chain_fees_market_cap", "dex_volume", "trading_quality"],
+    [PROJECT_CATEGORIES.ECOSYSTEM_GROWTH]: ["fees", "annualized_chain_fees_market_cap", "dex_volume", "trading_quality"],
     [PROJECT_CATEGORIES.TRADING_VENUE]: ["protocol_fees", "dex_volume", "annualized_app_fees_market_cap", "dex_volume_market_cap", "trading_quality"],
     default: ["trading_quality", "dex_volume", "fees"],
   },
@@ -109,6 +114,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.INFRA]: ["tvl", "stablecoins", "rwa", "stablecoins_tvl", "market_cap_tvl"],
     [PROJECT_CATEGORIES.DEFI]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
     [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
+    [PROJECT_CATEGORIES.ECOSYSTEM_GROWTH]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
     [PROJECT_CATEGORIES.TRADING_VENUE]: ["tvl", "stablecoins", "market_cap_tvl", "stablecoins_tvl"],
     default: [],
   },
@@ -141,6 +147,7 @@ export const CHART_PACK_PRIORITIES = Object.freeze({
   [PROJECT_CATEGORIES.UTILITY]: ["price_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.CONSUMER]: ["price_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["price_history", "chain_fees_history", "dex_history", "tvl_history", "stablecoins_history", "volume_history"],
+  [PROJECT_CATEGORIES.ECOSYSTEM_GROWTH]: ["price_history", "chain_fees_history", "dex_history", "tvl_history", "stablecoins_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.TRADING_VENUE]: ["price_history", "app_fees_history", "dex_history", "volume_history", "market_cap_history", "tvl_history"],
 });
 
@@ -179,6 +186,13 @@ const PROFILE_COPY = Object.freeze({
     profile: { strengths:["Понятная роль токена в продукте","Рост использования способен создавать спрос"], weaknesses:["Токен может оказаться необязательным","Ликвидность может быть ограниченной"], risks:["Продукт растет без спроса на токен","Оценка опережает реальное использование"], watch:["Необходимость токена в продукте","Связь использования со спросом на токен"] },
     verdict: (name, ticker) => ({ title:"Финальная оценка", subtitle:"Инвестиционный тезис: использование продукта должно создавать спрос на токен", paragraphs:[`${name} убедителен при измеримой связи продукта со спросом на токен; главный риск — рост использования без выгоды для держателя.`] }),
     conclusions: { tokenomics:"Предложение имеет смысл оценивать вместе с реальной потребностью в токене.", financials:"Экономика продукта важна лишь в той мере, в какой поддерживает спрос на токен.", capital:"Капитал подтверждает полезность только при связи с использованием продукта.", liquidity:"Достаточная ликвидность снижает риск выхода из позиции.", narrative:"Интеграции ценны, когда превращаются в измеримое использование токена." },
+  },
+  [PROJECT_CATEGORIES.ECOSYSTEM_GROWTH]: {
+    hero: (name) => ({ title:name, subtitle:"Infra / ecosystem-growth asset", lead:`${name} оценивается через рост капитала и использования экосистемы, ликвидность и то, превращается ли этот рост в спрос на токен.`, main_strength:"Рост экосистемы способен расширять спрос на инфраструктуру и токен.", main_risk:"Капитал, usage или сильный нарратив могут не передавать ценность токену.", status_text:"Фокус: ecosystem growth → capital / usage → token demand → valuation." }),
+    executive: () => ["Проверить рост TVL, расчетной ликвидности и сетевой активности.", "Сопоставить капитализацию и FDV с реальной экономикой экосистемы.", "Понять, создает ли рост сети устойчивый спрос на токен."],
+    profile: { strengths:["Инфраструктурная роль и потенциал экосистемного роста","Измеримые сигналы капитала, ликвидности и использования"], weaknesses:["Связь роста экосистемы со спросом на токен может быть неполной","Оценка способна опережать сетевую экономику"], risks:["Отток капитала и ликвидности","Слабый token value capture при росте экосистемы","Нарратив опережает комиссии и использование"], watch:["TVL, стейблкоины и DEX-ликвидность","Комиссии и устойчивость usage","Market Cap / TVL и связь токена с ростом сети"] },
+    verdict: (name) => ({ title:"Финальная оценка", subtitle:"Инвестиционный тезис: рост экосистемы должен превращаться в спрос на токен", paragraphs:[`${name} убедителен, пока капитал, ликвидность и использование экосистемы растут вместе со спросом на токен; главный риск — оценка или нарратив, опережающие реальную сетевую экономику.`] }),
+    conclusions: { tokenomics:"Supply-профиль нужно сопоставлять с ролью токена и реальным экосистемным спросом.", financials:"Комиссии и DEX-оборот проверяют, есть ли за ростом экосистемы платное использование.", capital:"TVL и стейблкоины показывают глубину капитала и расчетной ликвидности внутри экосистемы.", liquidity:"Ликвидность токена и on-chain капитала снижает риск, но не доказывает value capture.", utility_adoption:"Adoption значим только там, где подтверждается usage, капиталом или устойчивым спросом.", narrative:"Релевантны события, меняющие инфраструктуру, adoption, капитал или связь роста сети с токеном." },
   },
   [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: {
     hero: (name) => ({ title:name, subtitle:"Hybrid: биржевая utility + BNB Chain", lead:`${name} оценивается через совокупный спрос внутри Binance, роль газа и базового актива BNB Chain, а также устойчивое сокращение предложения.`, main_strength:"Несколько источников utility: биржевая экосистема, on-chain использование и burn-механика.", main_risk:"Спрос и оценка заметно зависят от Binance, регулирования и способности экосистемы передавать ценность токену.", status_text:"Фокус: utility Binance, burn, капитал BNB Chain и устойчивость совокупного спроса." }),
@@ -223,6 +237,16 @@ const PROJECT_COPY = Object.freeze({
     profile:{ strengths:["Крупнейший расчетный капитал экосистемы","Глубокий рынок базового актива"], weaknesses:["Ценность распределяется между L1, L2 и приложениями","Зрелая оценка требует сильной экономики"], risks:["Ослабление спроса на блокспейс","Уход захвата ценности в другие слои"], watch:["Комиссии и чистую эмиссию","Капитал и активность между L1 и L2"]},
     verdict:{ title:"Финальная оценка", subtitle:"Инвестиционный тезис: расчетный капитал должен создавать спрос на ETH", paragraphs:["ETH сохраняет сильную инфраструктурную позицию, пока расчетный капитал и безопасность поддерживают спрос на актив; главный риск — уход создаваемой ценности в L2 и приложения."]},
     conclusions:{ tokenomics:"Баланс выпуска и сжигания показывает итоговый спрос на блокспейс Ethereum.", financials:"Комиссии проверяют платный спрос на расчетный слой Ethereum.", capital:"Динамика TVL и стейблкоинов показывает устойчивость расчетного капитала.", liquidity:"Глубокий рынок упрощает управление позицией, но не решает вопрос захвата ценности.", narrative:"Обновления сети значимы, если усиливают использование и спрос на ETH."},
+  },
+  mnt: {
+    executive:["Проверить, удерживает ли Mantle капитал, стейблкоин-ликвидность и on-chain активность.", "Сопоставить оценку MNT с TVL, комиссиями, DEX-оборотом и ролью токена.", "Оценить риск того, что экосистема растет быстрее, чем спрос и value capture MNT."],
+    profile:{ strengths:["Капитал и ликвидность внутри Mantle ecosystem","Гибридная инфраструктурная и экосистемная роль MNT"], weaknesses:["Рост экосистемы не гарантирует полного захвата ценности MNT","Сетевой спрос должен догонять масштаб капитала"], risks:["Отток TVL или стейблкоин-ликвидности","Слабая передача роста экосистемы токену","Оценка опережает комиссии и usage"], watch:["TVL, стейблкоины и DEX-оборот Mantle","Комиссии и активность сети","Роль MNT и Market Cap / TVL"]},
+    verdict:{ title:"Финальная оценка", subtitle:"Инвестиционный тезис: капитал Mantle должен создавать устойчивый спрос на MNT", paragraphs:["MNT выглядит как hybrid infrastructure / ecosystem asset: тезис усиливают растущий капитал, ликвидность и использование Mantle. Главный риск — экосистема создает ценность, которую MNT захватывает лишь частично."]},
+  },
+  near: {
+    executive:["Отделить реальное usage и экосистемный рост NEAR от силы AI / chain-abstraction нарратива.", "Сопоставить оценку с TVL, ликвидностью, комиссиями и adoption-сигналами.", "Проверить, превращаются ли продукты, разработка и активность экосистемы в спрос на NEAR."],
+    profile:{ strengths:["Инфраструктурный стек и направления ecosystem adoption","Ликвидный рыночный профиль и сильная narrative relevance"], weaknesses:["Нарратив может расти быстрее капитала и платного usage","Связь adoption со спросом на NEAR требует постоянной проверки"], risks:["AI / chain-abstraction нарратив опережает реальную экономику","Слабые комиссии или капитал при высокой оценке","Конкуренция за разработчиков и пользователей"], watch:["Usage, комиссии и экосистемную активность","TVL, стейблкоины и ликвидность","Подтверждение narrative измеримым adoption"]},
+    verdict:{ title:"Финальная оценка", subtitle:"Инвестиционный тезис: adoption должен подтверждать инфраструктурный и AI-нарратив", paragraphs:["NEAR интересен как infrastructure + ecosystem growth case, но сильный нарратив сам по себе не является фундаментальным подтверждением. Тезис требует, чтобы usage, капитал, ликвидность и комиссии догоняли ожидания рынка и создавали спрос на NEAR."]},
   },
   sol: {
     executive:["Проверить, удерживается ли быстро привлеченный капитал в Solana.", "Отделить устойчивые комиссии и оборот от краткосрочного всплеска активности.", "Оценить, какая часть экономики приложений создает спрос на SOL."],
@@ -325,7 +349,7 @@ export function selectReportMetricSlots(report, project) {
     return selected;
   };
 
-  const hybrid = profile.category === PROJECT_CATEGORIES.HYBRID_ECOSYSTEM;
+  const hybrid = profile.category === PROJECT_CATEGORIES.HYBRID_ECOSYSTEM || profile.category === PROJECT_CATEGORIES.ECOSYSTEM_GROWTH;
   const tradingVenue = profile.category === PROJECT_CATEGORIES.TRADING_VENUE;
   return {
     market: allocate("market", 8),
@@ -367,6 +391,24 @@ export function applyProfileAwareSemantics(report, project, { preserveCurated = 
       "BNB нельзя оценивать только как L1 или только как биржевой токен: цену нужно сопоставлять с оборотом, комиссиями и капиталом BNB Chain, одновременно проверяя устойчивость utility внутри Binance.",
       "Volume / Market Cap отражает торговую востребованность, Annualized Chain Fees / Market Cap — масштаб платного on-chain спроса относительно оценки, а TVL и Stablecoins / TVL — глубину капитала и расчетной ликвидности BNB Chain.",
     ];
+  }
+
+  if (profile.analysisProfile === ANALYSIS_PROFILES.INFRA_ECOSYSTEM_GROWTH) {
+    const isMantle = project.slug === "mnt";
+    report.semantic_metrics = {
+      ...(report.semantic_metrics || {}),
+      token_utility:{ value:null, formatted:isMantle ? "Gas + Mantle ecosystem asset" : "Gas + staking + ecosystem coordination", status:"static", source:"project structure" },
+      ...(isMantle ? {} : { adoption:{ value:null, formatted:"Usage + developer ecosystem + chain abstraction", status:"manual", source:"project profile" } }),
+    };
+    report.tokenomics = report.tokenomics || { metrics:{} };
+    report.tokenomics.text = isMantle
+      ? ["MNT нужно оценивать как hybrid ecosystem asset: роль газа и участие в структуре Mantle важны только вместе с измеримым ростом капитала, ликвидности и usage.", "Market Cap, FDV и supply-профиль показывают цену ожиданий; главный вопрос — насколько полно MNT захватывает ценность растущей экосистемы."]
+      : ["NEAR выполняет инфраструктурную роль через gas, staking и координацию экосистемы; supply и FDV нужно сопоставлять с реальным usage и спросом на токен.", "AI и chain-abstraction narrative усиливают опциональность, но без капитала, комиссий и adoption не доказывают token value capture."];
+    report.valuation = report.valuation || { text:[], metrics:{} };
+    report.valuation.text = isMantle
+      ? ["Оценку MNT следует сопоставлять с TVL, стейблкоин-ликвидностью, DEX-оборотом и комиссиями, отдельно дисконтируя риск неполного value capture."]
+      : ["Оценку NEAR следует сопоставлять с usage, капиталом, ликвидностью и комиссиями; narrative premium оправдан только при измеримом adoption."];
+    if (!isMantle) report.utility_adoption = { items:["Инфраструктурный и developer adoption важен только при переходе в измеримое использование сети.", "AI-related и chain-abstraction обновления учитываются, когда они относятся к продуктам NEAR и подтверждаются activity, capital или demand signals.", "Если narrative растет быстрее usage и комиссий, отчет трактует это как риск, а не как фундаментальное преимущество."] };
   }
 
   if (profile.analysisProfile === ANALYSIS_PROFILES.TRADING_ECONOMICS && project.slug === "hype") {
