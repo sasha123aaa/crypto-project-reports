@@ -531,3 +531,16 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 .eth-top-left,.eth-bottom-left{fill:#dce5ff}.eth-top-right,.eth-bottom-right{fill:#879fe4}.eth-center-left{fill:#b7c7f9}.eth-center-right{fill:#7189cf}
 @media(max-width:1180px){.project-icon{width:54px;height:54px;flex-basis:54px;border-radius:16px}.project-icon-compact{width:34px;height:34px;flex-basis:34px;border-radius:11px}}
 @media(max-width:640px){.project-icon{width:48px;height:48px;flex-basis:48px}.project-icon-compact{width:32px;height:32px;flex-basis:32px}.sidebar-project-mark{gap:8px}}
+
+/* Production polish: compact synthesis blocks and make the report end decisively. */
+.executive-summary,.summary-panel,.final-verdict{padding:24px 26px}
+.executive-summary .list-wrap{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
+.executive-summary .list-item{min-height:0;padding:14px 15px;color:#c2ccdd;font-size:13px;line-height:1.5}
+.summary-panel .profile-grid{margin-top:16px;gap:12px}
+.summary-panel .profile-grid>div{padding:14px 15px;border:1px solid rgba(149,171,218,.12);border-radius:17px;background:rgba(255,255,255,.018)}
+.summary-panel .profile-grid h3{margin:0 0 10px;color:#dfe7f5;font-size:12px}
+.summary-panel .list-wrap{gap:7px}
+.summary-panel .list-item{min-height:0;padding:10px 11px;color:#aeb9cb;font-size:12px;line-height:1.45}
+.final-verdict{border-color:rgba(108,155,255,.25);background:linear-gradient(145deg,rgba(74,124,237,.09),rgba(255,255,255,.018))}
+.final-verdict .compact-lead{max-width:1000px;margin-top:14px;color:#c7d2e5;font-size:14px;line-height:1.65}
+@media(max-width:900px){.executive-summary .list-wrap{grid-template-columns:1fr}}

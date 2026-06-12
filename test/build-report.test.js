@@ -119,13 +119,15 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
       assert.ok(report.executive_summary.items.length <= 3);
       assert.equal(report.meta.market_symbols.tradingView, `BINANCE:${report.meta.ticker}USDT`);
       assert.equal(report.meta.market_symbols.technical, `${report.meta.ticker}USDT`);
-      assert.match(report.final_verdict.subtitle, /Meme/);
+      assert.match(report.final_verdict.subtitle, /ликвидность|импульс/i);
       assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "trading_quality"]);
       assert.equal(report.market.price.formatted, report.meta.ticker === "PEPE" ? "$0.00001" : "$0.15");
-      assert.deepEqual(report.metric_slots.market.map(({ key }) => key), report.meta.ticker === "PEPE"
-        ? ["circulating_supply", "total_supply", "max_supply"]
-        : ["circulating_supply", "total_supply"]);
-      assert.deepEqual(report.hero.kpis.map(({ key }) => key).filter((key) => report.metric_slots.market.some((item) => item.key === key)), []);
+      assert.deepEqual(report.metric_slots.market, []);
+      assert.deepEqual(report.metric_slots.tokenomics.map(({ key }) => key), report.meta.ticker === "PEPE"
+        ? ["fdv", "circulating_supply", "total_supply", "max_supply"]
+        : ["fdv", "circulating_supply", "total_supply"]);
+      const repeatedKeys = Object.values(report.metric_slots).flat().filter((item) => report.hero.kpis.some((heroItem) => heroItem.key === item.key));
+      assert.deepEqual(repeatedKeys, []);
       assert.deepEqual(report.chart_slots.map(({ key }) => key), ["price_history", "volume_history", "market_cap_history"]);
     }
 
@@ -135,7 +137,7 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
     assert.doesNotMatch(link.executive_summary.items.join(" "), /блокчейн-платформ|TVL|сетевая экономика/i);
     assert.ok(link.executive_summary.items.length <= 3);
     assert.equal(link.meta.market_symbols.tradingView, "BINANCE:LINKUSDT");
-    assert.match(link.final_verdict.subtitle, /Utility/);
+    assert.match(link.final_verdict.subtitle, /спрос на токен/i);
     assert.match(link.valuation.text.join(" "), /utility-токена/i);
     assert.equal(link.valuation.metrics.valuation_status.status, "unavailable");
     assert.deepEqual(link.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply"]);
