@@ -10,6 +10,7 @@ const USERS_SOURCE_EXAMPLES = {
 
 export const PROJECT_CATEGORIES = Object.freeze({
   INFRA: "infra",
+  MACRO: "macro",
   DEFI: "defi",
   MEME: "meme",
   UTILITY: "utility",
@@ -18,6 +19,7 @@ export const PROJECT_CATEGORIES = Object.freeze({
 
 export const ANALYSIS_PROFILES = Object.freeze({
   L1_INFRA: "l1_infra",
+  MACRO_ASSET: "macro_asset",
   DEFI_PROTOCOL: "defi_protocol",
   MEME_ASSET: "meme_asset",
   UTILITY_TOKEN: "utility_token",
@@ -68,6 +70,47 @@ export const UNIVERSAL_NEWS_FEEDS = [
 ];
 
 export const PROJECTS = {
+  btc: {
+    slug: "btc",
+    name: "Bitcoin",
+    ticker: "BTC",
+    aliases: ["bitcoin", "xbt"],
+    subtitle: "BTC • macro monetary asset",
+    branding: { iconKey: "bitcoin", accent: "#f7931a" },
+    projectType: "macro_asset",
+    categories: ["Macro Asset", "Store of Value", "Proof of Work"],
+    projectProfile: {
+      category: PROJECT_CATEGORIES.MACRO,
+      analysisProfile: ANALYSIS_PROFILES.MACRO_ASSET,
+      capabilities: {
+        hasTokenomics: true,
+        hasNarrativeNews: true,
+        hasLiquidityData: true,
+      },
+      preferredSections: [
+        "market",
+        "tokenomics",
+        "liquidity_and_trading",
+        "valuation",
+        "narrative_and_news",
+        "risks",
+        "final_summary",
+      ],
+    },
+    coingeckoId: "bitcoin",
+    newsKeywords: ["bitcoin", "btc"],
+    newsRelevance: {
+      mode: "strict",
+      directTerms: ["bitcoin", "btc"],
+      contextTerms: ["bitcoin etf", "spot bitcoin etf", "bitcoin treasury", "bitcoin reserve", "bitcoin mining", "bitcoin liquidity", "bitcoin dominance", "institutional bitcoin", "btc etf"],
+      competingTerms: ["ethereum", "ether", "eth", "solana", "sol", "xrp", "dogecoin", "doge", "pepe"],
+    },
+    newsLimit: 5,
+    reportOptions: { compactTokenomics: true },
+    marketSymbols: createMarketSymbols("BTC"),
+    bybitSymbol: "BTCUSDT",
+    tags: ["Macro Asset", "Store of Value", "Proof of Work"],
+  },
   eth: {
     slug: "eth",
     name: "Ethereum",

@@ -95,3 +95,14 @@ test("runtime utility selection rejects protocol TVL even when a discovery match
   assert.equal(selection.sections.tvl_and_capital.status, "disabled_by_profile");
   assert.ok(!selection.enabledSections.includes("tvl_and_capital"));
 });
+
+
+test("BTC reference report selects macro sections and rejects ETH-like blocks", async () => {
+  const report = await loadReport("btc");
+  const selection = applySectionSelection(report, PROJECTS.btc);
+
+  for (const section of ["market", "tokenomics", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"]) {
+    assert.ok(["enabled", "partial"].includes(selection.sections[section].status), `${section} should remain renderable`);
+  }
+  for (const section of ["tvl_and_capital", "stablecoins", "financials", "users_and_activity"]) assert.equal(selection.sections[section].status, "disabled_by_profile");
+});

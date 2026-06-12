@@ -13,7 +13,21 @@ import {
 } from "../src/config/projects.js";
 
 test("project taxonomy exposes the stage-one categories", () => {
-  assert.deepEqual(Object.values(PROJECT_CATEGORIES), ["infra", "defi", "meme", "utility", "consumer"]);
+  assert.deepEqual(Object.values(PROJECT_CATEGORIES), ["infra", "macro", "defi", "meme", "utility", "consumer"]);
+});
+
+
+test("BTC is a curated macro asset profile without ETH-like capabilities", () => {
+  const profile = getProjectProfile(PROJECTS.btc);
+  const selection = getSectionSelection(PROJECTS.btc);
+
+  assert.equal(profile.category, PROJECT_CATEGORIES.MACRO);
+  assert.equal(profile.analysisProfile, ANALYSIS_PROFILES.MACRO_ASSET);
+  assert.equal(profile.capabilities.hasTokenomics, true);
+  assert.equal(profile.capabilities.hasLiquidityData, true);
+  for (const capability of ["hasTvl", "hasStablecoins", "hasProtocolFees", "hasChainFees", "hasDexVolume"]) assert.equal(profile.capabilities[capability], false);
+  for (const section of ["market", "tokenomics", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"]) assert.ok(selection.enabledSections.includes(section));
+  for (const section of ["tvl_and_capital", "stablecoins", "financials", "users_and_activity"]) assert.equal(selection.sections[section].status, SECTION_VISIBILITY.DISABLED_BY_PROFILE);
 });
 
 test("ETH resolves to a capability-rich L1 infrastructure profile", () => {

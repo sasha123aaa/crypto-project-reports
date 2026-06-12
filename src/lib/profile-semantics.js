@@ -4,6 +4,7 @@ const CLOSING_SECTION_ORDER = Object.freeze(["summary", "final_verdict", "narrat
 
 export const CATEGORY_SECTION_ORDER = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
+  [PROJECT_CATEGORIES.MACRO]: Object.freeze(["tokenomics", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.DEFI]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.MEME]: Object.freeze(["tokenomics", ...CLOSING_SECTION_ORDER]),
   [PROJECT_CATEGORIES.UTILITY]: Object.freeze(["tokenomics", "financials", "tvl_and_capital", "users_and_activity", ...CLOSING_SECTION_ORDER]),
@@ -46,6 +47,7 @@ const KPI_DEFINITIONS = Object.freeze({
 export const METRIC_SLOT_PRIORITIES = Object.freeze({
   hero: {
     [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins", "fees", "app_fees", "dex_volume", "users"],
+    [PROJECT_CATEGORIES.MACRO]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "max_supply"],
     [PROJECT_CATEGORIES.DEFI]: ["price", "market_cap", "fdv", "tvl", "app_fees", "fees", "dex_volume", "users", "trading_quality", "liquidity"],
     [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "trading_quality", "liquidity", "concentration", "momentum"],
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "token_utility", "liquidity", "adoption", "concentration"],
@@ -53,6 +55,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
   },
   market: {
     [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality"],
+    [PROJECT_CATEGORIES.MACRO]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "max_supply", "liquidity"],
     [PROJECT_CATEGORIES.DEFI]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity"],
     [PROJECT_CATEGORIES.MEME]: ["liquidity", "concentration", "momentum"],
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity", "token_utility", "adoption"],
@@ -61,11 +64,13 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
   tokenomics: {
     default: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply", "net_issuance", "burn_mechanism", "market_buyback"],
     [PROJECT_CATEGORIES.MEME]: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply"],
+    [PROJECT_CATEGORIES.MACRO]: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply"],
   },
   financial: {
     [PROJECT_CATEGORIES.INFRA]: ["fees", "app_fees", "dex_volume", "trading_quality"],
     [PROJECT_CATEGORIES.DEFI]: ["app_fees", "fees", "dex_volume", "trading_quality"],
     [PROJECT_CATEGORIES.MEME]: [],
+    [PROJECT_CATEGORIES.MACRO]: ["trading_quality"],
     default: ["trading_quality", "dex_volume", "fees"],
   },
   capital: {
@@ -91,6 +96,7 @@ const CHART_DEFINITIONS = Object.freeze({
 
 export const CHART_PACK_PRIORITIES = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: ["price_history", "chain_fees_history", "app_fees_history", "dex_history", "tvl_history", "stablecoins_history"],
+  [PROJECT_CATEGORIES.MACRO]: ["price_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.DEFI]: ["price_history", "app_fees_history", "chain_fees_history", "dex_history", "tvl_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.MEME]: ["price_history", "volume_history", "market_cap_history"],
   [PROJECT_CATEGORIES.UTILITY]: ["price_history", "volume_history", "market_cap_history"],
@@ -98,6 +104,13 @@ export const CHART_PACK_PRIORITIES = Object.freeze({
 });
 
 const PROFILE_COPY = Object.freeze({
+  [PROJECT_CATEGORIES.MACRO]: {
+    hero: (name) => ({ title:name, subtitle:"Крупный макро-актив", lead:`${name} оценивается через рыночную роль, глубину ликвидности, устойчивость спроса и дефицит предложения.`, main_strength:"Глобальная ликвидность и устоявшаяся роль независимого денежного актива.", main_risk:"Высокая чувствительность оценки к рыночному циклу, ставкам и потокам капитала.", status_text:"Фокус: структура рынка, оборот, предложение и институциональный спрос." }),
+    executive: () => ["Проверить устойчивость спроса и ликвидности на разных фазах цикла.", "Сопоставить текущую оценку с оборотом и ограниченным предложением.", "Следить за институциональными потоками и макроусловиями, меняющими спрос."],
+    profile: { strengths:["Самая глубокая ликвидность среди криптоактивов","Ограниченное и предсказуемое максимальное предложение"], weaknesses:["Нет денежного потока для классической фундаментальной оценки","Спрос и оценка чувствительны к глобальному циклу ликвидности"], risks:["Резкое сокращение рыночной ликвидности","Снижение институционального и долгосрочного спроса","Регуляторные ограничения на доступ к рынку"], watch:["Оборот и глубину рынка","Динамику предложения и долгосрочного спроса","Институциональные потоки и макрофон"] },
+    verdict: (name) => ({ title:"Финальная оценка", subtitle:"Инвестиционный тезис: денежная роль и ликвидность должны переживать смену цикла", paragraphs:[`${name} остается сильным макро-активом, пока ограниченное предложение сочетается с глубокой ликвидностью и устойчивым глобальным спросом; главный риск — переоценка на пике рыночного цикла.`] }),
+    conclusions: { tokenomics:"Ограниченное предложение — центральная часть тезиса, но его ценность подтверждается только устойчивым спросом.", liquidity:"Глубина рынка и оборот определяют качество BTC как крупного ликвидного актива.", narrative:"Новости значимы, когда меняют институциональный спрос, доступ к рынку или макроусловия.", valuation:"Оценку BTC следует рассматривать через рыночный цикл, ликвидность и устойчивость спроса, а не через TVL или DeFi-мультипликаторы." },
+  },
   [PROJECT_CATEGORIES.INFRA]: {
     hero: (name) => ({ title:name, subtitle:"Инфраструктурный актив", lead:`${name} оценивается через капитал сети, спрос на блокспейс и способность базового актива удерживать ценность.`, main_strength:"Капитал и использование экосистемы поддерживают спрос на базовый актив.", main_risk:"Создаваемая ценность может уходить приложениям или другим слоям.", status_text:"Фокус: динамика капитала, комиссий и активных пользователей." }),
     executive: () => ["Проверить устойчивость капитала, а не только его текущий объем.", "Сопоставить комиссии и активность с оценкой актива.", "Понять, какая часть экономики сети остается у токена."],
@@ -136,6 +149,12 @@ const PROFILE_COPY = Object.freeze({
 });
 
 const PROJECT_COPY = Object.freeze({
+  btc: {
+    executive:["Оценить, сохраняет ли BTC глубокую ликвидность при росте волатильности.", "Сопоставить оценку с оборотом, доступным предложением и фазой рыночного цикла.", "Следить за институциональными потоками, ETF-спросом и макроусловиями."],
+    profile:{ strengths:["Эталонная ликвидность и узнаваемость крипторынка","Предсказуемое максимальное предложение в 21 млн BTC"], weaknesses:["Нет денежного потока для классической оценки","Высокая зависимость цены от глобального аппетита к риску и ликвидности"], risks:["Циклическая переоценка и глубокие просадки","Снижение институциональных потоков","Регуляторные ограничения на рыночный доступ"], watch:["Объем к капитализации и глубину рынка","Циркулирующее предложение и темп эмиссии","ETF-потоки, корпоративный спрос и макрофон"]},
+    verdict:{ title:"Финальная оценка", subtitle:"Инвестиционный тезис: глобальная денежная роль должна поддерживаться ликвидностью и спросом", paragraphs:["BTC остается базовым макро-активом крипторынка благодаря ограниченному предложению, глобальной ликвидности и институциональному доступу; главный риск — цена, опережающая устойчивый спрос на поздней фазе цикла."]},
+    conclusions:{ tokenomics:"Для BTC ключевыми являются ограниченное максимальное предложение, темп эмиссии и доля монет в обращении.", liquidity:"Оборот и глубина рынка — основная проверка способности BTC обслуживать крупный капитал.", narrative:"Приоритет имеют события, меняющие ETF-потоки, институциональный спрос, доступ к рынку и макроусловия."},
+  },
   eth: {
     executive:["Проверить, удерживает ли Ethereum расчетный капитал между L1, L2 и приложениями.", "Сопоставить комиссионный спрос и активность с оценкой ETH.", "Следить за выпуском и сжиганием как итогом спроса на блокспейс."],
     profile:{ strengths:["Крупнейший расчетный капитал экосистемы","Глубокий рынок базового актива"], weaknesses:["Ценность распределяется между L1, L2 и приложениями","Зрелая оценка требует сильной экономики"], risks:["Ослабление спроса на блокспейс","Уход захвата ценности в другие слои"], watch:["Комиссии и чистую эмиссию","Капитал и активность между L1 и L2"]},

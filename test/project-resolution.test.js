@@ -16,6 +16,9 @@ test("normalization produces stable lowercase slugs", () => {
 });
 
 test("registered lookup supports slug, ticker, name, CoinGecko id, and aliases", () => {
+  for (const input of ["btc", "BTC", "Bitcoin", "xbt"]) {
+    assert.equal(getRegisteredProject(input), PROJECTS.btc);
+  }
   for (const input of ["eth", "ETH", "Ethereum", "ether"]) {
     assert.equal(getRegisteredProject(input), PROJECTS.eth);
   }
@@ -25,7 +28,7 @@ test("registered lookup supports slug, ticker, name, CoinGecko id, and aliases",
 });
 
 test("resolver gives curated projects priority without runtime discovery", async () => {
-  for (const [input, expected] of [["eth", PROJECTS.eth], ["ETH", PROJECTS.eth], ["ethereum", PROJECTS.eth], ["sol", PROJECTS.sol], ["solana", PROJECTS.sol]]) {
+  for (const [input, expected] of [["btc", PROJECTS.btc], ["BTC", PROJECTS.btc], ["bitcoin", PROJECTS.btc], ["eth", PROJECTS.eth], ["ETH", PROJECTS.eth], ["ethereum", PROJECTS.eth], ["sol", PROJECTS.sol], ["solana", PROJECTS.sol]]) {
     const project = await resolveProject(input, noDiscoveryCalls);
     assert.equal(project.slug, expected.slug);
     assert.equal(project.ticker, expected.ticker);
@@ -33,6 +36,14 @@ test("resolver gives curated projects priority without runtime discovery", async
     assert.equal(project.resolution.source, "curated");
     assert.deepEqual(project.resolution.normalized, { slug:expected.slug, ticker:expected.ticker });
   }
+});
+
+test("BTC curated identity keeps Bitcoin branding and exchange-aware symbol mapping", () => {
+  assert.equal(PROJECTS.btc.branding.iconKey, "bitcoin");
+  assert.equal(PROJECTS.btc.marketSymbols.base, "BTC");
+  assert.equal(PROJECTS.btc.marketSymbols.tradingView, "BYBIT:BTCUSDT");
+  assert.equal(PROJECTS.btc.bybitSymbol, "BTCUSDT");
+  assert.deepEqual(marketTechnicalRoute(PROJECTS.btc.marketSymbols), { exchange:"BYBIT", symbol:"BTCUSDT", source:"Bybit spot" });
 });
 
 test("resolver returns a conservative profiled fallback when discovery is unavailable", async () => {
@@ -131,7 +142,7 @@ test("category inference favors utility over weak protocol or market-only signal
 });
 
 test("runtime inference does not replace curated project profiles", async () => {
-  for (const input of ["eth", "sol"]) {
+  for (const input of ["btc", "eth", "sol"]) {
     const project = await resolveProject(input, noDiscoveryCalls);
     assert.equal(project.resolution.mode, "registered");
     assert.deepEqual(getProjectProfile(project), getProjectProfile(PROJECTS[input]));
@@ -164,7 +175,7 @@ test("successful discovery with no exact match returns project-not-found", async
 
 
 test("market symbols keep project symbol separate and prefer Bybit", () => {
-  for (const ticker of ["ETH", "SOL", "DOGE", "PEPE", "LINK"]) {
+  for (const ticker of ["BTC", "ETH", "SOL", "DOGE", "PEPE", "LINK"]) {
     const symbols = createMarketSymbols(ticker);
     assert.equal(symbols.base, ticker);
     assert.equal(symbols.technical, `${ticker}USDT`);
