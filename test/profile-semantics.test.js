@@ -265,7 +265,7 @@ test("HYPE trading-economics semantics prioritize fees, volume, value capture, a
   report.charts = { price_history:[[1, 1], [2, 2]], app_fees_history:[[1, 1], [2, 2]], dex_history:[[1, 1], [2, 2]], volume_history:[[1, 1], [2, 2]], tvl_history:[[1, 1], [2, 2]] };
   applyProfileAwareSemantics(report, PROJECTS.hype);
 
-  assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "protocol_fees", "dex_volume"]);
+  assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "protocol_fees", "dex_volume", "tvl", "value_capture"]);
   assert.equal(report.meta.semantic_profile, "trading_venue");
   assert.deepEqual(report.meta.section_order, ["tokenomics", "financials", "tvl_and_capital", "summary", "final_verdict", "narrative_and_news"]);
   assert.match(report.hero.lead, /торговый продукт|комиссии|value capture/i);
@@ -274,4 +274,29 @@ test("HYPE trading-economics semantics prioritize fees, volume, value capture, a
   assert.ok(report.metric_slots.financial.some(({ key }) => key === "dex_volume_market_cap"));
   assert.match(report.final_verdict.paragraphs.join(" "), /growth \/ revenue asset|value capture|объем/i);
   assert.doesNotMatch(report.hero.lead, /блокспейс|макро-актив|meme/i);
+});
+
+test("revenue-driven DeFi category template keeps common order and project-specific top KPIs", () => {
+  const make = () => {
+    const report = baseReport();
+    report.capital = { metrics:{ tvl:metric() } };
+    report.financials.metrics.app_fees_24h = metric();
+    report.financials.metrics.dex_volume_24h = metric();
+    report.tokenomics = { metrics:{ circulating_supply:metric(), total_supply:metric(), max_supply:metric(), net_issuance:metric() } };
+    report.valuation = { metrics:{ market_cap_tvl:metric(), annualized_app_fees_market_cap:metric(), dex_volume_market_cap:metric() } };
+    return report;
+  };
+  const pendle = make();
+  const crv = make();
+  applyProfileAwareSemantics(pendle, PROJECTS.pendle);
+  applyProfileAwareSemantics(crv, PROJECTS.crv);
+
+  assert.deepEqual(pendle.meta.section_order, crv.meta.section_order);
+  assert.deepEqual(pendle.meta.section_order, ["tokenomics", "financials", "tvl_and_capital", "summary", "final_verdict", "narrative_and_news"]);
+  assert.ok(pendle.hero.kpis.some(({ key }) => key === "token_utility"));
+  assert.ok(!pendle.hero.kpis.some(({ key }) => key === "emission_pressure"));
+  assert.ok(crv.hero.kpis.some(({ key }) => key === "emission_pressure"));
+  assert.ok(crv.hero.kpis.some(({ key }) => key === "governance_role"));
+  assert.match(pendle.final_verdict.paragraphs.join(" "), /PT \/ YT|product|usage/i);
+  assert.match(crv.final_verdict.paragraphs.join(" "), /emissions|veCRV|liquidity/i);
 });

@@ -1,17 +1,17 @@
 {
   "meta": {
-    "slug": "hype",
-    "project_name": "Hyperliquid",
-    "ticker": "HYPE",
-    "subtitle": "HYPE • trading venue / revenue-driven growth asset",
+    "slug": "pendle",
+    "project_name": "Pendle",
+    "ticker": "PENDLE",
+    "subtitle": "PENDLE • yield trading / product-driven DeFi asset",
     "categories": [
-      "DEX",
-      "Perpetuals",
-      "Trading Venue",
+      "DeFi",
+      "Yield Trading",
+      "PT / YT",
       "Revenue",
       "Value Capture"
     ],
-    "project_type": "trading_venue_asset",
+    "project_type": "product_driven_defi_asset",
     "report_version": "v1.0",
     "updated_at": "2026-06-12T00:00:00Z",
     "data_status": "curated-starter"
@@ -59,10 +59,10 @@
     "watch": []
   },
   "about": {
-    "title": "Что такое HYPE",
+    "title": "Что такое PENDLE",
     "paragraphs": [
-      "HYPE — актив торговой площадки Hyperliquid, который следует анализировать через реальный спрос трейдеров, оборот, комиссии и механику value capture.",
-      "Главный инвестиционный вопрос — растет ли ценность токена вместе с продуктовой экономикой или рыночная оценка опережает устойчивые объемы и комиссии."
+      "Pendle создает рынки для разделения доходного актива на principal token (PT) и yield token (YT).",
+      "Инвестиционный тезис PENDLE зависит от product usage, TVL, торговой активности, комиссий и качества token capture."
     ]
   },
   "tokenomics": {
@@ -88,22 +88,16 @@
       },
       "net_issuance": {
         "value": null,
-        "formatted": "Будущие emissions / распределения требуют мониторинга",
+        "formatted": "Emissions и incentives требуют мониторинга",
         "status": "static",
         "source": "token structure"
-      },
-      "market_buyback": {
-        "value": null,
-        "formatted": "Assistance Fund buys HYPE",
-        "status": "static",
-        "source": "Hyperliquid mechanism"
       }
     }
   },
   "financials": {
     "text": [
-      "Экономика протокола — центральный блок HYPE: комиссии и DEX-оборот показывают, есть ли реальный платящий спрос.",
-      "Мультипликаторы к капитализации помогают проверить, не обгоняет ли оценка продуктовый рост."
+      "Экономика протокола показывает, насколько PT / YT используются как реальный продукт.",
+      "Комиссии и торговая активность должны подтверждать TVL и valuation."
     ],
     "metrics": {
       "app_fees_24h": {
@@ -128,16 +122,10 @@
   },
   "capital": {
     "text": [
-      "TVL, расчетная ликвидность и Market Cap / TVL показывают глубину капитала относительно оценки HYPE."
+      "TVL показывает капитал в yield markets, а Market Cap / TVL помогает оценить чувствительность valuation к usage."
     ],
     "metrics": {
       "tvl": {
-        "value": null,
-        "formatted": "—",
-        "status": "unavailable",
-        "source": "DefiLlama"
-      },
-      "stablecoins_mcap": {
         "value": null,
         "formatted": "—",
         "status": "unavailable",
@@ -196,22 +184,34 @@
     }
   },
   "semantic_metrics": {
+    "token_utility": {
+      "value": null,
+      "formatted": "PT / YT markets + vePENDLE incentives",
+      "status": "static",
+      "source": "project structure"
+    },
+    "protocol_usage": {
+      "value": null,
+      "formatted": "PT / YT trading and yield markets",
+      "status": "static",
+      "source": "project structure"
+    },
     "value_capture": {
       "value": null,
-      "formatted": "Assistance Fund market buybacks",
+      "formatted": "vePENDLE incentives and protocol economics",
       "status": "static",
-      "source": "Hyperliquid mechanism"
+      "source": "project structure"
     }
   },
   "narrative": {
     "items": [
-      "Релевантный нарратив HYPE должен подтверждаться объемами, комиссиями, продуктовой активностью и изменениями value capture."
+      "Новости PENDLE релевантны, если меняют PT / YT usage, TVL, комиссии, интеграции или token capture."
     ]
   },
   "news": {
     "status": "partial",
     "items": [],
-    "source_summary": "Свежие релевантные новости о Hyperliquid временно недоступны",
+    "source_summary": "Свежие релевантные новости о Pendle временно недоступны",
     "updated_at": "2026-06-12T00:00:00Z"
   },
   "risks": {

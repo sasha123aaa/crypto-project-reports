@@ -301,3 +301,21 @@ test("strict HYPE relevance keeps product economics news and rejects general mar
   ], feeds, 5, PROJECTS.hype);
   assert.deepEqual(selected.map((item) => item.title), ["Hyperliquid fees and trading volume rise after product update"]);
 });
+
+test("strict PENDLE relevance keeps PT / YT product usage news", () => {
+  const feeds = getNewsFeeds(PROJECTS.pendle);
+  const selected = selectDiverseNews([
+    { title:"Bitcoin rally lifts DeFi tokens", url:"https://coindesk.test/btc-defi", date:now.toISOString(), source:"CoinDesk", snippet:"PENDLE also gained." },
+    { title:"Pendle PT and YT trading activity expands with TVL", url:"https://coindesk.test/pendle", date:now.toISOString(), source:"CoinDesk", snippet:"Pendle Finance yield markets recorded higher usage and fees." },
+  ], feeds, 5, PROJECTS.pendle);
+  assert.deepEqual(selected.map((item) => item.title), ["Pendle PT and YT trading activity expands with TVL"]);
+});
+
+test("strict CRV relevance keeps Curve liquidity and veCRV news", () => {
+  const feeds = getNewsFeeds(PROJECTS.crv);
+  const selected = selectDiverseNews([
+    { title:"Crypto governance tokens rise", url:"https://decrypt.test/governance", date:now.toISOString(), source:"Decrypt", snippet:"CRV also gained." },
+    { title:"Curve Finance updates veCRV gauges and liquidity incentives", url:"https://decrypt.test/curve", date:now.toISOString(), source:"Decrypt", snippet:"Curve pools, emissions and governance are affected." },
+  ], feeds, 5, PROJECTS.crv);
+  assert.deepEqual(selected.map((item) => item.title), ["Curve Finance updates veCRV gauges and liquidity incentives"]);
+});
