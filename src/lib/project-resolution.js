@@ -33,6 +33,19 @@ const KNOWN_PROJECT_BRANDING = Object.freeze({
   link: { iconKey:"chainlink", accent:"#4a6cff" },
 });
 
+const KNOWN_MARKET_SYMBOLS = Object.freeze({
+  eth: { tradingView:"BINANCE:ETHUSDT", technical:"ETHUSDT" },
+  sol: { tradingView:"BINANCE:SOLUSDT", technical:"SOLUSDT" },
+  doge: { tradingView:"BINANCE:DOGEUSDT", technical:"DOGEUSDT" },
+  pepe: { tradingView:"BINANCE:PEPEUSDT", technical:"PEPEUSDT" },
+  link: { tradingView:"BINANCE:LINKUSDT", technical:"LINKUSDT" },
+});
+
+const KNOWN_PROJECT_NEWS_FEEDS = Object.freeze({
+  doge: [{ url:"https://foundation.dogecoin.com/blog/index.xml", source:"Dogecoin Foundation", priority:1, audience:"official" }],
+  link: [{ url:"https://blog.chain.link/rss/", source:"Chainlink Blog", priority:1, audience:"official" }],
+});
+
 const KNOWN_NEWS_CONTEXT = Object.freeze({
   doge: ["dogecoin", "doge", "dogecoin payment", "dogecoin adoption", "doge whale", "doge listing", "elon musk dogecoin", "elon musk doge"],
   pepe: ["pepe", "pepe coin", "pepe whale", "pepe liquidity", "pepe listing", "pepe sentiment"],
@@ -193,6 +206,8 @@ export function buildRuntimeProjectConfig(input, discovery) {
   const profile = buildProfile(category, capabilities);
   const ticker = String(coin.symbol || input).toUpperCase();
   const projectType = category === PROJECT_CATEGORIES.INFRA ? "l1" : category === PROJECT_CATEGORIES.DEFI ? "protocol" : category;
+  const knownSymbols = KNOWN_MARKET_SYMBOLS[ticker.toLowerCase()];
+  const marketSymbols = knownSymbols || { tradingView:`BINANCE:${ticker}USDT`, technical:`${ticker}USDT` };
 
   return withProfile({
     slug: normalizeProjectInput(coin.symbol || input),
@@ -205,7 +220,9 @@ export function buildRuntimeProjectConfig(input, discovery) {
     ...(chain ? { defillamaChain:chain.name } : {}),
     ...(stablecoinChain ? { stablecoinChain:stablecoinChain.name || stablecoinChain.gecko_id } : {}),
     ...(protocol ? { defillamaProtocol:protocol.slug || protocol.name } : {}),
-    bybitSymbol: `${ticker}USDT`,
+    marketSymbols,
+    bybitSymbol: marketSymbols.technical,
+    ...(KNOWN_PROJECT_NEWS_FEEDS[ticker.toLowerCase()] ? { projectNewsFeeds:KNOWN_PROJECT_NEWS_FEEDS[ticker.toLowerCase()] } : {}),
     newsKeywords: [coin.name, coin.symbol, coin.id].filter(Boolean),
     newsRelevance: runtimeNewsRelevance(coin, ticker),
     branding: runtimeBranding(coinDetails, ticker),
@@ -222,6 +239,8 @@ export function buildRuntimeProjectSkeleton(input) {
   const signals = inferIdentitySignals(input);
   const category = inferProjectCategory(signals);
   const profile = buildProfile(category, buildCapabilitySeed(category, signals));
+  const symbolTicker = ticker.replace(/[^A-Z0-9]/g, "");
+  const marketSymbols = KNOWN_MARKET_SYMBOLS[slug] || { tradingView:`BINANCE:${symbolTicker}USDT`, technical:`${symbolTicker}USDT` };
   return withProfile({
     slug,
     name: ticker,
@@ -229,6 +248,9 @@ export function buildRuntimeProjectSkeleton(input) {
     subtitle: `${ticker} • runtime ${category} profile`,
     projectType: "runtime",
     categories: [],
+    marketSymbols,
+    bybitSymbol:marketSymbols.technical,
+    ...(KNOWN_PROJECT_NEWS_FEEDS[slug] ? { projectNewsFeeds:KNOWN_PROJECT_NEWS_FEEDS[slug] } : {}),
     newsRelevance: { mode:"strict", directTerms:[ticker, slug], contextTerms:[ticker, slug], competingTerms:[] },
     branding: KNOWN_PROJECT_BRANDING[slug] || { iconKey:"fallback" },
     resolution: {

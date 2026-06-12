@@ -271,7 +271,7 @@ function projectIconHtml(meta = {}, compact = false) {
 function newsHtml(news = {}, report = {}) {
   if (!shouldRenderSection(report, "narrative_and_news")) return "";
   const items = Array.isArray(news.items) ? news.items : [];
-  const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span class="news-source">${escapeHtml(item.source || news.source || "Источник")}</span><span class="news-date">${escapeHtml(formatShortDate(item.date))}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">Свежих релевантных новостей за выбранный период не найдено</div>`;
+  const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span class="news-source">${escapeHtml(item.source || news.source || "Источник")}</span><span class="news-date">${escapeHtml(formatShortDate(item.date))}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">${escapeHtml(news.source_summary || "Свежих релевантных новостей за выбранный период не найдено")}</div>`;
   const freshness = news.updated_at ? `Обновлено ${new Date(news.updated_at).toLocaleString("ru-RU")}` : "Live-лента";
   return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Только новости, релевантные ${escapeHtml(report?.meta?.project_name || report?.meta?.ticker || "проекту")} · ${escapeHtml(freshness)}</div>${body}${insightHtml(report.narrative)}</section>`;
 }
@@ -537,7 +537,8 @@ async function loadReport() {
       return;
     }
 
-    const tvSymbolMap = { eth:"BINANCE:ETHUSDT", sol:"BINANCE:SOLUSDT", doge:"BINANCE:DOGEUSDT", pepe:"BINANCE:PEPEUSDT", link:"BINANCE:LINKUSDT" };
+    const reportTicker = String(data?.meta?.ticker || slug).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const tradingViewSymbol = data?.meta?.market_symbols?.tradingView || (reportTicker ? `BINANCE:${reportTicker}USDT` : null);
     app.innerHTML = `<div class="layout"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="sidebar-project-mark">${projectIconHtml(data.meta, true)}<div class="project-main">${escapeHtml(data.meta.project_name)}</div></div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
       <section class="panel hero-overview"><div class="hero-heading">${projectIconHtml(data.meta)}<div class="hero-identity"><div class="hero-title-row"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><span class="hero-ticker">${escapeHtml(data.meta.ticker)}</span></div>${data.hero.subtitle && data.hero.subtitle !== data.meta.ticker ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}</div></div><p class="lead hero-lead">${escapeHtml(data.hero.lead)}</p>
       <div class="hero-grid hero-kpis">${heroKpisHtml(data)}</div>
@@ -572,7 +573,7 @@ async function loadReport() {
     createDashboardChart("dexChart", dexSeries, "DEX Volume", { color:"#60a5fa" });
     createDashboardChart("tvlChart", tvlSeries, "TVL", { color:"#65a0ff" });
     createDashboardChart("stableChart", stableSeries, "Stablecoins", { color:"#55d6a5" });
-    initTradingView(tvSymbolMap[slug] || "BINANCE:ETHUSDT");
+    if (tradingViewSymbol) initTradingView(tradingViewSymbol);
   } catch (error) {
     app.innerHTML = `<div class="error-box">Ошибка загрузки: ${escapeHtml(error.message)}</div>`;
   }

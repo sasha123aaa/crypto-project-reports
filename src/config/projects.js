@@ -61,13 +61,9 @@ export const SECTION_RULES = Object.freeze({
 
 // Keep this layer limited to stable, publisher-backed public feeds.
 export const UNIVERSAL_NEWS_FEEDS = [
-  {
-    url: "https://www.coindesk.com/arc/outboundfeeds/rss/",
-    source: "CoinDesk",
-    priority: 20,
-    audience: "market",
-    layer: "universal",
-  },
+  { url: "https://www.coindesk.com/arc/outboundfeeds/rss/", source: "CoinDesk", priority: 20, audience: "market", layer: "universal" },
+  { url: "https://decrypt.co/feed", source: "Decrypt", priority: 21, audience: "market", layer: "universal" },
+  { url: "https://cointelegraph.com/rss", source: "Cointelegraph", priority: 22, audience: "market", layer: "universal" },
 ];
 
 export const PROJECTS = {
@@ -131,6 +127,7 @@ export const PROJECTS = {
       chain: "Ethereum",
       label: "Users provider is not configured"
     },
+    marketSymbols: { tradingView: "BINANCE:ETHUSDT", technical: "ETHUSDT" },
     bybitSymbol: "ETHUSDT",
     tags: ["L1", "DeFi", "Smart Contracts"]
   },
@@ -179,11 +176,15 @@ export const PROJECTS = {
       contextTerms: ["solana ecosystem", "solana etf", "solana validator", "firedancer", "solana upgrade", "solana defi", "sol staking"],
       competingTerms: ["bitcoin", "btc", "ethereum", "ether", "eth", "xrp", "dogecoin", "doge", "uniswap", "uni"],
     },
+    projectNewsFeeds: [
+      { url: "https://solana.com/news/rss.xml", source: "Solana News", priority: 1, audience: "official" },
+    ],
     usersSource: {
       type: "none",
       chain: "Solana",
       label: "Users provider is not configured"
     },
+    marketSymbols: { tradingView: "BINANCE:SOLUSDT", technical: "SOLUSDT" },
     bybitSymbol: "SOLUSDT",
     tags: ["L1", "DeFi", "Smart Contracts"]
   }

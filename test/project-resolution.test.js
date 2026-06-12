@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ANALYSIS_PROFILES, PROJECT_CATEGORIES, PROJECTS, getProjectProfile, getRegisteredProject, normalizeProjectInput } from "../src/config/projects.js";
-import { buildRuntimeProjectSkeleton, inferProjectCategory, resolveProject } from "../src/lib/project-resolution.js";
+import { buildRuntimeProjectConfig, buildRuntimeProjectSkeleton, inferProjectCategory, resolveProject } from "../src/lib/project-resolution.js";
 
 const noDiscoveryCalls = new Proxy({}, {
   get() { return () => { throw new Error("project resolution must not perform runtime discovery"); }; },
@@ -134,5 +134,19 @@ test("runtime inference does not replace curated project profiles", async () => 
     const project = await resolveProject(input, noDiscoveryCalls);
     assert.equal(project.resolution.mode, "registered");
     assert.deepEqual(getProjectProfile(project), getProjectProfile(PROJECTS[input]));
+  }
+});
+
+
+test("runtime symbol mapping is project-specific for DOGE, PEPE, and LINK", () => {
+  const cases = [
+    ["doge", "dogecoin", "Dogecoin", "DOGE", "BINANCE:DOGEUSDT"],
+    ["pepe", "pepe", "Pepe", "PEPE", "BINANCE:PEPEUSDT"],
+    ["link", "chainlink", "Chainlink", "LINK", "BINANCE:LINKUSDT"],
+  ];
+  for (const [input, id, name, symbol, tradingView] of cases) {
+    const project = buildRuntimeProjectConfig(input, { coin:{ id, name, symbol:symbol.toLowerCase() }, coinDetails:{ categories:[] } });
+    assert.equal(project.marketSymbols.tradingView, tradingView);
+    assert.equal(project.bybitSymbol, `${symbol}USDT`);
   }
 });

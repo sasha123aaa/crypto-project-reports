@@ -42,6 +42,7 @@ async function handleHybridReportApi(request, env, url) {
   report.meta = report.meta || {};
   report.meta.project_resolution = project.resolution;
   report.meta.branding = project.branding || report.meta.branding || null;
+  report.meta.market_symbols = project.marketSymbols || report.meta.market_symbols || null;
   applySectionSelection(report, project);
 
   try {
@@ -85,6 +86,7 @@ async function handleRuntimeReport(project) {
     report.meta = report.meta || {};
     report.meta.project_resolution = project.resolution;
     report.meta.branding = project.branding || report.meta.branding || null;
+  report.meta.market_symbols = project.marketSymbols || report.meta.market_symbols || null;
     report.meta.data_status = "runtime-partial";
     report.meta.generated_at = new Date().toISOString();
     return json(report, 200, { cacheControl:resolveReportCacheControl(report.meta.data_status) });

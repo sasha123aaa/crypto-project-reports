@@ -49,8 +49,8 @@ export async function fetchProjectNews(project, { limit = 5, days = 45 } = {}) {
   const items = selectDiverseNews(deduplicateNews(candidates), feeds, limit, project);
   const successfulSources = debug.filter((entry) => entry.ok).map((entry) => entry.source);
   const source_summary = successfulSources.length
-    ? `${successfulSources.join(", ")} · ${items.length} news items from the last ${days} days`
-    : "All configured news sources are temporarily unavailable";
+    ? (items.length ? `${successfulSources.join(", ")} · релевантных материалов: ${items.length}` : `Проверены ${successfulSources.join(", ")}; свежих материалов с достаточной релевантностью проекту не найдено`)
+    : "Настроенные источники новостей временно недоступны";
 
   return {
     status: items.length ? "live" : (successfulSources.length ? "partial" : "unavailable"),
@@ -109,7 +109,8 @@ export function selectDiverseNews(items, feeds = [], limit = 5, project = {}) {
     if (selected.length >= limit) break;
     if (canSelect(item)) selected.push(item);
   }
-  return selected.slice(0, limit);
+  const relevanceLimit = project?.newsRelevance?.mode === "strict" ? Math.min(limit, project?.newsLimit || 3) : limit;
+  return selected.slice(0, relevanceLimit);
 }
 
 export function projectNewsRelevanceScore(item, feeds = [], project = {}) {
@@ -254,7 +255,7 @@ function qualityScore(item) { return Math.min(String(item.title || "").length, 1
 function byNewest(a, b) { return Date.parse(b.date) - Date.parse(a.date); }
 function normalizeTitle(value) { return cleanXml(value).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim(); }
 function normalizeUrl(value) { try { const url = new URL(value); url.hash = ""; ["utm_source","utm_medium","utm_campaign","utm_term","utm_content"].forEach((key) => url.searchParams.delete(key)); return url.toString().replace(/\/$/, ""); } catch { return String(value || "").replace(/\/$/, ""); } }
-function unavailableNews(error, updated_at, sources) { return { status:"unavailable", items:[], source:"Configured news feeds", source_summary:"All configured news sources are temporarily unavailable", updated_at, debug:{ sources, error } }; }
+function unavailableNews(error, updated_at, sources) { return { status:"unavailable", items:[], source:"Configured news feeds", source_summary:"Настроенные источники новостей временно недоступны", updated_at, debug:{ sources, error } }; }
 function errorMessage(error) { return error instanceof Error ? error.message : String(error || "Unknown error"); }
 function readTag(xml, tag) { const escaped = tag.replace(":", "\\:"); return xml.match(new RegExp(`<(?:[\\w-]+:)?${escaped}[^>]*>([\\s\\S]*?)<\\/(?:[\\w-]+:)?${escaped}>`, "i"))?.[1] || ""; }
 function cleanXml(value) { return decodeEntities(String(value || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim(); }
