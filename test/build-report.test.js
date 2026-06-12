@@ -120,7 +120,12 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
       assert.equal(report.meta.market_symbols.tradingView, `BINANCE:${report.meta.ticker}USDT`);
       assert.equal(report.meta.market_symbols.technical, `${report.meta.ticker}USDT`);
       assert.match(report.final_verdict.subtitle, /Meme/);
-      assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "trading_quality", "circulating_supply", "total_supply"]);
+      assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "trading_quality"]);
+      assert.equal(report.market.price.formatted, report.meta.ticker === "PEPE" ? "$0.00001" : "$0.15");
+      assert.deepEqual(report.metric_slots.market.map(({ key }) => key), report.meta.ticker === "PEPE"
+        ? ["circulating_supply", "total_supply", "max_supply"]
+        : ["circulating_supply", "total_supply"]);
+      assert.deepEqual(report.hero.kpis.map(({ key }) => key).filter((key) => report.metric_slots.market.some((item) => item.key === key)), []);
       assert.deepEqual(report.chart_slots.map(({ key }) => key), ["price_history", "volume_history", "market_cap_history"]);
     }
 

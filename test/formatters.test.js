@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatCompactNumber, formatMoney, formatMultiple, formatPercent } from "../src/lib/formatters.js";
+import { formatCompactNumber, formatMoney, formatMultiple, formatPercent, formatPrice } from "../src/lib/formatters.js";
 
 test("compact numbers use K/M/B/T with at most two meaningful decimal places", () => {
   assert.equal(formatCompactNumber(845300), "845.3K");
@@ -22,4 +22,12 @@ test("compact formatter only accepts actual finite numbers", () => {
   assert.equal(formatCompactNumber("120684325"), "—");
   assert.equal(formatCompactNumber(null), "—");
   assert.equal(formatCompactNumber(Number.NaN), "—");
+});
+
+test("price formatter preserves useful precision for low-price assets", () => {
+  assert.equal(formatPrice(66.94), "$66.94");
+  assert.equal(formatPrice(0.0912), "$0.0912");
+  assert.equal(formatPrice(0.00000277), "$0.00000277");
+  assert.equal(formatPrice(0.1), "$0.1");
+  assert.equal(formatPrice(0), "$0.00");
 });

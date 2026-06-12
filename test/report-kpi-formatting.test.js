@@ -16,6 +16,8 @@ test("KPI renderer hides unavailable placeholders and uses profile-aware metric 
   assert.match(source, /function isRenderableMetric\(metric\)/);
   assert.match(source, /metric\.status === "unavailable"/);
   assert.match(source, /function metricSlotsHtml\(report, slot\)/);
+  assert.match(source, /function metricSlotsExcludingHtml\(report, slot, excludeKeys\)/);
+  assert.match(source, /category === "meme"/);
   assert.match(source, /metricSlotsHtml\(data, "tokenomics"\)/);
   assert.match(source, /metricSlotsHtml\(data, "financial"\)/);
   assert.match(source, /metricSlotsHtml\(data, "capital"\)/);
