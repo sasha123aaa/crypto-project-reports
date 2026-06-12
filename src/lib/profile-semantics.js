@@ -32,14 +32,14 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
   hero: {
     [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins", "fees", "app_fees", "dex_volume", "users"],
     [PROJECT_CATEGORIES.DEFI]: ["price", "market_cap", "fdv", "tvl", "app_fees", "fees", "dex_volume", "users", "trading_quality", "liquidity"],
-    [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "trading_quality", "circulating_supply", "total_supply", "max_supply", "liquidity", "concentration", "momentum"],
+    [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "trading_quality", "liquidity", "concentration", "momentum"],
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "token_utility", "liquidity", "adoption", "concentration"],
     [PROJECT_CATEGORIES.CONSUMER]: ["price", "market_cap", "volume_24h", "users", "adoption", "momentum", "liquidity"],
   },
   market: {
     [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality"],
     [PROJECT_CATEGORIES.DEFI]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity"],
-    [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "trading_quality", "circulating_supply", "total_supply", "max_supply", "liquidity", "concentration", "momentum"],
+    [PROJECT_CATEGORIES.MEME]: ["circulating_supply", "total_supply", "max_supply", "liquidity", "concentration", "momentum"],
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "total_supply", "max_supply", "liquidity", "token_utility", "adoption"],
     default: ["price", "market_cap", "fdv", "volume_24h", "trading_quality"],
   },
@@ -189,8 +189,13 @@ export function selectChartSlots(report, project) {
 }
 
 export function selectReportMetricSlots(report, project) {
+  const profile = getProjectProfile(project);
+  const heroKeys = profile.category === PROJECT_CATEGORIES.MEME
+    ? new Set(selectHeroKpis(report, project).map(({ key }) => key))
+    : new Set();
+
   return {
-    market: selectMetricSlots(report, project, "market", 8),
+    market: selectMetricSlots(report, project, "market", 8).filter(({ key }) => !heroKeys.has(key)),
     tokenomics: selectMetricSlots(report, project, "tokenomics", 8),
     financial: selectMetricSlots(report, project, "financial", 3),
     capital: selectMetricSlots(report, project, "capital", 3),

@@ -6,7 +6,7 @@ import { getTechnicalBias } from "./adapters/bybit.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
 import { fetchProjectNews } from "./adapters/coingecko.js";
-import { formatCompactNumber, formatMoney } from "./lib/formatters.js";
+import { formatCompactNumber, formatMoney, formatPrice } from "./lib/formatters.js";
 import { applyProfileAwareSemantics } from "./lib/profile-semantics.js";
 
 export default {
@@ -293,7 +293,7 @@ export function mergeLiveMetrics(report, live) {
   const sourceCG = live.market?.source || "CoinGecko";
   const sourceDL = "DefiLlama";
 
-  if (isValidNumber(live.market.price)) report.market.price = liveMetric(live.market.price, formatMoney(live.market.price), sourceCG);
+  if (isValidNumber(live.market.price)) report.market.price = liveMetric(live.market.price, formatPrice(live.market.price), sourceCG);
   if (isValidNumber(live.market.marketCap)) {
     const metric = liveMetric(live.market.marketCap, formatMoney(live.market.marketCap), sourceCG);
     report.market.market_cap = metric;

@@ -39,6 +39,16 @@ export function formatMoney(value) {
   return `$${value.toFixed(2)}`;
 }
 
+export function formatPrice(value) {
+  if (!isFiniteNumber(value)) return "—";
+
+  const abs = Math.abs(value);
+  if (abs === 0 || abs >= 1) return formatMoney(value);
+
+  const fractionDigits = Math.min(12, Math.max(4, Math.ceil(-Math.log10(abs)) + 2));
+  return `$${trimFixed(value, fractionDigits)}`;
+}
+
 export function formatPercent(value) {
   if (!isFiniteNumber(value)) return "—";
   return `${value.toFixed(2)}%`;

@@ -1,5 +1,5 @@
 import { STATUS, metric } from "./status.js";
-import { formatCompactNumber, formatMoney, formatMultiple, formatPercent } from "./formatters.js";
+import { formatCompactNumber, formatMoney, formatMultiple, formatPercent, formatPrice } from "./formatters.js";
 import { calcMarketCapToTVL, calcStablecoinsToTVL, calcVolumeToMarketCap } from "./calculations.js";
 import { getUsersFallbackText } from "./fallbacks.js";
 import { fetchCoinGeckoMarket, fetchCoinGeckoChart, fetchProjectNews } from "../adapters/coingecko.js";
@@ -67,7 +67,7 @@ export async function buildReport(project){
     meta:{ slug:project.slug, project_name:project.name, ticker:project.ticker, subtitle:project.subtitle, branding:project.branding || null, market_symbols:project.marketSymbols || null, categories:project.categories, project_type:project.projectType, project_profile:getProjectProfile(project), project_resolution:project.resolution || null, report_version:"v1.0", updated_at:new Date().toISOString(), data_status:"partial" },
     hero:{ title:`${project.name} как базовая инфраструктура рынка`, subtitle:"Сильный фундаментал, зрелость актива и главный вопрос — удержание ценности внутри экосистемы.", lead:`${project.name} остается важным активом для инфраструктурного слоя крипторынка. Главная задача отчета — показать не только рыночный размер, но и качество экономики сети, капитала и пользовательской активности.`, main_strength:"Сильная инфраструктурная позиция, масштаб экосистемы и высокая ликвидность.", main_risk:"Часть ценности может уходить в смежные уровни экосистемы, а не оставаться напрямую в токене.", status_text:"Сильный фундаментал, но дальнейший тезис должен подтверждаться живой экономикой сети." },
     market:{
-      price: metric(price, formatMoney(price), price!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "CoinGecko"),
+      price: metric(price, formatPrice(price), price!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "CoinGecko"),
       market_cap: metric(marketCap, formatMoney(marketCap), marketCap!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "CoinGecko"),
       fdv: metric(fdv, formatMoney(fdv), fdv!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "CoinGecko"),
       volume_24h: metric(volume24h, formatMoney(volume24h), volume24h!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "CoinGecko"),

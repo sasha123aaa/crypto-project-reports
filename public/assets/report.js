@@ -130,6 +130,12 @@ function metricSlotsHtml(report, slot) {
   return Array.isArray(selected) ? selected.map((item) => metricHtml(item.label, item.metric)).join("") : "";
 }
 
+function metricSlotsExcludingHtml(report, slot, excludeKeys) {
+  const selected = report?.metric_slots?.[slot];
+  const excluded = new Set(excludeKeys);
+  return Array.isArray(selected) ? selected.filter((item) => !excluded.has(item.key)).map((item) => metricHtml(item.label, item.metric)).join("") : "";
+}
+
 function hasChartSlot(report, key) {
   return Array.isArray(report?.chart_slots) && report.chart_slots.some((slot) => slot.key === key);
 }
@@ -150,7 +156,8 @@ function marketPackHtml(report) {
     selectedChartHtml(report, "market_cap_history", "marketCapHistoryChart", "Рыночная капитализация", "История рыночной оценки"),
   ].filter(Boolean).join("");
   if (!["meme", "utility", "defi"].includes(category) && !marketCharts) return "";
-  const metrics = metricSlotsHtml(report, "market");
+  const heroKeys = category === "meme" && Array.isArray(report?.hero?.kpis) ? report.hero.kpis.map((item) => item.key) : [];
+  const metrics = metricSlotsExcludingHtml(report, "market", heroKeys);
   if (!metrics && !marketCharts) return "";
   return `<section class="panel section-flow market-pack-section"><div class="section-title">Рынок и торговля</div><div class="section-sub">Категорийный набор рыночных метрик: показываются только доступные данные</div>${metrics ? `<div class="hero-grid market-kpis">${metrics}</div>` : ""}${marketCharts ? `<div class="capital-charts">${marketCharts}</div>` : ""}${insightHtml(report.liquidity)}</section>`;
 }

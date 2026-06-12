@@ -47,6 +47,17 @@ test("meme semantics focus final verdict on unwind rather than network economics
   assert.doesNotMatch(report.executive_summary.items.join(" "), /L1|инфраструктур/i);
 });
 
+test("meme market slots deepen the hero view without repeating its KPI keys", () => {
+  const project = { name:"Example Meme", ticker:"MEME", projectProfile:{ category:"meme", capabilities:{ hasTokenomics:true, hasLiquidityData:true, hasWhaleData:true } } };
+  const report = baseReport();
+  report.tokenomics = { metrics:{ circulating_supply:metric(), total_supply:metric(), max_supply:metric() } };
+  applyProfileAwareSemantics(report, project);
+
+  assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "trading_quality", "liquidity", "concentration"]);
+  assert.deepEqual(report.metric_slots.market.map(({ key }) => key), ["circulating_supply", "total_supply", "max_supply"]);
+  assert.deepEqual(report.metric_slots.market.map(({ key }) => key).filter((key) => report.hero.kpis.some((item) => item.key === key)), []);
+});
+
 test("curated ETH copy is preserved while profile-aware KPIs and verdict are attached", () => {
   const report = baseReport();
   report.hero = { lead:"Curated ETH lead" };
