@@ -29,9 +29,9 @@
   },
   "tokenomics": {
     "text": [
-      "BNB использует Auto-Burn: объем периодического сжигания определяется формулой, связанной с ценой BNB и активностью BNB Smart Chain, с долгосрочной целью сократить предложение до 100 млн BNB.",
-      "Дополнительная burn-механика BEP-95 в реальном времени сжигает часть gas fees BNB Smart Chain. Точный темп сокращения предложения меняется, поэтому отчет не подменяет его выдуманным числом.",
-      "Спрос на BNB формируется не только оплатой газа: токен используется в Binance ecosystem, включая скидки/utility и отдельные продукты, а также внутри приложений BNB Chain."
+      "Circulating supply показывает доступное рынку предложение BNB, а current supply — сколько BNB остается после уже проведенных сжиганий; обе live-метрики нужно отслеживать вместе с целью в 100 млн BNB.",
+      "Auto-Burn периодически сокращает предложение по формуле, связанной с ценой BNB и активностью BNB Smart Chain, а BEP-95 дополнительно сжигает часть gas fees в реальном времени.",
+      "Burn усиливает scarcity-тезис, но не заменяет реальный спрос: оценка BNB должна подтверждаться utility внутри Binance, использованием BNB как gas/base asset и капиталом BNB Chain."
     ],
     "metrics": {
       "burn_mechanism": { "value": null, "formatted": "Auto-Burn + BEP-95", "status": "static", "source": "BNB Chain documentation" },
@@ -74,11 +74,15 @@
     }
   },
   "valuation": {
-    "text": ["BNB нельзя оценивать только как L1 или только как биржевой токен: цена должна подтверждаться совокупным спросом, burn и капиталом BNB Chain."],
+    "text": [
+      "BNB нельзя оценивать только как L1 или только как биржевой токен: цену нужно сопоставлять с оборотом, комиссиями и капиталом BNB Chain, одновременно проверяя устойчивость utility внутри Binance.",
+      "Volume / Market Cap отражает торговую востребованность, Annualized Chain Fees / Market Cap — масштаб платного on-chain спроса относительно оценки, а TVL и Stablecoins / TVL — глубину капитала и расчетной ликвидности BNB Chain."
+    ],
     "metrics": {
       "market_cap_tvl": { "value": null, "formatted": "—", "status": "unavailable", "source": "calc" },
       "volume_market_cap": { "value": null, "formatted": "—", "status": "unavailable", "source": "calc" },
-      "stablecoins_tvl": { "value": null, "formatted": "—", "status": "unavailable", "source": "calc" }
+      "stablecoins_tvl": { "value": null, "formatted": "—", "status": "unavailable", "source": "calc" },
+      "annualized_chain_fees_market_cap": { "value": null, "formatted": "—", "status": "unavailable", "source": "calc" }
     }
   },
   "semantic_metrics": {
@@ -94,6 +98,8 @@
   "sources": [
     { "name": "CoinGecko", "used_for": ["price", "market cap", "FDV", "volume", "supply"] },
     { "name": "DefiLlama", "used_for": ["BNB Chain TVL", "stablecoins", "fees", "DEX volume"] },
-    { "name": "BNB Chain documentation", "used_for": ["Auto-Burn", "BEP-95", "token utility"] }
+    { "name": "BNB Chain documentation", "used_for": ["Auto-Burn", "BEP-95", "token utility"] },
+    { "name": "Binance Blog", "used_for": ["BNB utility and Binance ecosystem news"] },
+    { "name": "BNB Chain Blog", "used_for": ["BNB Chain, burn and ecosystem news"] }
   ]
 }
