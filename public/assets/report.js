@@ -28,6 +28,9 @@ const METRIC_HELP = {
   "Статус оценки": "Краткая качественная оценка текущей стадии актива.",
   "MVRV": "Отношение рыночной капитализации BTC к realized cap; помогает оценивать фазу рынка.",
   "Realized Price": "Средняя on-chain стоимость приобретения BTC, рассчитанная из realized cap.",
+  "ETF Net Flow (latest)": "Чистый совокупный поток американских spot BTC ETF за последний опубликованный торговый день.",
+  "ETF Net Flow (5d)": "Суммарный чистый поток американских spot BTC ETF за последние пять опубликованных торговых дней.",
+  "ETF Cumulative Net Flow": "Накопленный чистый поток американских spot BTC ETF с момента запуска.",
   "NUPL": "Нереализованная прибыль или убыток рынка относительно рыночной капитализации.",
   "BTC Dominance": "Доля Bitcoin в общей капитализации крипторынка.",
   "В обращении от 21M": "Доля максимального предложения Bitcoin, уже находящаяся в обращении.",
@@ -182,6 +185,9 @@ function demandFlowsSectionHtml(report) {
   if (!shouldRenderSection(report, "demand_and_flows") || !report?.demand_flows) return "";
   const metrics = [
     ["BTC Dominance", report.demand_flows?.metrics?.btc_dominance],
+    ["ETF Net Flow (latest)", report.demand_flows?.metrics?.etf_latest_net_flow],
+    ["ETF Net Flow (5d)", report.demand_flows?.metrics?.etf_five_day_net_flow],
+    ["ETF Cumulative Net Flow", report.demand_flows?.metrics?.etf_cumulative_net_flow],
     ["MVRV", report.valuation?.metrics?.mvrv],
     ["Realized Price", report.valuation?.metrics?.realized_price],
     ["NUPL", report.valuation?.metrics?.nupl],
@@ -189,6 +195,8 @@ function demandFlowsSectionHtml(report) {
   const charts = selectedChartGroupHtml(report, "capital-charts", [
     ["mvrv_history", "mvrvChart", "MVRV", "Рыночная оценка относительно realized cap"],
     ["realized_price_history", "realizedPriceChart", "Realized Price vs Market Price", "Рыночная цена относительно средней on-chain стоимости"],
+    ["btc_etf_flow_history", "btcEtfFlowChart", "Spot BTC ETF Net Flow", "Ежедневный совокупный приток или отток капитала через американские spot ETF"],
+    ["btc_etf_cumulative_history", "btcEtfCumulativeChart", "Spot BTC ETF Cumulative Flow", "Накопленный чистый поток с момента запуска spot ETF"],
     ["issuance_history", "issuanceChart", "Годовой темп эмиссии", "Предсказуемое замедление выпуска новых BTC"],
   ]);
   const text = Array.isArray(report.demand_flows.text) ? report.demand_flows.text.map((line) => `<p class="lead compact-lead">${escapeHtml(line)}</p>`).join("") : "";
@@ -695,6 +703,8 @@ async function loadReport() {
     const realizedPriceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.realized_price_history));
     const btcMarketPriceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.btc_market_price_history));
     const issuanceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.issuance_history));
+    const btcEtfFlowSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.btc_etf_flow_history));
+    const btcEtfCumulativeSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.btc_etf_cumulative_history));
 
     createDashboardChart("volumeHistoryChart", volumeHistorySeries, "Объем торгов", { color:"#60a5fa" });
     createDashboardChart("marketCapHistoryChart", marketCapHistorySeries, "Рыночная капитализация", { color:"#a78bfa" });
@@ -708,6 +718,8 @@ async function loadReport() {
       { label:"Market Price", series:btcMarketPriceSeries, color:"#f7931a" },
       { label:"Realized Price", series:realizedPriceSeries, color:"#65a0ff" },
     ]);
+    createDashboardChart("btcEtfFlowChart", btcEtfFlowSeries, "Spot BTC ETF Net Flow", { color:"#55d6a5" });
+    createDashboardChart("btcEtfCumulativeChart", btcEtfCumulativeSeries, "Spot BTC ETF Cumulative Flow", { color:"#65a0ff" });
     createDashboardChart("issuanceChart", issuanceSeries, "Годовой темп эмиссии", { color:"#55d6a5", prefix:"", suffix:"%" });
     if (tradingViewSymbol) initTradingView(tradingViewSymbol);
   } catch {
