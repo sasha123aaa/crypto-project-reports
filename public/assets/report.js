@@ -249,16 +249,31 @@ function compactChartHtml(id, label, caption) {
   const ranges = CHART_RANGES;
   return `<div class="integrated-chart" id="${id}-card"><div class="chart-label"><span>${escapeHtml(label)}</span><span class="chart-range" id="${id}-range-label">${DEFAULT_CHART_RANGE}</span></div><div class="chart-range-controls" aria-label="Диапазон ${escapeHtml(label)}">${ranges.map((range) => `<button class="range-btn${range === DEFAULT_CHART_RANGE ? " active" : ""}" type="button" data-chart="${id}" data-range="${range}">${range}</button>`).join("")}</div><div class="chart-shell" id="${id}-wrap"><canvas id="${id}"></canvas></div><div class="chart-navigator" id="${id}-navigator"><div class="navigator-track"></div><input class="navigator-input navigator-start" type="range" min="0" max="1" value="0" aria-label="Начало диапазона ${escapeHtml(label)}"><input class="navigator-input navigator-end" type="range" min="0" max="1" value="1" aria-label="Конец диапазона ${escapeHtml(label)}"></div><div class="chart-caption">${escapeHtml(caption)}</div></div>`;
 }
-function ethereumIconHtml(ticker) {
-  if (String(ticker).toUpperCase() !== "ETH") return `<span class="hero-token-fallback">${escapeHtml(ticker || "")}</span>`;
-  return `<span class="eth-icon" aria-label="Ethereum"><svg viewBox="0 0 256 417" role="img" aria-hidden="true"><path class="eth-top-left" d="M127.9 0L125.1 9.5v274.2l2.8 2.8 127.9-75.6z"/><path class="eth-top-right" d="M127.9 0L0 210.9l127.9 75.6V154.1z"/><path class="eth-bottom-left" d="M127.9 310.7l-1.6 1.9v98.2l1.6 4.7 128-180.3z"/><path class="eth-bottom-right" d="M127.9 415.5V310.7L0 235.2z"/><path class="eth-center-left" d="M127.9 286.5l127.9-75.6-127.9-56.8z"/><path class="eth-center-right" d="M0 210.9l127.9 75.6V154.1z"/></svg></span>`;
+function projectIconHtml(meta = {}, compact = false) {
+  const ticker = String(meta.ticker || "").toUpperCase();
+  const branding = meta.branding || {};
+  const key = String(branding.iconKey || ticker).toLowerCase();
+  const label = escapeHtml(meta.project_name || ticker || "Project");
+  const accent = /^#[0-9a-f]{6}$/i.test(branding.accent || "") ? branding.accent : "#7898df";
+  const fallback = `<span class="project-icon-fallback">${escapeHtml(ticker.slice(0, 4) || "•")}</span>`;
+  const icons = {
+    ethereum:`<svg viewBox="0 0 256 417" aria-hidden="true"><path class="eth-top-left" d="M127.9 0L125.1 9.5v274.2l2.8 2.8 127.9-75.6z"/><path class="eth-top-right" d="M127.9 0L0 210.9l127.9 75.6V154.1z"/><path class="eth-bottom-left" d="M127.9 310.7l-1.6 1.9v98.2l1.6 4.7 128-180.3z"/><path class="eth-bottom-right" d="M127.9 415.5V310.7L0 235.2z"/><path class="eth-center-left" d="M127.9 286.5l127.9-75.6-127.9-56.8z"/><path class="eth-center-right" d="M0 210.9l127.9 75.6V154.1z"/></svg>`,
+    solana:`<svg viewBox="0 0 128 104" aria-hidden="true"><defs><linearGradient id="sol-g" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#9945ff"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs><path fill="url(#sol-g)" d="M25 0h91l-13 17H12zM12 43h91l13 17H25zM25 86h91l-13 17H12z"/></svg>`,
+    dogecoin:`<span class="brand-letter dogecoin-letter">Ð</span>`,
+    pepe:`<span class="brand-word pepe-word">PEPE</span>`,
+    chainlink:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#5578ff" stroke-width="15" d="M50 8 86 29v42L50 92 14 71V29z"/></svg>`,
+  };
+  const remote = typeof branding.iconUrl === "string" && /^https:\/\//i.test(branding.iconUrl)
+    ? `<img src="${escapeHtml(branding.iconUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+    : "";
+  return `<span class="project-icon${compact ? " project-icon-compact" : ""}" aria-label="${label}" style="--project-accent:${accent}">${remote}${icons[key] || fallback}</span>`;
 }
 function newsHtml(news = {}, report = {}) {
   if (!shouldRenderSection(report, "narrative_and_news")) return "";
   const items = Array.isArray(news.items) ? news.items : [];
-  const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span class="news-source">${escapeHtml(item.source || news.source || "Источник")}</span><span class="news-date">${escapeHtml(formatShortDate(item.date))}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">Свежие новости временно недоступны</div>`;
+  const body = items.length ? `<div class="news-list">${items.map((item) => `<a class="news-card" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"><div class="news-meta"><span class="news-source">${escapeHtml(item.source || news.source || "Источник")}</span><span class="news-date">${escapeHtml(formatShortDate(item.date))}</span></div><h3>${escapeHtml(item.title)}</h3>${item.snippet ? `<p>${escapeHtml(item.snippet)}</p>` : ""}</a>`).join("")}</div>` : `<div class="news-empty">Свежих релевантных новостей за выбранный период не найдено</div>`;
   const freshness = news.updated_at ? `Обновлено ${new Date(news.updated_at).toLocaleString("ru-RU")}` : "Live-лента";
-  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Свежие новости проекта и крипторынка · ${escapeHtml(freshness)}</div>${body}</section>`;
+  return `<section class="panel news-section"><div class="section-title">Последние новости</div><div class="section-sub">Только новости, релевантные ${escapeHtml(report?.meta?.project_name || report?.meta?.ticker || "проекту")} · ${escapeHtml(freshness)}</div>${body}</section>`;
 }
 
 function listHtml(items = []) {
@@ -523,8 +538,8 @@ async function loadReport() {
     }
 
     const tvSymbolMap = { eth:"BINANCE:ETHUSDT", sol:"BINANCE:SOLUSDT", doge:"BINANCE:DOGEUSDT", pepe:"BINANCE:PEPEUSDT", link:"BINANCE:LINKUSDT" };
-    app.innerHTML = `<div class="layout"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="project-main">${escapeHtml(data.meta.project_name)}</div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
-      <section class="panel hero-overview"><div class="hero-heading">${ethereumIconHtml(data.meta.ticker)}<div class="hero-identity"><div class="hero-title-row"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><span class="hero-ticker">${escapeHtml(data.meta.ticker)}</span></div>${data.hero.subtitle && data.hero.subtitle !== data.meta.ticker ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}</div></div><p class="lead hero-lead">${escapeHtml(data.hero.lead)}</p>
+    app.innerHTML = `<div class="layout"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="sidebar-project-mark">${projectIconHtml(data.meta, true)}<div class="project-main">${escapeHtml(data.meta.project_name)}</div></div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
+      <section class="panel hero-overview"><div class="hero-heading">${projectIconHtml(data.meta)}<div class="hero-identity"><div class="hero-title-row"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><span class="hero-ticker">${escapeHtml(data.meta.ticker)}</span></div>${data.hero.subtitle && data.hero.subtitle !== data.meta.ticker ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}</div></div><p class="lead hero-lead">${escapeHtml(data.hero.lead)}</p>
       <div class="hero-grid hero-kpis">${heroKpisHtml(data)}</div>
       <div class="three-col hero-thesis top-gap"><div class="list-item"><strong>Главная сила</strong><span>${escapeHtml(data.hero.main_strength || "—")}</span></div><div class="list-item"><strong>Главный риск</strong><span>${escapeHtml(data.hero.main_risk || "—")}</span></div><div class="list-item"><strong>Общий статус</strong><span>${escapeHtml(data.hero.status_text || "—")}</span></div></div></section>
       ${tradingViewCard()}

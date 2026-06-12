@@ -77,6 +77,7 @@ export const PROJECTS = {
     ticker: "ETH",
     aliases: ["ethereum", "ether"],
     subtitle: "ETH • infrastructure asset",
+    branding: { iconKey: "ethereum", accent: "#8c9eff" },
     projectType: "l1",
     categories: ["L1", "DeFi", "Smart Contracts"],
     projectProfile: {
@@ -139,6 +140,7 @@ export const PROJECTS = {
     ticker: "SOL",
     aliases: ["solana"],
     subtitle: "SOL • infrastructure asset",
+    branding: { iconKey: "solana", accent: "#14f195" },
     projectType: "l1",
     categories: ["L1", "DeFi", "Smart Contracts"],
     projectProfile: {
@@ -171,6 +173,12 @@ export const PROJECTS = {
     defillamaChain: "Solana",
     stablecoinChain: "Solana",
     newsKeywords: ["solana", "sol"],
+    newsRelevance: {
+      mode: "strict",
+      directTerms: ["solana", "sol"],
+      contextTerms: ["solana ecosystem", "solana etf", "solana validator", "firedancer", "solana upgrade", "solana defi", "sol staking"],
+      competingTerms: ["bitcoin", "btc", "ethereum", "ether", "eth", "xrp", "dogecoin", "doge", "uniswap", "uni"],
+    },
     usersSource: {
       type: "none",
       chain: "Solana",

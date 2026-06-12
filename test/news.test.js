@@ -209,3 +209,30 @@ test("excluded ETH sources cannot enter ranking even if supplied as candidates",
 
   assert.deepEqual(selected.map((item) => item.source), ["Ethereum Blog"]);
 });
+
+test("strict SOL relevance rejects other-asset and general-market stories", () => {
+  const feeds = getNewsFeeds(PROJECTS.sol);
+  const selected = selectDiverseNews([
+    { title:"Bitcoin ETF inflows lift crypto market", url:"https://coindesk.test/bitcoin-etf", date:now.toISOString(), source:"CoinDesk", snippet:"Solana also rose." },
+    { title:"Uniswap governance vote moves forward", url:"https://coindesk.test/uniswap-vote", date:now.toISOString(), source:"CoinDesk", snippet:"The proposal mentions Solana." },
+    { title:"Solana validators prepare for Firedancer rollout", url:"https://coindesk.test/solana-firedancer", date:now.toISOString(), source:"CoinDesk", snippet:"The Solana ecosystem expects a performance upgrade." },
+  ], feeds, 5, PROJECTS.sol);
+
+  assert.deepEqual(selected.map((item) => item.title), ["Solana validators prepare for Firedancer rollout"]);
+});
+
+test("strict runtime meme relevance keeps DOGE and PEPE focused", () => {
+  const universal = [{ source:"CoinDesk", layer:"universal", priority:20, audience:"market" }];
+  const doge = { name:"Dogecoin", ticker:"DOGE", slug:"doge", newsRelevance:{ mode:"strict", directTerms:["dogecoin", "doge"], contextTerms:["dogecoin payment", "doge whale", "elon musk doge"], competingTerms:["bitcoin", "solana", "pepe"] } };
+  const pepe = { name:"Pepe", ticker:"PEPE", slug:"pepe", newsRelevance:{ mode:"strict", directTerms:["pepe", "pepe coin"], contextTerms:["pepe whale", "pepe liquidity", "pepe listing"], competingTerms:["bitcoin", "solana", "dogecoin"] } };
+  const date = now.toISOString();
+  const candidates = [
+    { title:"Coinbase launches new AI tool", url:"https://coindesk.test/coinbase-ai", date, source:"CoinDesk", snippet:"DOGE and PEPE are supported." },
+    { title:"Dogecoin payments expand at online merchant", url:"https://coindesk.test/dogecoin-payments", date, source:"CoinDesk", snippet:"DOGE adoption is the focus." },
+    { title:"PEPE whales add liquidity after exchange listing", url:"https://coindesk.test/pepe-liquidity", date, source:"CoinDesk", snippet:"PEPE sentiment improved." },
+    { title:"Solana rallies on ETF speculation", url:"https://coindesk.test/solana-etf", date, source:"CoinDesk", snippet:"Meme coins also rose." },
+  ];
+
+  assert.deepEqual(selectDiverseNews(candidates, universal, 5, doge).map((item) => item.title), ["Dogecoin payments expand at online merchant"]);
+  assert.deepEqual(selectDiverseNews(candidates, universal, 5, pepe).map((item) => item.title), ["PEPE whales add liquidity after exchange listing"]);
+});
