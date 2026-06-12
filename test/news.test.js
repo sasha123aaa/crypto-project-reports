@@ -278,3 +278,15 @@ test("strict BNB relevance keeps burn, Binance ecosystem, and BNB Chain impact",
     "Binance regulatory decision changes BNB utility outlook",
   ]));
 });
+
+test("strict LINK relevance prioritizes Chainlink integrations, CCIP, and oracle adoption", () => {
+  const feeds = getNewsFeeds(PROJECTS.link);
+  const date = now.toISOString();
+  const selected = selectDiverseNews([
+    { title:"Ethereum upgrade lifts altcoin market", url:"https://coindesk.test/eth", date, source:"CoinDesk", snippet:"LINK also gained." },
+    { title:"Chainlink CCIP integration expands cross-chain adoption", url:"https://coindesk.test/chainlink-ccip", date, source:"CoinDesk", snippet:"The integration adds Chainlink data infrastructure." },
+    { title:"Bitcoin ETF inflows accelerate", url:"https://decrypt.test/btc", date, source:"Decrypt", snippet:"Oracle tokens traded higher." },
+  ], feeds, 5, PROJECTS.link);
+
+  assert.deepEqual(selected.map((item) => item.title), ["Chainlink CCIP integration expands cross-chain adoption"]);
+});
