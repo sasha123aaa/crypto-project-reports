@@ -256,3 +256,22 @@ test("LINK oracle profile prioritizes utility and value capture without ETH-like
   assert.deepEqual(report.metric_slots.capital, []);
   assert.deepEqual(report.metric_slots.financial, []);
 });
+
+test("HYPE trading-economics semantics prioritize fees, volume, value capture, and valuation", () => {
+  const report = baseReport();
+  report.financials.metrics.app_fees_24h = metric();
+  report.valuation = { metrics:{ annualized_app_fees_market_cap:metric(), dex_volume_market_cap:metric(), market_cap_tvl:metric() } };
+  report.tokenomics = { metrics:{ circulating_supply:metric(), total_supply:metric(), max_supply:metric() } };
+  report.charts = { price_history:[[1, 1], [2, 2]], app_fees_history:[[1, 1], [2, 2]], dex_history:[[1, 1], [2, 2]], volume_history:[[1, 1], [2, 2]], tvl_history:[[1, 1], [2, 2]] };
+  applyProfileAwareSemantics(report, PROJECTS.hype);
+
+  assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "protocol_fees", "dex_volume"]);
+  assert.equal(report.meta.semantic_profile, "trading_venue");
+  assert.deepEqual(report.meta.section_order, ["tokenomics", "financials", "tvl_and_capital", "summary", "final_verdict", "narrative_and_news"]);
+  assert.match(report.hero.lead, /торговый продукт|комиссии|value capture/i);
+  assert.match(report.tokenomics.text.join(" "), /Assistance Fund|value capture|supply-риск/i);
+  assert.ok(report.metric_slots.financial.some(({ key }) => key === "annualized_app_fees_market_cap"));
+  assert.ok(report.metric_slots.financial.some(({ key }) => key === "dex_volume_market_cap"));
+  assert.match(report.final_verdict.paragraphs.join(" "), /growth \/ revenue asset|value capture|объем/i);
+  assert.doesNotMatch(report.hero.lead, /блокспейс|макро-актив|meme/i);
+});

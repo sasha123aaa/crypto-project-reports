@@ -13,7 +13,7 @@ import {
 } from "../src/config/projects.js";
 
 test("project taxonomy exposes the stage-one categories", () => {
-  assert.deepEqual(Object.values(PROJECT_CATEGORIES), ["infra", "macro", "defi", "meme", "utility", "consumer", "hybrid_ecosystem"]);
+  assert.deepEqual(Object.values(PROJECT_CATEGORIES), ["infra", "macro", "defi", "meme", "utility", "consumer", "hybrid_ecosystem", "trading_venue"]);
 });
 
 
@@ -120,4 +120,14 @@ test("LINK is a curated oracle utility profile without chain-capital capabilitie
   for (const capability of ["hasTvl", "hasStablecoins", "hasRwa", "hasProtocolFees", "hasChainFees", "hasDexVolume", "hasUsersData"]) assert.equal(profile.capabilities[capability], false);
   assert.ok(selection.enabledSections.includes("utility_and_adoption"));
   for (const section of ["tvl_and_capital", "stablecoins", "rwa", "financials", "users_and_activity"]) assert.equal(selection.sections[section].status, SECTION_VISIBILITY.DISABLED_BY_PROFILE);
+});
+
+test("HYPE is a curated trading venue growth and revenue profile", () => {
+  const profile = getProjectProfile(PROJECTS.hype);
+  assert.equal(profile.category, "trading_venue");
+  assert.equal(profile.analysisProfile, "trading_economics");
+  assert.equal(profile.capabilities.hasProtocolFees, true);
+  assert.equal(profile.capabilities.hasDexVolume, true);
+  assert.equal(profile.capabilities.hasValueCaptureData, true);
+  assert.deepEqual(profile.preferredSections, ["market", "tokenomics", "financials", "liquidity_and_trading", "tvl_and_capital", "final_summary", "risks", "narrative_and_news"]);
 });

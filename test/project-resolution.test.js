@@ -238,3 +238,11 @@ test("LINK resolves as a curated oracle utility project with exchange-aware symb
   assert.equal(resolved.tradingView, "BYBIT:LINKUSDT");
   assert.equal(resolved.technical, "LINKUSDT");
 });
+
+test("HYPE resolves as curated Hyperliquid with exchange-aware HYPEUSDT mapping", async () => {
+  const project = await resolveProject("hyperliquid", { discoverProject:async () => { throw new Error("must not discover curated HYPE"); } });
+  assert.equal(project.slug, "hype");
+  assert.equal(project.resolution.mode, "registered");
+  assert.equal(project.coingeckoId, "hyperliquid");
+  assert.deepEqual(project.marketSymbols.routes.map(({ tradingView }) => tradingView), ["BINANCE:HYPEUSDT", "BYBIT:HYPEUSDT", "GATEIO:HYPEUSDT"]);
+});

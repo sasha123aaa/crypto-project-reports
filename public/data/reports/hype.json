@@ -1,0 +1,251 @@
+{
+  "meta": {
+    "slug": "hype",
+    "project_name": "Hyperliquid",
+    "ticker": "HYPE",
+    "subtitle": "HYPE • trading venue / revenue-driven growth asset",
+    "categories": [
+      "DEX",
+      "Perpetuals",
+      "Trading Venue",
+      "Revenue",
+      "Value Capture"
+    ],
+    "project_type": "trading_venue_asset",
+    "report_version": "v1.0",
+    "updated_at": "2026-06-12T00:00:00Z",
+    "data_status": "curated-starter"
+  },
+  "hero": {},
+  "market": {
+    "price": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    },
+    "market_cap": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    },
+    "fdv": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    },
+    "volume_24h": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    }
+  },
+  "technical_bias": {
+    "source": "exchange-aware technical bias",
+    "updated_at": null,
+    "timeframes": {},
+    "notes": {}
+  },
+  "executive_summary": {
+    "items": []
+  },
+  "profile": {
+    "strengths": [],
+    "weaknesses": [],
+    "risks": [],
+    "watch": []
+  },
+  "about": {
+    "title": "Что такое HYPE",
+    "paragraphs": [
+      "HYPE — актив торговой площадки Hyperliquid, который следует анализировать через реальный спрос трейдеров, оборот, комиссии и механику value capture.",
+      "Главный инвестиционный вопрос — растет ли ценность токена вместе с продуктовой экономикой или рыночная оценка опережает устойчивые объемы и комиссии."
+    ]
+  },
+  "tokenomics": {
+    "text": [],
+    "metrics": {
+      "circulating_supply": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "total_supply": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "max_supply": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "market_buyback": {
+        "value": null,
+        "formatted": "Assistance Fund buys HYPE",
+        "status": "static",
+        "source": "Hyperliquid mechanism"
+      }
+    }
+  },
+  "financials": {
+    "text": [
+      "Экономика протокола — центральный блок HYPE: комиссии и DEX-оборот показывают, есть ли реальный платящий спрос.",
+      "Мультипликаторы к капитализации помогают проверить, не обгоняет ли оценка продуктовый рост."
+    ],
+    "metrics": {
+      "app_fees_24h": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "DefiLlama"
+      },
+      "dex_volume_24h": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "DefiLlama"
+      },
+      "volume_market_cap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      }
+    }
+  },
+  "capital": {
+    "text": [
+      "Капитал экосистемы подтверждает глубину продукта, но не заменяет анализ оборота, комиссий и value capture."
+    ],
+    "metrics": {
+      "tvl": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "DefiLlama"
+      }
+    }
+  },
+  "users": {
+    "text": [],
+    "metrics": {}
+  },
+  "liquidity": {
+    "text": [],
+    "metrics": {
+      "spot_volume": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "dex_volume_24h": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "DefiLlama"
+      }
+    }
+  },
+  "valuation": {
+    "text": [],
+    "metrics": {
+      "market_cap_tvl": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      },
+      "volume_market_cap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      },
+      "annualized_app_fees_market_cap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      },
+      "dex_volume_market_cap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      }
+    }
+  },
+  "semantic_metrics": {
+    "value_capture": {
+      "value": null,
+      "formatted": "Assistance Fund market buybacks",
+      "status": "static",
+      "source": "Hyperliquid mechanism"
+    }
+  },
+  "narrative": {
+    "items": [
+      "Релевантный нарратив HYPE должен подтверждаться объемами, комиссиями, продуктовой активностью и изменениями value capture."
+    ]
+  },
+  "news": {
+    "status": "partial",
+    "items": [],
+    "source_summary": "Свежие релевантные новости о Hyperliquid временно недоступны",
+    "updated_at": "2026-06-12T00:00:00Z"
+  },
+  "risks": {
+    "items": []
+  },
+  "watchlist": {
+    "items": []
+  },
+  "final_verdict": {
+    "title": "Финальная оценка",
+    "subtitle": "",
+    "paragraphs": []
+  },
+  "charts": {
+    "price_history": [],
+    "volume_history": [],
+    "market_cap_history": [],
+    "tvl_history": [],
+    "app_fees_history": [],
+    "chain_fees_history": [],
+    "dex_history": []
+  },
+  "sources": [
+    {
+      "name": "CoinGecko",
+      "used_for": [
+        "price",
+        "market cap",
+        "fdv",
+        "token supply",
+        "token trading volume"
+      ]
+    },
+    {
+      "name": "DefiLlama",
+      "used_for": [
+        "protocol fees",
+        "DEX volume",
+        "TVL"
+      ]
+    },
+    {
+      "name": "Binance / Bybit / Gate.io",
+      "used_for": [
+        "exchange-aware HYPEUSDT technical bias"
+      ]
+    }
+  ]
+}
