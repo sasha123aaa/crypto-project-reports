@@ -9,6 +9,7 @@ import { marketTechnicalRoute } from "./market-symbols.js";
 import { getProjectProfile, getSectionSelection } from "../config/projects.js";
 import { applySectionSelection, isSectionSelected } from "./section-selection.js";
 import { applyProfileAwareSemantics } from "./profile-semantics.js";
+import { applyInferredTitleSubtitle } from "./title-subtitle-inference.js";
 
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item)=>String(item.name).toLowerCase()===String(chainName).toLowerCase()) : null; }
 function findStableChainData(chains, chainKey){ return Array.isArray(chains) ? chains.find((item)=>String(item.gecko_id || item.name || "").toLowerCase()===String(chainKey).toLowerCase()) : null; }
@@ -98,6 +99,7 @@ export async function buildReport(project){
     sources:[{name:"CoinGecko", used_for:["price","market cap","fdv","volume"]},{name:"DefiLlama", used_for:["tvl","stablecoins","fees","dex volume"]},{name:"Bybit / Binance / Gate.io", used_for:["exchange-aware technical bias"]}]
   };
   applyProfileAwareSemantics(report, project, { preserveCurated:Boolean(project.reportOptions?.preserveCuratedSemantics) });
+  applyInferredTitleSubtitle(report, project);
   applySectionSelection(report, project);
   return report;
 }

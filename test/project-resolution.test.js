@@ -3,6 +3,7 @@ import test from "node:test";
 import { ANALYSIS_PROFILES, PROJECT_CATEGORIES, PROJECTS, getProjectProfile, getRegisteredProject, normalizeProjectInput } from "../src/config/projects.js";
 import { buildRuntimeProjectConfig, buildRuntimeProjectSkeleton, inferProjectCategory, resolveProject } from "../src/lib/project-resolution.js";
 import { inferRuntimeLabels, normalizeRuntimeLabel } from "../src/lib/label-inference.js";
+import { inferTitleSubtitle } from "../src/lib/title-subtitle-inference.js";
 import { MARKET_EXCHANGE_PRIORITY, createMarketSymbols, marketTechnicalRoute, resolveExchangeMarketSymbols } from "../src/lib/market-symbols.js";
 
 const noDiscoveryCalls = new Proxy({}, {
@@ -296,4 +297,33 @@ test("HYPE resolves as curated Hyperliquid with exchange-aware HYPEUSDT mapping"
   assert.equal(project.resolution.mode, "registered");
   assert.equal(project.coingeckoId, "hyperliquid");
   assert.deepEqual(project.marketSymbols.routes.map(({ tradingView }) => tradingView), ["BINANCE:HYPEUSDT", "BYBIT:HYPEUSDT", "GATEIO:HYPEUSDT"]);
+});
+
+
+test("dynamic title/subtitle inference keeps curated copy and gives runtime projects cautious positioning", async () => {
+  const btc = await resolveProject("btc", noDiscoveryCalls);
+  const doge = buildRuntimeProjectConfig("doge", {
+    coin:{ id:"dogecoin", symbol:"doge", name:"Dogecoin" },
+    coinDetails:{ categories:["Meme", "Dog-Themed Coins"], market_data:{} },
+  });
+  const oracle = buildRuntimeProjectConfig("oracle-x", {
+    coin:{ id:"oracle-x", symbol:"orx", name:"Oracle X" },
+    coinDetails:{ categories:["Oracle", "Interoperability"], description:{ en:"A decentralized oracle network." }, market_data:{} },
+  });
+  const mdao = buildRuntimeProjectConfig("mdao", {
+    coin:{ id:"marsdao", symbol:"mdao", name:"MarsDAO" },
+    coinDetails:{ categories:["Decentralized Autonomous Organization (DAO)", "BNB Chain Ecosystem", "Governance"], description:{ en:"A utility token used for governance in its ecosystem." }, market_data:{} },
+  });
+  const sparse = buildRuntimeProjectSkeleton("unknown-token");
+
+  assert.deepEqual(inferTitleSubtitle(btc), { typeLine:"macro monetary asset", subtitle:null, source:"curated" });
+  assert.equal(doge.presentation.typeLine, "Meme / attention asset");
+  assert.match(doge.presentation.subtitle, /ликвидность|оборот|внимани/i);
+  assert.equal(oracle.presentation.typeLine, "Oracle / utility asset");
+  assert.match(oracle.presentation.subtitle, /adoption|интеграц/i);
+  assert.equal(mdao.presentation.typeLine, "Ecosystem utility token");
+  assert.match(mdao.presentation.subtitle, /использован|роли токена/i);
+  assert.equal(sparse.presentation.typeLine, "Utility token");
+  assert.equal(sparse.presentation.source, "fallback");
+  assert.ok(sparse.presentation.subtitle.length > 20);
 });

@@ -58,6 +58,9 @@ test("buildReport keeps curated ETH and SOL profiles and selected sections compa
       assert.equal(report.meta.market_symbols.tradingView, `BYBIT:${project.ticker}USDT`);
       assert.equal(report.meta.market_symbols.technical, `${project.ticker}USDT`);
       assert.ok(report.executive_summary.items.length <= 3);
+      assert.equal(report.meta.presentation.source, "curated");
+      assert.notEqual(report.hero.subtitle, report.meta.presentation.typeLine);
+      assert.match(report.hero.lead, project.slug === "eth" ? /расчетн|капитал|безопасност/i : /экосистем|капитал|комисси/i);
       assert.deepEqual(report.meta.section_order.slice(-3), ["summary", "final_verdict", "narrative_and_news"]);
     }
   });
@@ -124,6 +127,9 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
       assert.deepEqual(report.meta.section_order, ["tokenomics", "summary", "final_verdict", "narrative_and_news"]);
       assert.equal(report.meta.market_symbols.technical, `${report.meta.ticker}USDT`);
       assert.match(report.final_verdict.subtitle, /ликвидность|импульс/i);
+      assert.equal(report.hero.subtitle, "Meme / attention asset");
+      assert.match(report.hero.lead, /ликвидность|оборот|внимани/i);
+      assert.equal(report.meta.presentation.source, "inferred");
       assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "trading_quality"]);
       assert.equal(report.market.price.formatted, report.meta.ticker === "PEPE" ? "$0.00001" : "$0.15");
       assert.deepEqual(report.metric_slots.market, []);
@@ -143,6 +149,8 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
     assert.ok(link.executive_summary.items.length <= 3);
     assert.equal(link.meta.market_symbols.tradingView, "BYBIT:LINKUSDT");
     assert.match(link.final_verdict.subtitle, /спрос на токен/i);
+    assert.equal(link.hero.subtitle, "Oracle / utility asset");
+    assert.match(link.hero.lead, /adoption|интеграц/i);
     assert.match(link.valuation.text.join(" "), /utility-токена/i);
     assert.equal(link.valuation.metrics.valuation_status.status, "unavailable");
     assert.deepEqual(link.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply"]);
