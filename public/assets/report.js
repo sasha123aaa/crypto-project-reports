@@ -275,6 +275,7 @@ function projectIconHtml(meta = {}, compact = false) {
     solana:`<svg viewBox="0 0 128 104" aria-hidden="true"><defs><linearGradient id="sol-g" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#9945ff"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs><path fill="url(#sol-g)" d="M25 0h91l-13 17H12zM12 43h91l13 17H25zM25 86h91l-13 17H12z"/></svg>`,
     dogecoin:`<span class="brand-letter dogecoin-letter">Ð</span>`,
     pepe:`<span class="brand-word pepe-word">PEPE</span>`,
+    bnb:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="#f3ba2f" d="M50 5 65 20 50 35 35 20zm-30 30 15 15-15 15L5 50zm60 0 15 15-15 15-15-15zM50 65l15 15-15 15-15-15zm0-30 15 15-15 15-15-15z"/></svg>`,
     chainlink:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#5578ff" stroke-width="15" d="M50 8 86 29v42L50 92 14 71V29z"/></svg>`,
   };
   const remote = typeof branding.iconUrl === "string" && /^https:\/\//i.test(branding.iconUrl)
@@ -289,12 +290,18 @@ function tokenomicsSectionHtml(report) {
 
 function financialsSectionHtml(report) {
   if (!shouldRenderSection(report, "financials")) return "";
-  return `<section class="panel section-flow finance-section"><div class="section-title">Экономика сети</div><div class="section-sub">Платный спрос и устойчивость экономической активности.</div><div class="hero-grid finance-kpis">${metricSlotsHtml(report, "financial")}</div>${selectedChartGroupHtml(report, "financial-fee-charts", [["app_fees_history", "appFeesChart", "App Fees", "Платная активность приложений"], ["chain_fees_history", "chainFeesChart", "Chain Fees", "Платный спрос на базовый слой"]])}${selectedChartGroupHtml(report, "chart-stack", [["dex_history", "dexChart", "DEX-оборот", "Торговый оборот внутри сети"]])}${insightHtml(report.financials)}</section>`;
+  const hybrid = report?.meta?.semantic_profile === "hybrid_ecosystem";
+  const title = hybrid ? "Экономика BNB ecosystem" : "Экономика сети";
+  const subtitle = hybrid ? "On-chain экономика BNB Chain и сигналы спроса вокруг Binance ecosystem." : "Платный спрос и устойчивость экономической активности.";
+  return `<section class="panel section-flow finance-section"><div class="section-title">${title}</div><div class="section-sub">${subtitle}</div><div class="hero-grid finance-kpis">${metricSlotsHtml(report, "financial")}</div>${selectedChartGroupHtml(report, "financial-fee-charts", [["app_fees_history", "appFeesChart", "App Fees", "Платная активность приложений"], ["chain_fees_history", "chainFeesChart", "Chain Fees", "Платный спрос на базовый слой"]])}${selectedChartGroupHtml(report, "chart-stack", [["dex_history", "dexChart", "DEX-оборот", "Торговый оборот внутри сети"]])}${insightHtml(report.financials)}</section>`;
 }
 
 function capitalSectionHtml(report) {
   if (!shouldRenderSection(report, "tvl_and_capital")) return "";
-  return `<section class="panel section-flow capital-section"><div class="section-title">Капитал в сети</div><div class="section-sub">TVL и ликвидность внутри экосистемы.</div><div class="hero-grid capital-kpis">${metricSlotsHtml(report, "capital")}</div>${selectedChartGroupHtml(report, "capital-charts", [["tvl_history", "tvlChart", "TVL", "Капитал в приложениях сети"], ["stablecoins_history", "stableChart", "Stablecoins", "Ликвидность для расчетов и торговли"]])}${insightHtml(report.capital)}</section>`;
+  const hybrid = report?.meta?.semantic_profile === "hybrid_ecosystem";
+  const title = hybrid ? "BNB Chain / капитал экосистемы" : "Капитал в сети";
+  const subtitle = hybrid ? "TVL и стейблкоины как важный, но не единственный слой спроса на BNB." : "TVL и ликвидность внутри экосистемы.";
+  return `<section class="panel section-flow capital-section"><div class="section-title">${title}</div><div class="section-sub">${subtitle}</div><div class="hero-grid capital-kpis">${metricSlotsHtml(report, "capital")}</div>${selectedChartGroupHtml(report, "capital-charts", [["tvl_history", "tvlChart", "TVL", "Капитал в приложениях сети"], ["stablecoins_history", "stableChart", "Stablecoins", "Ликвидность для расчетов и торговли"]])}${insightHtml(report.capital)}</section>`;
 }
 
 function summarySectionHtml(report) {

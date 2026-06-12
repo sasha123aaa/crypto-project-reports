@@ -28,6 +28,26 @@ test("BTC macro semantics prioritize market structure and supply without infra m
   assert.doesNotMatch(JSON.stringify(report.executive_summary), /TVL|DeFi|блокспейс/i);
 });
 
+
+test("BNB hybrid semantics prioritize burn and chain capital without becoming ETH-like", () => {
+  const report = baseReport();
+  report.tokenomics = { metrics:{
+    burn_mechanism:{ value:null, formatted:"Auto-Burn + BEP-95", status:"static", source:"test" },
+    circulating_supply:metric(), total_supply:metric(), max_supply:metric(),
+  } };
+  report.semantic_metrics.exchange_utility = { value:null, formatted:"Binance ecosystem utility", status:"static", source:"test" };
+  report.charts = { price_history:[[1, 1], [2, 2]], volume_history:[[1, 1], [2, 2]], market_cap_history:[[1, 1], [2, 2]], chain_fees_history:[[1, 1], [2, 2]], tvl_history:[[1, 1], [2, 2]] };
+  applyProfileAwareSemantics(report, PROJECTS.bnb);
+
+  assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "burn_mechanism", "tvl"]);
+  assert.deepEqual(report.meta.section_order, ["tokenomics", "financials", "tvl_and_capital", "summary", "final_verdict", "narrative_and_news"]);
+  assert.match(report.hero.lead, /Binance|BNB Chain|сокращение предложения/i);
+  assert.match(report.tokenomics.conclusion, /Auto-Burn|gas fees|спросом/i);
+  assert.match(report.final_verdict.paragraphs.join(" "), /hybrid-активом|Binance|BNB Chain/i);
+  assert.doesNotMatch(report.hero.lead, /базов.*инфраструктур|независим.*денежн/i);
+  assert.deepEqual(report.chart_slots.map(({ key }) => key), ["price_history", "chain_fees_history", "tvl_history", "volume_history"]);
+});
+
 test("infra hero KPI priorities preserve ETH-style capital metrics", () => {
   const keys = selectHeroKpis(baseReport(), PROJECTS.eth).map(({ key }) => key);
   assert.deepEqual(keys, ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins"]);

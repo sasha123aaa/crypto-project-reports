@@ -1,0 +1,99 @@
+{
+  "meta": {
+    "slug": "bnb",
+    "project_name": "BNB",
+    "ticker": "BNB",
+    "subtitle": "BNB • exchange + chain ecosystem asset",
+    "categories": ["CEX Utility", "BNB Chain", "Burn", "Ecosystem Asset"],
+    "project_type": "hybrid_ecosystem_asset",
+    "report_version": "v1.0",
+    "updated_at": "2026-06-12T00:00:00Z",
+    "data_status": "curated-starter"
+  },
+  "hero": {},
+  "market": {
+    "price": { "value": null, "formatted": "—", "status": "unavailable", "source": "CoinGecko" },
+    "market_cap": { "value": null, "formatted": "—", "status": "unavailable", "source": "CoinGecko" },
+    "fdv": { "value": null, "formatted": "—", "status": "unavailable", "source": "CoinGecko" },
+    "volume_24h": { "value": null, "formatted": "—", "status": "unavailable", "source": "CoinGecko" }
+  },
+  "technical_bias": { "source": "exchange-aware technical bias", "updated_at": null, "timeframes": {}, "notes": {} },
+  "executive_summary": { "items": [] },
+  "profile": { "strengths": [], "weaknesses": [], "risks": [], "watch": [] },
+  "about": {
+    "title": "Что такое BNB",
+    "paragraphs": [
+      "BNB — hybrid ecosystem token: он используется внутри продуктов Binance и одновременно является gas- и базовым активом BNB Chain.",
+      "Инвестиционный тезис зависит от сочетания utility, burn-механики, ликвидности и активности BNB Chain, а не только от одной сетевой метрики."
+    ]
+  },
+  "tokenomics": {
+    "text": [
+      "BNB использует Auto-Burn: объем периодического сжигания определяется формулой, связанной с ценой BNB и активностью BNB Smart Chain, с долгосрочной целью сократить предложение до 100 млн BNB.",
+      "Дополнительная burn-механика BEP-95 в реальном времени сжигает часть gas fees BNB Smart Chain. Точный темп сокращения предложения меняется, поэтому отчет не подменяет его выдуманным числом.",
+      "Спрос на BNB формируется не только оплатой газа: токен используется в Binance ecosystem, включая скидки/utility и отдельные продукты, а также внутри приложений BNB Chain."
+    ],
+    "metrics": {
+      "burn_mechanism": { "value": null, "formatted": "Auto-Burn + BEP-95", "status": "static", "source": "BNB Chain documentation" },
+      "circulating_supply": { "value": null, "formatted": "—", "status": "unavailable", "source": "CoinGecko" },
+      "total_supply": { "value": null, "formatted": "—", "status": "unavailable", "source": "CoinGecko" },
+      "max_supply": { "value": null, "formatted": "—", "status": "unavailable", "source": "CoinGecko" },
+      "burn_target": { "value": 100000000, "formatted": "100 млн BNB", "status": "static", "source": "BNB Chain documentation" },
+      "market_cap": { "value": null, "formatted": "—", "status": "unavailable", "source": "CoinGecko" },
+      "fdv": { "value": null, "formatted": "—", "status": "unavailable", "source": "CoinGecko" }
+    }
+  },
+  "financials": {
+    "text": [
+      "Экономика BNB состоит из двух слоев: измеримой on-chain активности BNB Chain и более широкой utility внутри Binance ecosystem.",
+      "Chain fees и DEX-оборот подтверждают сетевой спрос, но не должны интерпретироваться как полная экономика Binance или как доход держателя BNB."
+    ],
+    "metrics": {
+      "app_fees_24h": { "value": null, "formatted": "—", "status": "unavailable", "source": "DefiLlama" },
+      "chain_fees_24h": { "value": null, "formatted": "—", "status": "unavailable", "source": "DefiLlama" },
+      "dex_volume_24h": { "value": null, "formatted": "—", "status": "unavailable", "source": "DefiLlama" },
+      "volume_market_cap": { "value": null, "formatted": "—", "status": "unavailable", "source": "calc" }
+    }
+  },
+  "capital": {
+    "text": [
+      "TVL и стейблкоины показывают капитал внутри BNB Chain и помогают проверить, есть ли у chain-слоя реальное использование.",
+      "Этот слой важен, но не описывает весь спрос на BNB, поскольку часть utility находится в Binance ecosystem вне on-chain метрик."
+    ],
+    "metrics": {
+      "tvl": { "value": null, "formatted": "—", "status": "unavailable", "source": "DefiLlama" },
+      "stablecoins_mcap": { "value": null, "formatted": "—", "status": "unavailable", "source": "DefiLlama" }
+    }
+  },
+  "users": { "text": [], "metrics": {} },
+  "liquidity": {
+    "text": ["Биржевая ликвидность поддерживает доступность BNB, но одновременно усиливает зависимость инвестиционного тезиса от Binance ecosystem."],
+    "metrics": {
+      "spot_volume": { "value": null, "formatted": "—", "status": "unavailable", "source": "CoinGecko" },
+      "dex_volume_24h": { "value": null, "formatted": "—", "status": "unavailable", "source": "DefiLlama" }
+    }
+  },
+  "valuation": {
+    "text": ["BNB нельзя оценивать только как L1 или только как биржевой токен: цена должна подтверждаться совокупным спросом, burn и капиталом BNB Chain."],
+    "metrics": {
+      "market_cap_tvl": { "value": null, "formatted": "—", "status": "unavailable", "source": "calc" },
+      "volume_market_cap": { "value": null, "formatted": "—", "status": "unavailable", "source": "calc" },
+      "stablecoins_tvl": { "value": null, "formatted": "—", "status": "unavailable", "source": "calc" }
+    }
+  },
+  "semantic_metrics": {
+    "exchange_utility": { "value": null, "formatted": "Binance ecosystem utility", "status": "static", "source": "project structure" },
+    "token_utility": { "value": null, "formatted": "CEX utility + gas + ecosystem asset", "status": "static", "source": "project structure" },
+    "adoption": { "value": null, "formatted": "Binance ecosystem + BNB Chain", "status": "static", "source": "project structure" }
+  },
+  "narrative": { "items": ["Следить нужно за burn, utility в Binance ecosystem, развитием BNB Chain и регуляторными событиями, способными изменить спрос на BNB."] },
+  "risks": { "items": ["Зависимость спроса на BNB от Binance и регуляторной среды.", "Ослабление utility или активности BNB Chain."] },
+  "watchlist": { "items": ["Темп burn и динамику предложения.", "TVL, стейблкоины, комиссии и DEX-оборот BNB Chain.", "Изменения utility и регуляторного статуса Binance ecosystem."] },
+  "final_verdict": { "title": "Финальная оценка", "subtitle": "Инвестиционный тезис: utility, burn и chain-слой должны поддерживать друг друга", "paragraphs": [] },
+  "charts": { "price_history": [], "volume_history": [], "market_cap_history": [], "tvl_history": [], "stablecoins_history": [], "app_fees_history": [], "chain_fees_history": [], "dex_history": [] },
+  "sources": [
+    { "name": "CoinGecko", "used_for": ["price", "market cap", "FDV", "volume", "supply"] },
+    { "name": "DefiLlama", "used_for": ["BNB Chain TVL", "stablecoins", "fees", "DEX volume"] },
+    { "name": "BNB Chain documentation", "used_for": ["Auto-Burn", "BEP-95", "token utility"] }
+  ]
+}

@@ -260,3 +260,21 @@ test("strict BTC relevance keeps Bitcoin-focused market coverage and rejects sid
 
   assert.deepEqual(selected.map((item) => item.title), ["Spot Bitcoin ETF inflows accelerate"]);
 });
+
+test("strict BNB relevance keeps burn, Binance ecosystem, and BNB Chain impact", () => {
+  const feeds = getNewsFeeds(PROJECTS.bnb);
+  const date = now.toISOString();
+  const selected = selectDiverseNews([
+    { title:"Ethereum upgrade boosts altcoin market", url:"https://coindesk.test/ethereum-upgrade", date, source:"CoinDesk", snippet:"BNB also rose." },
+    { title:"BNB Auto-Burn removes tokens from supply", url:"https://coindesk.test/bnb-auto-burn", date, source:"CoinDesk", snippet:"The quarterly burn reduced BNB supply." },
+    { title:"BNB Chain upgrade targets ecosystem activity", url:"https://decrypt.test/bnb-chain-upgrade", date, source:"Decrypt", snippet:"Developers outlined the BNB Chain roadmap." },
+    { title:"Binance regulatory decision changes BNB utility outlook", url:"https://cointelegraph.test/binance-bnb-regulation", date, source:"Cointelegraph", snippet:"The decision may affect Binance ecosystem demand for BNB." },
+    { title:"Solana DEX volume reaches record", url:"https://decrypt.test/solana-dex", date, source:"Decrypt", snippet:"BNB Chain remained a competitor." },
+  ], feeds, 5, PROJECTS.bnb);
+
+  assert.deepEqual(new Set(selected.map((item) => item.title)), new Set([
+    "BNB Auto-Burn removes tokens from supply",
+    "BNB Chain upgrade targets ecosystem activity",
+    "Binance regulatory decision changes BNB utility outlook",
+  ]));
+});

@@ -15,6 +15,7 @@ export const PROJECT_CATEGORIES = Object.freeze({
   MEME: "meme",
   UTILITY: "utility",
   CONSUMER: "consumer",
+  HYBRID_ECOSYSTEM: "hybrid_ecosystem",
 });
 
 export const ANALYSIS_PROFILES = Object.freeze({
@@ -24,6 +25,7 @@ export const ANALYSIS_PROFILES = Object.freeze({
   MEME_ASSET: "meme_asset",
   UTILITY_TOKEN: "utility_token",
   CONSUMER_APP: "consumer_app",
+  CEX_CHAIN_HYBRID: "cex_chain_hybrid",
 });
 
 export const CAPABILITY_DEFAULTS = Object.freeze({
@@ -174,6 +176,56 @@ export const PROJECTS = {
     marketSymbols: createMarketSymbols("ETH"),
     bybitSymbol: "ETHUSDT",
     tags: ["L1", "DeFi", "Smart Contracts"]
+  },
+  bnb: {
+    slug: "bnb",
+    name: "BNB",
+    ticker: "BNB",
+    aliases: ["binancecoin", "binance coin", "bnb chain"],
+    subtitle: "BNB • exchange + chain ecosystem asset",
+    branding: { iconKey: "bnb", accent: "#f3ba2f" },
+    projectType: "hybrid_ecosystem_asset",
+    categories: ["CEX Utility", "BNB Chain", "Burn", "Ecosystem Asset"],
+    projectProfile: {
+      category: PROJECT_CATEGORIES.HYBRID_ECOSYSTEM,
+      analysisProfile: ANALYSIS_PROFILES.CEX_CHAIN_HYBRID,
+      capabilities: {
+        hasTvl: true,
+        hasStablecoins: true,
+        hasChainFees: true,
+        hasDexVolume: true,
+        hasTokenomics: true,
+        hasNarrativeNews: true,
+        hasLiquidityData: true,
+        hasTokenUtilityData: true,
+        hasAdoptionData: true,
+      },
+      preferredSections: [
+        "market",
+        "tokenomics",
+        "financials",
+        "tvl_and_capital",
+        "stablecoins",
+        "liquidity_and_trading",
+        "final_summary",
+        "risks",
+        "narrative_and_news",
+      ],
+    },
+    coingeckoId: "binancecoin",
+    defillamaChain: "BSC",
+    stablecoinChain: "BSC",
+    newsKeywords: ["bnb", "bnb chain", "binance ecosystem", "binance coin"],
+    newsRelevance: {
+      mode: "strict",
+      directTerms: ["bnb", "bnb chain", "binance coin"],
+      contextTerms: ["bnb burn", "bnb auto burn", "bnb token burn", "bnb chain upgrade", "bnb chain ecosystem", "binance ecosystem", "binance launchpool", "binance launchpad", "binance regulatory", "binance regulation"],
+      competingTerms: ["bitcoin", "btc", "ethereum", "ether", "eth", "solana", "sol", "xrp", "dogecoin", "doge", "pepe"],
+    },
+    reportOptions: { preserveCuratedSemantics: false },
+    marketSymbols: createMarketSymbols("BNB", { exchanges:["BINANCE", "BYBIT", "GATEIO"] }),
+    bybitSymbol: "BNBUSDT",
+    tags: ["CEX Utility", "BNB Chain", "Burn", "Ecosystem Asset"],
   },
   sol: {
     slug: "sol",
