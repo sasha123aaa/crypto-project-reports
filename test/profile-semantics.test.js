@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PROJECTS, PROJECT_PROFILE_EXAMPLES } from "../src/config/projects.js";
-import { applyProfileAwareSemantics, isAvailableMetric, selectHeroKpis, selectReportMetricSlots } from "../src/lib/profile-semantics.js";
+import { applyProfileAwareSemantics, getCategorySectionOrder, isAvailableMetric, selectHeroKpis, selectReportMetricSlots } from "../src/lib/profile-semantics.js";
 
 const metric = (value = 1) => ({ value, formatted:String(value), status:"live", source:"test" });
 function baseReport() {
@@ -179,4 +179,23 @@ test("category-aware semantics attach concise section conclusions", () => {
   assert.match(utility.narrative.conclusion, /использование токена/i);
   assert.match(meme.liquidity.conclusion, /выйти из позиции|проскальзывания/i);
   assert.match(meme.narrative.conclusion, /внимания/i);
+});
+
+
+test("category-aware section order keeps summaries and verdicts before news", () => {
+  const infraOrder = getCategorySectionOrder(PROJECTS.eth);
+  const memeOrder = getCategorySectionOrder({ projectProfile:{ category:"meme", capabilities:{} } });
+
+  assert.deepEqual(infraOrder.slice(0, 3), ["tokenomics", "financials", "tvl_and_capital"]);
+  assert.deepEqual(memeOrder.slice(0, 1), ["tokenomics"]);
+  for (const order of [infraOrder, memeOrder]) {
+    assert.ok(order.indexOf("summary") < order.indexOf("final_verdict"));
+    assert.ok(order.indexOf("final_verdict") < order.indexOf("narrative_and_news"));
+  }
+});
+
+test("profile semantics publishes the category section order for the renderer", () => {
+  const report = baseReport();
+  applyProfileAwareSemantics(report, PROJECTS.sol);
+  assert.deepEqual(report.meta.section_order, getCategorySectionOrder(PROJECTS.sol));
 });

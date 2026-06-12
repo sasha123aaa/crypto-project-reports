@@ -18,7 +18,17 @@ test("KPI renderer hides unavailable placeholders and uses profile-aware metric 
   assert.match(source, /function metricSlotsHtml\(report, slot\)/);
   assert.match(source, /function metricSlotsExcludingHtml\(report, slot, excludeKeys\)/);
   assert.match(source, /category === "meme"/);
-  assert.match(source, /metricSlotsHtml\(data, "tokenomics"\)/);
-  assert.match(source, /metricSlotsHtml\(data, "financial"\)/);
-  assert.match(source, /metricSlotsHtml\(data, "capital"\)/);
+  assert.match(source, /metricSlotsHtml\(report, "tokenomics"\)/);
+  assert.match(source, /metricSlotsHtml\(report, "financial"\)/);
+  assert.match(source, /metricSlotsHtml\(report, "capital"\)/);
+});
+
+
+test("report renderer follows profile section order and keeps news in the closing flow", async () => {
+  const source = await readFile(new URL("../public/assets/report.js", import.meta.url), "utf8");
+  assert.match(source, /function orderedReportSectionsHtml\(report\)/);
+  assert.match(source, /report\?\.meta\?\.section_order/);
+  assert.match(source, /narrative_and_news: \(\) => newsHtml\(report\.news, report\)/);
+  assert.ok(source.indexOf("summary: () =>") < source.indexOf("final_verdict: () =>"));
+  assert.ok(source.indexOf("final_verdict: () =>") < source.indexOf("narrative_and_news: () =>"));
 });
