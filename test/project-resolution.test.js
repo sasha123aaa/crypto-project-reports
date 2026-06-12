@@ -150,3 +150,13 @@ test("runtime symbol mapping is project-specific for DOGE, PEPE, and LINK", () =
     assert.equal(project.bybitSymbol, `${symbol}USDT`);
   }
 });
+
+test("successful discovery with no exact match returns project-not-found", async () => {
+  const project = await resolveProject("definitely-not-a-real-project", {
+    searchCoinGeckoProjects: async () => [
+      { id:"unrelated-token", symbol:"other", name:"Unrelated Token", market_cap_rank:1 },
+    ],
+  });
+
+  assert.equal(project, null);
+});

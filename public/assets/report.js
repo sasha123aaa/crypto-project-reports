@@ -572,16 +572,29 @@ async function initTradingView(symbol) {
   }
 }
 
+function reportStateHtml(kind, title, message) {
+  const spinner = kind === "loading" ? `<span class="state-spinner" aria-hidden="true"></span>` : "";
+  const actions = kind === "loading" ? "" : `<div class="state-actions"><a class="state-link" href="/">Выбрать другой проект</a></div>`;
+  return `<div class="report-state ${kind === "loading" ? "loading-state" : "error-state"}">${spinner}<div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(message)}</span></div>${actions}</div>`;
+}
+
 async function loadReport() {
   injectEnhancementStyles();
   const slug = getSlug();
   const app = document.getElementById("app");
+  const reportSearch = document.getElementById("report-project-search");
+  if (reportSearch) reportSearch.value = slug.toUpperCase();
+  app.innerHTML = reportStateHtml("loading", `Собираем отчет по ${slug.toUpperCase()}…`, "Подключаем доступные источники данных. Runtime-отчет может занять несколько секунд.");
 
   try {
-    const res = await fetch(`/api/report/${slug}`, { cache:"no-store", headers:{ "cache-control":"no-cache" } });
+    const res = await fetch(`/api/report/${encodeURIComponent(slug)}`, { cache:"no-store", headers:{ "cache-control":"no-cache" } });
     const data = await res.json();
     if (!res.ok) {
-      app.innerHTML = `<div class="error-box">Ошибка: ${escapeHtml(data.error || "не удалось загрузить отчет")}</div>`;
+      if (res.status === 404) {
+        app.innerHTML = reportStateHtml("error", "Проект не найден", "Проверьте тикер или slug и попробуйте другой проект.");
+      } else {
+        app.innerHTML = reportStateHtml("error", "Недостаточно данных для отчета", "Сейчас не удалось собрать отчет. Попробуйте еще раз позже или выберите другой проект.");
+      }
       return;
     }
 
@@ -616,8 +629,8 @@ async function loadReport() {
     createDashboardChart("tvlChart", tvlSeries, "TVL", { color:"#65a0ff" });
     createDashboardChart("stableChart", stableSeries, "Stablecoins", { color:"#55d6a5" });
     if (tradingViewSymbol) initTradingView(tradingViewSymbol);
-  } catch (error) {
-    app.innerHTML = `<div class="error-box">Ошибка загрузки: ${escapeHtml(error.message)}</div>`;
+  } catch {
+    app.innerHTML = reportStateHtml("error", "Не удалось загрузить отчет", "Проверьте соединение и попробуйте еще раз.");
   }
 }
 

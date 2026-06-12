@@ -306,8 +306,10 @@ export async function resolveProject(input, discovery = DEFAULT_DISCOVERY) {
   }
 
   try {
-    return await discoverRuntimeProject(input, discovery) || buildRuntimeProjectSkeleton(input);
+    return await discoverRuntimeProject(input, discovery);
   } catch {
+    // Keep a conservative runtime fallback when discovery itself is unavailable.
+    // A successful discovery with no exact identity match is an unknown project.
     return buildRuntimeProjectSkeleton(input);
   }
 }
