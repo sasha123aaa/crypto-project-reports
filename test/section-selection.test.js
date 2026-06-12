@@ -117,3 +117,15 @@ test("BNB reference report keeps hybrid economy and capital sections renderable"
   assert.equal(report.tokenomics.metrics.burn_mechanism.formatted, "Auto-Burn + BEP-95");
   assert.equal(report.semantic_metrics.exchange_utility.formatted, "Binance ecosystem utility");
 });
+
+test("LINK curated selection enables utility adoption and rejects ETH-like capital blocks", async () => {
+  const report = await loadReport("link");
+  const selection = applySectionSelection(report, PROJECTS.link);
+
+  for (const section of ["market", "tokenomics", "liquidity_and_trading", "valuation", "utility_and_adoption", "narrative_and_news", "risks", "final_summary"]) {
+    assert.ok(["enabled", "partial"].includes(selection.sections[section].status), `${section} should remain renderable`);
+  }
+  for (const section of ["tvl_and_capital", "stablecoins", "rwa", "financials", "users_and_activity", "demand_and_flows"]) {
+    assert.equal(selection.sections[section].status, "disabled_by_profile");
+  }
+});

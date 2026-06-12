@@ -65,15 +65,15 @@ test("BNB curated identity uses Binance-first BNBUSDT mapping and aliases", asyn
 });
 
 test("resolver returns a conservative profiled fallback when discovery is unavailable", async () => {
-  for (const input of ["doge", "pepe", "link"]) {
+  for (const input of ["doge", "pepe"]) {
     const project = await resolveProject(input, noDiscoveryCalls);
     const slug = input.toLowerCase();
     const ticker = input.toUpperCase();
 
     assert.equal(project.slug, slug);
     assert.equal(project.ticker, ticker);
-    const expectedCategory = input === "link" ? PROJECT_CATEGORIES.UTILITY : PROJECT_CATEGORIES.MEME;
-    const expectedProfile = input === "link" ? ANALYSIS_PROFILES.UTILITY_TOKEN : ANALYSIS_PROFILES.MEME_ASSET;
+    const expectedCategory = PROJECT_CATEGORIES.MEME;
+    const expectedProfile = ANALYSIS_PROFILES.MEME_ASSET;
     assert.equal(project.projectType, "runtime");
     assert.equal(project.category, expectedCategory);
     assert.equal(project.analysisProfile, expectedProfile);
@@ -117,7 +117,7 @@ function discoveryFor(coin, coinDetails, { chains = [], stablecoins = [], protoc
   };
 }
 
-test("runtime discovery infers cautious profiles for doge, pepe, and link", async () => {
+test("runtime discovery infers cautious profiles for doge, pepe, and a generic oracle", async () => {
   const doge = await resolveProject("doge", discoveryFor(
     { id:"dogecoin", symbol:"doge", name:"Dogecoin", market_cap_rank:9 },
     { categories:["Meme", "Dog-Themed Coins", "Solana Ecosystem"], image:{ large:"https://assets.test/doge.png" }, market_data:{ circulating_supply:150_000_000_000, total_volume:{ usd:1_000_000 } } },
@@ -127,11 +127,12 @@ test("runtime discovery infers cautious profiles for doge, pepe, and link", asyn
     { id:"pepe", symbol:"pepe", name:"Pepe", market_cap_rank:30 },
     { categories:["Meme", "Frog-Themed Coins"], market_data:{ total_supply:420_690_000_000_000, total_volume:{ usd:500_000 } } },
   ));
-  const link = await resolveProject("link", discoveryFor(
-    { id:"chainlink", symbol:"link", name:"Chainlink", market_cap_rank:15 },
-    { categories:["Oracle", "Interoperability"], market_data:{ circulating_supply:650_000_000, total_volume:{ usd:750_000 } } },
-    { protocols:[{ name:"Chainlink", slug:"chainlink", category:"Oracle", tvl:10_000_000 }] },
-  ));
+  const link = buildRuntimeProjectConfig("oraclex", {
+    coin:{ id:"oracle-x", symbol:"oraclex", name:"Oracle X", market_cap_rank:150 },
+    coinDetails:{ categories:["Oracle", "Interoperability"], market_data:{ circulating_supply:650_000_000, total_volume:{ usd:750_000 } } },
+    chain:null, stablecoinChain:null, protocol:{ name:"Oracle X", slug:"oracle-x", category:"Oracle", tvl:10_000_000 },
+    marketSymbols:createMarketSymbols("ORACLEX"),
+  });
 
   assert.equal(doge.category, PROJECT_CATEGORIES.MEME);
   assert.equal(doge.analysisProfile, ANALYSIS_PROFILES.MEME_ASSET);
@@ -221,4 +222,19 @@ test("exchange routing returns an honest unavailable state without another asset
   assert.equal(resolved.tradingView, null);
   assert.equal(resolved.technical, null);
   assert.equal(marketTechnicalRoute(resolved), null);
+});
+
+test("LINK resolves as a curated oracle utility project with exchange-aware symbols", async () => {
+  for (const input of ["link", "LINK", "chainlink"]) {
+    const project = await resolveProject(input);
+    assert.equal(project.slug, PROJECTS.link.slug);
+    assert.notEqual(project.resolution.mode, "runtime");
+    assert.equal(getProjectProfile(project).analysisProfile, "oracle_utility");
+  }
+
+  assert.equal(PROJECTS.link.branding.iconKey, "chainlink");
+  assert.equal(PROJECTS.link.marketSymbols.tradingView, "BINANCE:LINKUSDT");
+  const resolved = await resolveExchangeMarketSymbols(PROJECTS.link.marketSymbols, async (route) => route.exchange === "BYBIT" && route.symbol === "LINKUSDT");
+  assert.equal(resolved.tradingView, "BYBIT:LINKUSDT");
+  assert.equal(resolved.technical, "LINKUSDT");
 });

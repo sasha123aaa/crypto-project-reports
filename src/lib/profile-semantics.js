@@ -1,4 +1,4 @@
-import { PROJECT_CATEGORIES, getProjectProfile } from "../config/projects.js";
+import { ANALYSIS_PROFILES, PROJECT_CATEGORIES, getProjectProfile } from "../config/projects.js";
 
 const CLOSING_SECTION_ORDER = Object.freeze(["summary", "final_verdict", "narrative_and_news"]);
 
@@ -13,8 +13,11 @@ export const CATEGORY_SECTION_ORDER = Object.freeze({
 });
 
 export function getCategorySectionOrder(project) {
-  const category = getProjectProfile(project).category;
-  return [...(CATEGORY_SECTION_ORDER[category] || CATEGORY_SECTION_ORDER[PROJECT_CATEGORIES.UTILITY])];
+  const profile = getProjectProfile(project);
+  if (profile.analysisProfile === ANALYSIS_PROFILES.ORACLE_UTILITY) {
+    return ["tokenomics", "utility_and_adoption", ...CLOSING_SECTION_ORDER];
+  }
+  return [...(CATEGORY_SECTION_ORDER[profile.category] || CATEGORY_SECTION_ORDER[PROJECT_CATEGORIES.UTILITY])];
 }
 
 const KPI_DEFINITIONS = Object.freeze({
@@ -173,6 +176,14 @@ const PROFILE_COPY = Object.freeze({
   },
 });
 
+const ORACLE_UTILITY_COPY = Object.freeze({
+  hero: (name) => ({ title:name, subtitle:"Oracle / utility infrastructure asset", lead:`${name} оценивается через роль сети в доставке данных и межсетевом взаимодействии, масштаб интеграций и то, превращается ли использование сервисов в спрос на LINK.`, main_strength:"Критически важная инфраструктурная роль в данных, oracle-сервисах и межсетевых интеграциях.", main_risk:"Рост использования сети может не полностью и не сразу отражаться в спросе и цене токена.", status_text:"Фокус: utility LINK, adoption интеграций, ликвидность и качество захвата ценности." }),
+  executive: () => ["Проверить, расширяется ли реальное использование oracle-сервисов, Data Feeds и CCIP.", "Отделить рост интеграций Chainlink от измеримого спроса на LINK и экономической выгоды держателя.", "Сопоставить рыночную оценку и ликвидность с качеством token utility и будущим value capture."],
+  profile: { strengths:["Значимая роль в инфраструктуре данных и межсетевого взаимодействия","Широкая интеграционная поверхность и зрелая рыночная ликвидность"], weaknesses:["Связь между ростом использования сервисов и спросом на LINK не всегда прямая","Не все adoption-сигналы дают сопоставимые количественные метрики"], risks:["Использование сети растет быстрее, чем экономическая ценность LINK","Конкуренция oracle- и interoperability-решений","Оценка опережает подтверждаемый token demand"], watch:["Новые и расширяющиеся интеграции Data Feeds, CCIP и других сервисов","Механизмы оплаты, staking и передачи сетевой ценности LINK","Оборот, ликвидность и разрыв между Market Cap и FDV"] },
+  verdict: (name) => ({ title:"Финальная оценка", subtitle:"Инвестиционный тезис: инфраструктурная полезность должна превращаться в спрос на LINK", paragraphs:[`${name} обладает сильной инфраструктурной значимостью и широким adoption-потенциалом, но инвестиционный тезис требует доказательства, что использование oracle-сервисов, данных и CCIP создает устойчивый спрос на LINK. Главный риск — рост полезности сети без пропорционального захвата ценности токеном.`] }),
+  conclusions: { tokenomics:"Токеномика LINK важна не только структурой предложения: ключевой вопрос — создает ли оплата сервисов, staking и безопасность сети устойчивый спрос на токен сильнее потенциального разводнения.", liquidity:"Ликвидность и оборот делают LINK доступным для крупного рынка, но сами по себе не доказывают value capture.", valuation:"Оценку LINK следует сопоставлять с ликвидностью, adoption и качеством связи между использованием сервисов и спросом на токен, а не с TVL чужих сетей.", utility_adoption:"Интеграции и инфраструктурная значимость подтверждают полезность Chainlink; инвестиционная ценность зависит от того, насколько эта полезность превращается в спрос на LINK.", narrative:"Приоритет имеют новости об интеграциях, Data Feeds, CCIP, staking и механизмах, меняющих использование или value capture LINK." },
+});
+
 const PROJECT_COPY = Object.freeze({
   btc: {
     executive:["Оценить, сохраняет ли BTC глубокую ликвидность при росте волатильности.", "Сопоставить оценку с оборотом, доступным предложением и фазой рыночного цикла.", "Следить за институциональными потоками, ETF-спросом и макроусловиями."],
@@ -218,14 +229,23 @@ export function isAvailableMetric(metric, { requireValue = false } = {}) {
   return Boolean(formatted) && !EMPTY_METRIC_FORMATS.has(formatted) && !formatted.includes("временно недоступ") && !formatted.includes("unknown");
 }
 
-function prioritiesFor(slot, category) {
+function prioritiesFor(slot, profile) {
+  if (profile.analysisProfile === ANALYSIS_PROFILES.ORACLE_UTILITY) {
+    const oracle = {
+      hero:["price", "market_cap", "fdv", "volume_24h", "trading_quality", "token_utility", "adoption", "circulating_supply", "liquidity"],
+      market:["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity"],
+      tokenomics:["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply"],
+      financial:[], capital:[],
+    };
+    return oracle[slot] || [];
+  }
   const priorities = METRIC_SLOT_PRIORITIES[slot] || {};
-  return priorities[category] || priorities.default || [];
+  return priorities[profile.category] || priorities.default || [];
 }
 
 export function selectMetricSlots(report, project, slot, limit = Infinity) {
   const profile = getProjectProfile(project);
-  return prioritiesFor(slot, profile.category).flatMap((key) => {
+  return prioritiesFor(slot, profile).flatMap((key) => {
     const definition = KPI_DEFINITIONS[key];
     const metric = definition ? getPath(report, definition.path) : null;
     return definition && supports(definition, profile.capabilities) && isAvailableMetric(metric, definition)
@@ -269,11 +289,34 @@ export function selectReportMetricSlots(report, project) {
 export function applyProfileAwareSemantics(report, project, { preserveCurated = false } = {}) {
   if (!report || !project) return report;
   const profile = getProjectProfile(project);
-  const copy = PROFILE_COPY[profile.category] || PROFILE_COPY[PROJECT_CATEGORIES.UTILITY];
+  const copy = profile.analysisProfile === ANALYSIS_PROFILES.ORACLE_UTILITY ? ORACLE_UTILITY_COPY : (PROFILE_COPY[profile.category] || PROFILE_COPY[PROJECT_CATEGORIES.UTILITY]);
   const projectCopy = PROJECT_COPY[project.slug] || {};
   const name = project.name || report.meta?.project_name || project.ticker;
   const ticker = project.ticker || report.meta?.ticker || "TOKEN";
   const useGeneratedCopy = !preserveCurated;
+
+  if (profile.analysisProfile === ANALYSIS_PROFILES.ORACLE_UTILITY) {
+    report.semantic_metrics = {
+      ...(report.semantic_metrics || {}),
+      token_utility:{ value:null, formatted:"Оплата сервисов + staking / security", status:"manual", source:"project profile" },
+      adoption:{ value:null, formatted:"Интеграции Data Feeds, CCIP и сервисов", status:"manual", source:"project profile" },
+    };
+    report.tokenomics = report.tokenomics || { metrics:{} };
+    report.tokenomics.text = [
+      "LINK нужен в экономике Chainlink для оплаты сервисов и участия в staking / security-механизмах; поэтому спрос на токен должен оцениваться вместе с реальным использованием сети.",
+      "Supply-структура, доля обращения и разрыв между Market Cap и FDV показывают потенциальное давление предложения, но не отвечают на вопрос value capture без данных о token demand.",
+      "Главный вопрос инвестора: растет ли ценность LINK вместе с полезностью Chainlink и насколько прямо сервисные платежи, staking и безопасность передают эту ценность токену.",
+    ];
+    report.risks = { items:[...ORACLE_UTILITY_COPY.profile.risks] };
+    report.watchlist = { items:[...ORACLE_UTILITY_COPY.profile.watch] };
+    report.utility_adoption = {
+      items:[
+        "Chainlink связывает смарт-контракты с внешними данными и межсетевыми сообщениями; Data Feeds и CCIP — ключевые направления проверки adoption.",
+        "LINK используется в экономике сервисов и staking / security-механизмах, но степень прямой передачи роста использования держателю токена остается главным вопросом.",
+        "Количество интеграций само по себе не равно выручке или token demand; без надежной сопоставимой live-метрики отчет не подменяет этот пробел выдуманным KPI.",
+      ],
+    };
+  }
 
   report.meta = { ...(report.meta || {}), project_profile:profile, semantic_profile:profile.category, section_order:getCategorySectionOrder(project) };
   report.hero = preserveCurated && report.hero ? report.hero : copy.hero(name);
