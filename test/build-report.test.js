@@ -113,6 +113,8 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
 
     for (const report of [doge, pepe]) {
       assert.equal(report.meta.project_profile.category, "meme");
+      assert.ok(report.meta.categories.includes("Meme"));
+      assert.ok(report.meta.categories.length <= 5);
       assert.deepEqual(new Set(report.meta.section_selection.enabledSections), new Set(["market", "tokenomics", "liquidity_and_trading", "narrative_and_news", "risks", "final_summary"]));
       assert.equal(report.meta.section_selection.sections.tvl_and_capital.status, "disabled_by_profile");
       assert.equal(report.meta.section_selection.sections.financials.status, "disabled_by_profile");
@@ -134,6 +136,7 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
     }
 
     assert.equal(link.meta.project_profile.category, "utility");
+    assert.deepEqual(link.meta.categories, ["Oracle", "Interoperability"]);
     assert.deepEqual(new Set(link.meta.section_selection.enabledSections), new Set(["market", "tokenomics", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"]));
     assert.equal(link.meta.section_selection.sections.tvl_and_capital.status, "disabled_by_profile");
     assert.doesNotMatch(link.executive_summary.items.join(" "), /блокчейн-платформ|TVL|сетевая экономика/i);

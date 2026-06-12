@@ -9,6 +9,7 @@ import {
 import { fetchCoinGeckoProject, searchCoinGeckoProjects } from "../adapters/coingecko.js";
 import { fetchDefiLlamaChains, fetchDefiLlamaProtocols, fetchStablecoinChains, stablecoinMcapUsd } from "../adapters/defillama.js";
 import { createMarketSymbols, resolveExchangeMarketSymbols } from "./market-symbols.js";
+import { inferRuntimeLabels } from "./label-inference.js";
 
 const CATEGORY_PROFILES = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: ANALYSIS_PROFILES.L1_INFRA,
@@ -75,17 +76,6 @@ function runtimeNewsRelevance(coin, ticker) {
     contextTerms: KNOWN_NEWS_CONTEXT[key] || directTerms,
     competingTerms: ["bitcoin", "btc", "ethereum", "ether", "eth", "solana", "sol", "xrp", "dogecoin", "doge", "pepe"].filter((term) => !directTerms.map((value) => String(value).toLowerCase()).includes(term)),
   };
-}
-
-function runtimeCategories(categories, category) {
-  const useful = {
-    [PROJECT_CATEGORIES.MEME]: /meme|dog-themed|frog-themed|cat-themed|community token/i,
-    [PROJECT_CATEGORIES.INFRA]: /layer[ -]?1|layer[ -]?2|smart contract|blockchain infrastructure/i,
-    [PROJECT_CATEGORIES.DEFI]: /defi|decentralized exchange|lending|yield|staking|derivatives/i,
-    [PROJECT_CATEGORIES.UTILITY]: /oracle|interoperability|data availability|storage|identity|utility/i,
-    [PROJECT_CATEGORIES.CONSUMER]: /gaming|social|consumer|entertainment|nft/i,
-  }[category];
-  return categories.filter((value) => useful?.test(String(value))).slice(0, 3);
 }
 
 const DEFAULT_DISCOVERY = Object.freeze({
@@ -224,7 +214,7 @@ export function buildRuntimeProjectConfig(input, discovery) {
     ticker,
     subtitle: `${ticker} • runtime ${category} profile`,
     projectType,
-    categories: runtimeCategories(categories, category),
+    categories: inferRuntimeLabels({ coinDetails, protocol, chain, category, signals }),
     coingeckoId: coin.id,
     ...(chain ? { defillamaChain:chain.name } : {}),
     ...(stablecoinChain ? { stablecoinChain:stablecoinChain.name || stablecoinChain.gecko_id } : {}),

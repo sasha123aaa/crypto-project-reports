@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ANALYSIS_PROFILES, PROJECT_CATEGORIES, PROJECTS, getProjectProfile, getRegisteredProject, normalizeProjectInput } from "../src/config/projects.js";
 import { buildRuntimeProjectConfig, buildRuntimeProjectSkeleton, inferProjectCategory, resolveProject } from "../src/lib/project-resolution.js";
+import { inferRuntimeLabels, normalizeRuntimeLabel } from "../src/lib/label-inference.js";
 import { MARKET_EXCHANGE_PRIORITY, createMarketSymbols, marketTechnicalRoute, resolveExchangeMarketSymbols } from "../src/lib/market-symbols.js";
 
 const noDiscoveryCalls = new Proxy({}, {
@@ -137,7 +138,7 @@ test("runtime discovery infers cautious profiles for doge, pepe, and a generic o
   assert.equal(doge.category, PROJECT_CATEGORIES.MEME);
   assert.equal(doge.analysisProfile, ANALYSIS_PROFILES.MEME_ASSET);
   assert.equal(doge.capabilities.hasNarrativeMomentum, true);
-  assert.deepEqual(doge.categories, ["Meme", "Dog-Themed Coins"]);
+  assert.deepEqual(doge.categories, ["Meme", "Dog-Themed", "Solana Ecosystem"]);
   assert.equal(doge.newsRelevance.mode, "strict");
   assert.equal(doge.branding.iconKey, "dogecoin");
   assert.equal(doge.branding.iconUrl, "https://assets.test/doge.png");
@@ -150,6 +151,56 @@ test("runtime discovery infers cautious profiles for doge, pepe, and a generic o
   assert.equal(link.resolution.source, "discovery");
   assert.ok(link.preferredSections.includes("liquidity_and_trading"));
   assert.ok(link.preferredSections.includes("valuation"));
+});
+
+
+test("dynamic label inference normalizes, ranks, deduplicates, and limits runtime labels", () => {
+  const labels = inferRuntimeLabels({
+    coinDetails: {
+      categories: ["Decentralized Exchange (DEX)", "Real World Assets (RWA)", "Artificial Intelligence", "Arbitrum Ecosystem", "Decentralized Exchange (DEX)", "Alleged SEC Securities"],
+      tags: ["Perpetuals"],
+      description: { en:"A utility token used for trading and governance." },
+    },
+    protocol: { category:"Derivatives", revenue24h:100 },
+    category:PROJECT_CATEGORIES.DEFI,
+    signals:{ isDefi:true, hasProtocolFees:true },
+  });
+
+  assert.deepEqual(labels, ["DEX", "Perpetuals", "RWA", "AI", "Derivatives"]);
+  assert.equal(new Set(labels).size, labels.length);
+  assert.ok(labels.every((label) => label.length <= 24));
+  assert.equal(normalizeRuntimeLabel("Liquid Staking Derivatives"), "Liquid Staking");
+  assert.equal(normalizeRuntimeLabel("Alleged SEC Securities"), null);
+});
+
+test("less-known runtime projects get cautious labels from metadata and profile signals", () => {
+  const mdao = buildRuntimeProjectConfig("mdao", {
+    coin:{ id:"marsdao", symbol:"mdao", name:"MarsDAO" },
+    coinDetails:{
+      categories:["Decentralized Autonomous Organization (DAO)", "BNB Chain Ecosystem", "Governance"],
+      platforms:{ "binance-smart-chain":"0x123" },
+      description:{ en:"MDAO is a utility token used for governance in its ecosystem." },
+      market_data:{ total_volume:{ usd:25_000 } },
+    },
+  });
+  const sparseDefi = buildRuntimeProjectConfig("small-defi", {
+    coin:{ id:"small-defi", symbol:"sdefi", name:"Small DeFi" },
+    coinDetails:{ categories:[], market_data:{} },
+    protocol:{ name:"Small DeFi", category:"Yield", fees24h:10 },
+  });
+
+  assert.deepEqual(mdao.categories, ["Governance", "BNB Chain Ecosystem", "Utility Token"]);
+  assert.deepEqual(sparseDefi.categories, ["Yield", "Revenue"]);
+  assert.ok(mdao.categories.length <= 5);
+  assert.ok(sparseDefi.categories.length >= 1);
+});
+
+test("curated labels remain the source of truth for registered projects", async () => {
+  for (const slug of ["btc", "eth", "bnb", "link", "hype", "sol"]) {
+    const project = await resolveProject(slug, noDiscoveryCalls);
+    assert.deepEqual(project.categories, PROJECTS[slug].categories);
+    assert.equal(project.resolution.source, "curated");
+  }
 });
 
 test("category inference favors utility over weak protocol or market-only signals", () => {
