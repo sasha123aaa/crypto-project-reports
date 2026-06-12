@@ -233,7 +233,7 @@ test("LINK resolves as a curated oracle utility project with exchange-aware symb
   }
 
   assert.equal(PROJECTS.link.branding.iconKey, "chainlink");
-  assert.equal(PROJECTS.link.marketSymbols.tradingView, "BINANCE:LINKUSDT");
+  assert.equal(PROJECTS.link.marketSymbols.tradingView, "BYBIT:LINKUSDT");
   const resolved = await resolveExchangeMarketSymbols(PROJECTS.link.marketSymbols, async (route) => route.exchange === "BYBIT" && route.symbol === "LINKUSDT");
   assert.equal(resolved.tradingView, "BYBIT:LINKUSDT");
   assert.equal(resolved.technical, "LINKUSDT");

@@ -335,6 +335,7 @@ function utilityAdoptionSectionHtml(report) {
   const metrics = [
     ["Роль токена", report?.semantic_metrics?.token_utility],
     ["Adoption / интеграции", report?.semantic_metrics?.adoption],
+    ["Value capture LINK", report?.semantic_metrics?.value_capture],
   ].filter(([, metric]) => metric);
   return `<section class="panel section-flow utility-adoption-section"><div class="section-title">Utility, adoption и роль в инфраструктуре</div><div class="section-sub">Как использование oracle-сервисов и интеграций может превращаться в спрос на токен.</div>${metrics.length ? `<div class="hero-grid">${metrics.map(([label, metric]) => metricHtml(label, metric)).join("")}</div>` : ""}<div class="list-wrap top-gap">${listHtml(items)}</div>${insightHtml(block)}</section>`;
 }

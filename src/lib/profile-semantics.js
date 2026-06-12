@@ -468,12 +468,13 @@ export function applyProfileAwareSemantics(report, project, { preserveCurated = 
     report.semantic_metrics = {
       ...(report.semantic_metrics || {}),
       token_utility:{ value:null, formatted:"Оплата сервисов + staking / security", status:"manual", source:"project profile" },
-      adoption:{ value:null, formatted:"Интеграции Data Feeds, CCIP и сервисов", status:"manual", source:"project profile" },
+      adoption:{ value:null, formatted:"Data Feeds + CCIP + сервисные интеграции", status:"manual", source:"project profile" },
+      value_capture:{ value:null, formatted:"Непрямой; зависит от fees, staking и token demand", status:"manual", source:"project profile" },
     };
     report.tokenomics = report.tokenomics || { metrics:{} };
     report.tokenomics.text = [
       "LINK нужен в экономике Chainlink для оплаты сервисов и участия в staking / security-механизмах; поэтому спрос на токен должен оцениваться вместе с реальным использованием сети.",
-      "Supply-структура, доля обращения и разрыв между Market Cap и FDV показывают потенциальное давление предложения, но не отвечают на вопрос value capture без данных о token demand.",
+      "Supply-структура, доля обращения, total / max supply и разрыв между Market Cap и FDV показывают потенциальное давление предложения и dilution-риск, но не отвечают на вопрос value capture без данных о token demand.",
       "Главный вопрос инвестора: растет ли ценность LINK вместе с полезностью Chainlink и насколько прямо сервисные платежи, staking и безопасность передают эту ценность токену.",
     ];
     report.risks = { items:[...ORACLE_UTILITY_COPY.profile.risks] };

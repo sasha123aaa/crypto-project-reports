@@ -371,6 +371,7 @@ export const PROJECTS = {
         hasLiquidityData: true,
         hasTokenUtilityData: true,
         hasAdoptionData: true,
+        hasValueCaptureData: true,
       },
       preferredSections: [
         "market",
@@ -395,8 +396,12 @@ export const PROJECTS = {
       { url: "https://blog.chain.link/rss/", source: "Chainlink Blog", priority: 1, audience: "official" },
     ],
     newsLimit: 5,
-    reportOptions: { compactTokenomics: true },
-    marketSymbols: createMarketSymbols("LINK", { exchanges:["BINANCE", "BYBIT", "GATEIO"] }),
+    reportOptions: {
+      compactTokenomics: true,
+      heroKpis: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "token_utility", "adoption", "value_capture"],
+      heroKpiLimit: 9,
+    },
+    marketSymbols: createMarketSymbols("LINK"),
     bybitSymbol: "LINKUSDT",
     tags: ["Oracle Network", "Data Infrastructure", "Interoperability", "Utility Token"],
   },

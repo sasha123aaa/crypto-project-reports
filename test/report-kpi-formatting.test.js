@@ -21,6 +21,7 @@ test("KPI renderer hides unavailable placeholders and uses profile-aware metric 
   assert.match(source, /metricSlotsHtml\(report, "tokenomics"\)/);
   assert.match(source, /metricSlotsHtml\(report, "financial"\)/);
   assert.match(source, /metricSlotsHtml\(report, "capital"\)/);
+  assert.match(source, /Value capture LINK/);
 });
 
 
