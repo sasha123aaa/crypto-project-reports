@@ -12,6 +12,7 @@ import { createMarketSymbols, resolveExchangeMarketSymbols } from "./market-symb
 
 const CATEGORY_PROFILES = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: ANALYSIS_PROFILES.L1_INFRA,
+  [PROJECT_CATEGORIES.MACRO]: ANALYSIS_PROFILES.MACRO_ASSET,
   [PROJECT_CATEGORIES.DEFI]: ANALYSIS_PROFILES.DEFI_PROTOCOL,
   [PROJECT_CATEGORIES.MEME]: ANALYSIS_PROFILES.MEME_ASSET,
   [PROJECT_CATEGORIES.CONSUMER]: ANALYSIS_PROFILES.CONSUMER_APP,
@@ -27,6 +28,7 @@ const KNOWN_MEME_IDENTITIES = new Set(["doge", "dogecoin", "pepe", "shib", "shib
 
 
 const KNOWN_PROJECT_BRANDING = Object.freeze({
+  btc: { iconKey:"bitcoin", accent:"#f7931a" },
   eth: { iconKey:"ethereum", accent:"#8c9eff" },
   sol: { iconKey:"solana", accent:"#14f195" },
   doge: { iconKey:"dogecoin", accent:"#c2a633" },
@@ -35,6 +37,7 @@ const KNOWN_PROJECT_BRANDING = Object.freeze({
 });
 
 const KNOWN_MARKET_SYMBOLS = Object.freeze({
+  btc: createMarketSymbols("BTC"),
   eth: createMarketSymbols("ETH"),
   sol: createMarketSymbols("SOL"),
   doge: createMarketSymbols("DOGE"),

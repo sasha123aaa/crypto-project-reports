@@ -247,3 +247,16 @@ test("strict projects publish at most three strong relevant stories", () => {
   const items = Array.from({ length:5 }, (_, index) => ({ title:`Dogecoin payment update ${index}`, url:`https://decrypt.test/dogecoin-${index}`, date, source:"Decrypt" }));
   assert.equal(selectDiverseNews(items, feeds, 5, project).length, 3);
 });
+
+
+test("strict BTC relevance keeps Bitcoin-focused market coverage and rejects side mentions", () => {
+  const feeds = getNewsFeeds(PROJECTS.btc);
+  const date = now.toISOString();
+  const selected = selectDiverseNews([
+    { title:"Ethereum upgrade boosts crypto market", url:"https://coindesk.test/ethereum-upgrade", date, source:"CoinDesk", snippet:"Bitcoin also rose." },
+    { title:"Spot Bitcoin ETF inflows accelerate", url:"https://coindesk.test/bitcoin-etf-inflows", date, source:"CoinDesk", snippet:"Institutional BTC demand strengthened." },
+    { title:"Solana trading volume climbs", url:"https://decrypt.test/solana-volume", date, source:"Decrypt", snippet:"BTC remained stable." },
+  ], feeds, 5, PROJECTS.btc);
+
+  assert.deepEqual(selected.map((item) => item.title), ["Spot Bitcoin ETF inflows accelerate"]);
+});

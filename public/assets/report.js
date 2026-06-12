@@ -155,8 +155,8 @@ function marketPackHtml(report) {
     selectedChartHtml(report, "volume_history", "volumeHistoryChart", "Объем торгов", "История рыночного оборота"),
     selectedChartHtml(report, "market_cap_history", "marketCapHistoryChart", "Рыночная капитализация", "История рыночной оценки"),
   ].filter(Boolean).join("");
-  if (!["meme", "utility", "defi"].includes(category) && !marketCharts) return "";
-  const heroKeys = category === "meme" && Array.isArray(report?.hero?.kpis) ? report.hero.kpis.map((item) => item.key) : [];
+  if (!["macro", "meme", "utility", "defi"].includes(category) && !marketCharts) return "";
+  const heroKeys = ["macro", "meme"].includes(category) && Array.isArray(report?.hero?.kpis) ? report.hero.kpis.map((item) => item.key) : [];
   const metrics = metricSlotsExcludingHtml(report, "market", heroKeys);
   if (!metrics && !marketCharts) return "";
   return `<section class="panel section-flow market-pack-section"><div class="section-title">Рынок и торговля</div><div class="section-sub">Ликвидность, оборот и качество рынка.</div>${metrics ? `<div class="hero-grid market-kpis">${metrics}</div>` : ""}${marketCharts ? `<div class="capital-charts">${marketCharts}</div>` : ""}${insightHtml(report.liquidity)}</section>`;
@@ -270,6 +270,7 @@ function projectIconHtml(meta = {}, compact = false) {
   const accent = /^#[0-9a-f]{6}$/i.test(branding.accent || "") ? branding.accent : "#7898df";
   const fallback = `<span class="project-icon-fallback">${escapeHtml(ticker.slice(0, 4) || "•")}</span>`;
   const icons = {
+    bitcoin:`<span class="brand-letter bitcoin-letter">₿</span>`,
     ethereum:`<svg viewBox="0 0 256 417" aria-hidden="true"><path class="eth-top-left" d="M127.9 0L125.1 9.5v274.2l2.8 2.8 127.9-75.6z"/><path class="eth-top-right" d="M127.9 0L0 210.9l127.9 75.6V154.1z"/><path class="eth-bottom-left" d="M127.9 310.7l-1.6 1.9v98.2l1.6 4.7 128-180.3z"/><path class="eth-bottom-right" d="M127.9 415.5V310.7L0 235.2z"/><path class="eth-center-left" d="M127.9 286.5l127.9-75.6-127.9-56.8z"/><path class="eth-center-right" d="M0 210.9l127.9 75.6V154.1z"/></svg>`,
     solana:`<svg viewBox="0 0 128 104" aria-hidden="true"><defs><linearGradient id="sol-g" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#9945ff"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs><path fill="url(#sol-g)" d="M25 0h91l-13 17H12zM12 43h91l13 17H25zM25 86h91l-13 17H12z"/></svg>`,
     dogecoin:`<span class="brand-letter dogecoin-letter">Ð</span>`,

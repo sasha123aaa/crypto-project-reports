@@ -1,0 +1,210 @@
+{
+  "meta": {
+    "slug": "btc",
+    "project_name": "Bitcoin",
+    "ticker": "BTC",
+    "subtitle": "BTC • macro monetary asset",
+    "categories": [
+      "Macro Asset",
+      "Store of Value",
+      "Proof of Work"
+    ],
+    "project_type": "macro_asset",
+    "report_version": "v1.0",
+    "updated_at": "2026-06-12T00:00:00Z",
+    "data_status": "manual-starter"
+  },
+  "hero": {
+    "title": "Bitcoin",
+    "subtitle": "Крупный макро-актив",
+    "lead": "Bitcoin оценивается через рыночную роль, ликвидность, устойчивость спроса и ограниченное предложение.",
+    "main_strength": "Глобальная ликвидность и устоявшаяся денежная роль.",
+    "main_risk": "Чувствительность оценки к циклу и потокам капитала.",
+    "status_text": "Фокус: структура рынка, оборот, предложение и институциональный спрос."
+  },
+  "market": {
+    "price": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    },
+    "market_cap": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    },
+    "fdv": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    },
+    "volume_24h": {
+      "value": null,
+      "formatted": "—",
+      "status": "unavailable",
+      "source": "CoinGecko"
+    }
+  },
+  "technical_bias": {
+    "source": "exchange-aware market route",
+    "updated_at": "2026-06-12T00:00:00Z",
+    "timeframes": {},
+    "notes": {}
+  },
+  "executive_summary": {
+    "items": []
+  },
+  "profile": {
+    "strengths": [],
+    "weaknesses": [],
+    "risks": [],
+    "watch": []
+  },
+  "tokenomics": {
+    "text": [
+      "Предложение BTC ограничено протоколом; ключевые проверки — циркулирующий объем, максимальное предложение и темп эмиссии."
+    ],
+    "metrics": {
+      "market_cap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "fdv": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "circulating_supply": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "total_supply": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "max_supply": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      }
+    }
+  },
+  "financials": {
+    "text": [],
+    "metrics": {
+      "volume_market_cap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      }
+    }
+  },
+  "capital": {
+    "text": [],
+    "metrics": {}
+  },
+  "users": {
+    "text": [],
+    "metrics": {}
+  },
+  "liquidity": {
+    "text": [
+      "Для BTC ликвидность и оборот важнее DeFi-метрик: они показывают способность рынка принимать крупный капитал."
+    ],
+    "metrics": {
+      "spot_volume": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "CoinGecko"
+      },
+      "volume_market_cap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      }
+    }
+  },
+  "valuation": {
+    "text": [
+      "Оценка BTC рассматривается через рыночный цикл, ликвидность, ограниченное предложение и устойчивость спроса."
+    ],
+    "metrics": {
+      "volume_market_cap": {
+        "value": null,
+        "formatted": "—",
+        "status": "unavailable",
+        "source": "calc"
+      },
+      "valuation_status": {
+        "value": null,
+        "formatted": "макро-актив",
+        "status": "manual",
+        "source": "profile semantics"
+      }
+    }
+  },
+  "narrative": {
+    "items": [
+      "Институциональный доступ, ETF-потоки и макроусловия способны менять устойчивость спроса на BTC."
+    ]
+  },
+  "risks": {
+    "items": [
+      "Циклическая переоценка и сокращение глобальной ликвидности."
+    ]
+  },
+  "watchlist": {
+    "items": [
+      "Оборот, глубину рынка, предложение и институциональные потоки."
+    ]
+  },
+  "final_verdict": {
+    "title": "Финальная оценка",
+    "subtitle": "Макро-актив",
+    "paragraphs": []
+  },
+  "charts": {
+    "price_history": [],
+    "volume_history": [],
+    "market_cap_history": []
+  },
+  "sources": [
+    {
+      "name": "CoinGecko",
+      "used_for": [
+        "price",
+        "market cap",
+        "fdv",
+        "volume",
+        "supply",
+        "market charts"
+      ]
+    },
+    {
+      "name": "Bybit / Binance / Gate.io",
+      "used_for": [
+        "exchange-aware technical bias"
+      ]
+    },
+    {
+      "name": "Publisher RSS feeds",
+      "used_for": [
+        "Bitcoin-focused news"
+      ]
+    }
+  ]
+}

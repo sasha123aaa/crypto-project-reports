@@ -13,6 +13,21 @@ function baseReport() {
   };
 }
 
+
+test("BTC macro semantics prioritize market structure and supply without infra metrics", () => {
+  const report = baseReport();
+  report.tokenomics = { metrics:{ circulating_supply:metric(), total_supply:metric(), max_supply:metric() } };
+  report.charts = { price_history:[[1, 1], [2, 2]], volume_history:[[1, 1], [2, 2]], market_cap_history:[[1, 1], [2, 2]], tvl_history:[[1, 1], [2, 2]], stablecoins_history:[[1, 1], [2, 2]] };
+  applyProfileAwareSemantics(report, PROJECTS.btc);
+
+  assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply"]);
+  assert.deepEqual(report.chart_slots.map(({ key }) => key), ["price_history", "volume_history", "market_cap_history"]);
+  assert.deepEqual(report.meta.section_order, ["tokenomics", "summary", "final_verdict", "narrative_and_news"]);
+  assert.match(report.hero.lead, /рыночную роль/i);
+  assert.match(report.final_verdict.paragraphs.join(" "), /макро-активом/i);
+  assert.doesNotMatch(JSON.stringify(report.executive_summary), /TVL|DeFi|блокспейс/i);
+});
+
 test("infra hero KPI priorities preserve ETH-style capital metrics", () => {
   const keys = selectHeroKpis(baseReport(), PROJECTS.eth).map(({ key }) => key);
   assert.deepEqual(keys, ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins"]);
