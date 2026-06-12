@@ -1,6 +1,6 @@
 import { STATUS, metric } from "./status.js";
 import { formatCompactNumber, formatMoney, formatMultiple, formatPercent, formatPrice } from "./formatters.js";
-import { calcMarketCapToTVL, calcStablecoinsToTVL, calcVolumeToMarketCap } from "./calculations.js";
+import { calcAnnualizedFeesToMarketCap, calcMarketCapToTVL, calcStablecoinsToTVL, calcVolumeToMarketCap } from "./calculations.js";
 import { getUsersFallbackText } from "./fallbacks.js";
 import { fetchCoinGeckoMarket, fetchCoinGeckoChart, fetchProjectNews } from "../adapters/coingecko.js";
 import { fetchDefiLlamaChains, fetchDefiLlamaTVLHistory, fetchStablecoinHistory, fetchStablecoinChains, fetchAppFeesOverview, fetchChainFeesOverview, fetchDexOverview, normalizeStablecoinHistory, stablecoinMcapUsd } from "../adapters/defillama.js";
@@ -63,6 +63,7 @@ export async function buildReport(project){
   const marketCapToTVL = calcMarketCapToTVL(marketCap, tvl);
   const volumeToMarketCap = calcVolumeToMarketCap(volume24h, marketCap);
   const stablecoinsToTVL = calcStablecoinsToTVL(stablecoinsMcap, tvl);
+  const annualizedChainFeesToMarketCap = calcAnnualizedFeesToMarketCap(chainFees24h, marketCap);
 
   const report = {
     meta:{ slug:project.slug, project_name:project.name, ticker:project.ticker, subtitle:project.subtitle, branding:project.branding || null, market_symbols:project.marketSymbols || null, categories:project.categories, project_type:project.projectType, project_profile:getProjectProfile(project), project_resolution:project.resolution || null, report_version:"v1.0", updated_at:new Date().toISOString(), data_status:"partial" },
@@ -85,7 +86,7 @@ export async function buildReport(project){
     capital:{ text:["Капитал внутри экосистемы показывает уровень доверия рынка к проекту.","Особенно важно смотреть, есть ли стабильность или заметный отток капитала."], metrics:{ tvl:metric(tvl, formatMoney(tvl), tvl!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "DefiLlama"), stablecoins_mcap:metric(stablecoinsMcap, formatMoney(stablecoinsMcap), stablecoinsMcap!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "DefiLlama") } },
     users:{ text:getUsersFallbackText(project), metrics:{ daily_active_addresses:metric(null, "—", STATUS.UNAVAILABLE, "Dune"), new_addresses:metric(null, "—", STATUS.UNAVAILABLE, "Dune"), transactions:metric(null, "—", STATUS.UNAVAILABLE, "Dune") } },
     liquidity:{ text:["Ликвидность показывает, насколько удобно крупному и среднему капиталу входить и выходить из позиции.","Для зрелого актива это один из ключевых плюсов, потому что снижает риск тонкого рынка."], metrics:{ spot_volume:metric(volume24h, formatMoney(volume24h), volume24h!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "CoinGecko"), dex_volume_24h:metric(dexVolume24h, formatMoney(dexVolume24h), dexVolume24h!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "DefiLlama") } },
-    valuation:{ text:["Оценка актива должна подтверждаться фундаментальными метриками, а не только динамикой цены.","Чем зрелее актив, тем важнее смотреть на мультипликаторы и качество экономики."], metrics:{ market_cap_tvl:metric(marketCapToTVL, formatMultiple(marketCapToTVL), marketCapToTVL!=null?STATUS.CALCULATED:STATUS.UNAVAILABLE, "calc"), volume_market_cap:metric(volumeToMarketCap, formatPercent(volumeToMarketCap), volumeToMarketCap!=null?STATUS.CALCULATED:STATUS.UNAVAILABLE, "calc"), stablecoins_tvl:metric(stablecoinsToTVL, formatMultiple(stablecoinsToTVL), stablecoinsToTVL!=null?STATUS.CALCULATED:STATUS.UNAVAILABLE, "calc"), valuation_status:metric(null, "зрелый актив", STATUS.MANUAL, "analyst") } },
+    valuation:{ text:["Оценка актива должна подтверждаться фундаментальными метриками, а не только динамикой цены.","Чем зрелее актив, тем важнее смотреть на мультипликаторы и качество экономики."], metrics:{ market_cap_tvl:metric(marketCapToTVL, formatMultiple(marketCapToTVL), marketCapToTVL!=null?STATUS.CALCULATED:STATUS.UNAVAILABLE, "calc"), volume_market_cap:metric(volumeToMarketCap, formatPercent(volumeToMarketCap), volumeToMarketCap!=null?STATUS.CALCULATED:STATUS.UNAVAILABLE, "calc"), stablecoins_tvl:metric(stablecoinsToTVL, formatMultiple(stablecoinsToTVL), stablecoinsToTVL!=null?STATUS.CALCULATED:STATUS.UNAVAILABLE, "calc"), annualized_chain_fees_market_cap:metric(annualizedChainFeesToMarketCap, formatPercent(annualizedChainFeesToMarketCap), annualizedChainFeesToMarketCap!=null?STATUS.CALCULATED:STATUS.UNAVAILABLE, "calc"), valuation_status:metric(null, "зрелый актив", STATUS.MANUAL, "analyst") } },
     narrative:{ items:["Рынок поддерживает интерес к проектам, которые сохраняют подтверждаемую полезность и ликвидность.","Для сильного тезиса важно, чтобы нарратив подтверждался доступными данными, а пробелы не скрывались."] },
     ...(newsData ? { news:newsData } : {}),
     risks:{ items:["Ослабление сетевой экономики.","Слабый рост ключевых фундаментальных метрик.","Конкуренция со стороны других проектов.","Разрыв между рыночной оценкой и реальной экономикой."] },

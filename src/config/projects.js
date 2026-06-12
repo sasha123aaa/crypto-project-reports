@@ -230,6 +230,11 @@ export const PROJECTS = {
       contextTerms: ["bnb burn", "bnb auto burn", "bnb token burn", "bnb chain upgrade", "bnb chain ecosystem", "binance ecosystem", "binance launchpool", "binance launchpad", "binance regulatory", "binance regulation"],
       competingTerms: ["bitcoin", "btc", "ethereum", "ether", "eth", "solana", "sol", "xrp", "dogecoin", "doge", "pepe"],
     },
+    projectNewsFeeds: [
+      { url: "https://news.google.com/rss/search?q=site%3Abinance.com%2Fen%2Fblog+%28BNB+OR+%22BNB+Chain%22+OR+%22BNB+burn%22%29&hl=en-US&gl=US&ceid=US%3Aen", source: "Binance Blog", priority: 1, audience: "official" },
+      { url: "https://news.google.com/rss/search?q=site%3Abnbchain.org%2Fen%2Fblog+%28BNB+OR+%22BNB+Chain%22+OR+burn%29&hl=en-US&gl=US&ceid=US%3Aen", source: "BNB Chain Blog", priority: 2, audience: "official" },
+    ],
+    newsLimit: 5,
     reportOptions: { preserveCuratedSemantics: false },
     marketSymbols: createMarketSymbols("BNB", { exchanges:["BINANCE", "BYBIT", "GATEIO"] }),
     bybitSymbol: "BNBUSDT",

@@ -37,6 +37,7 @@ const KPI_DEFINITIONS = Object.freeze({
   rwa: { label: "Активные RWA", path: "capital.metrics.rwa_active_mcap", capability: "hasRwa" },
   market_cap_tvl: { label: "Market Cap / TVL", path: "valuation.metrics.market_cap_tvl", capability: "hasTvl" },
   stablecoins_tvl: { label: "Stablecoins / TVL", path: "valuation.metrics.stablecoins_tvl", capability: "hasStablecoins" },
+  annualized_chain_fees_market_cap: { label: "Annualized Chain Fees / Market Cap", path: "valuation.metrics.annualized_chain_fees_market_cap", capability: "hasChainFees" },
   app_fees: { label: "Комиссии приложений 24ч", path: "financials.metrics.app_fees_24h", capability: "hasProtocolFees" },
   fees: { label: "Сетевые комиссии 24ч", path: "financials.metrics.chain_fees_24h", capability: "hasChainFees" },
   dex_volume: { label: "DEX-оборот 24ч", path: "financials.metrics.dex_volume_24h", capability: "hasDexVolume" },
@@ -64,7 +65,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "trading_quality", "liquidity", "concentration", "momentum"],
     [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "token_utility", "liquidity", "adoption", "concentration"],
     [PROJECT_CATEGORIES.CONSUMER]: ["price", "market_cap", "volume_24h", "users", "adoption", "momentum", "liquidity"],
-    [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["price", "market_cap", "fdv", "volume_24h", "burn_mechanism", "tvl", "exchange_utility", "stablecoins", "fees", "dex_volume"],
+    [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["price", "market_cap", "volume_24h", "burn_mechanism", "exchange_utility", "tvl", "stablecoins", "fees", "dex_volume", "fdv"],
   },
   market: {
     [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality"],
@@ -86,7 +87,7 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
     [PROJECT_CATEGORIES.DEFI]: ["app_fees", "fees", "dex_volume", "trading_quality"],
     [PROJECT_CATEGORIES.MEME]: [],
     [PROJECT_CATEGORIES.MACRO]: ["trading_quality"],
-    [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["fees", "dex_volume", "trading_quality"],
+    [PROJECT_CATEGORIES.HYBRID_ECOSYSTEM]: ["fees", "annualized_chain_fees_market_cap", "dex_volume", "trading_quality"],
     default: ["trading_quality", "dex_volume", "fees"],
   },
   capital: {
@@ -167,7 +168,7 @@ const PROFILE_COPY = Object.freeze({
     executive: () => ["Разделить спрос на BNB со стороны Binance ecosystem и использование токена внутри BNB Chain.", "Проверить, поддерживают ли burn и сокращение предложения долгосрочную ценность, не подменяя реальный спрос.", "Сопоставить оценку с капиталом, комиссиями и торговой активностью BNB Chain, учитывая регуляторную зависимость от Binance."],
     profile: { strengths:["Многослойная utility в Binance и BNB Chain","Burn-механика поддерживает тезис сокращения предложения"], weaknesses:["Высокая зависимость от одной экосистемы","Не вся ценность Binance и BNB Chain автоматически достается BNB"], risks:["Регуляторное или операционное давление на Binance","Ослабление utility, burn или активности BNB Chain"], watch:["Темп burn и динамику предложения","Спрос внутри Binance и капитал BNB Chain"] },
     verdict: (name) => ({ title:"Финальная оценка", subtitle:"Инвестиционный тезис: utility, burn и chain-слой должны поддерживать друг друга", paragraphs:[`${name} остается сильным hybrid-активом, пока utility внутри Binance, использование BNB Chain и сокращение предложения вместе создают устойчивый спрос; главный риск — зависимость этой связки от Binance и регулирования.`] }),
-    conclusions: { tokenomics:"BNB получает поддержку от Auto-Burn и сжигания части gas fees, но сокращение предложения важно оценивать вместе с реальным спросом в Binance и BNB Chain.", financials:"Комиссии и DEX-оборот BNB Chain подтверждают on-chain слой тезиса, но не измеряют всю экономику Binance ecosystem.", capital:"TVL и стейблкоины показывают капитал BNB Chain как вторичный, но важный слой спроса на BNB.", liquidity:"Биржевая ликвидность поддерживает доступность BNB, одновременно усиливая зависимость от Binance ecosystem.", narrative:"Для BNB релевантны новости о burn, utility, Binance ecosystem, BNB Chain и регулировании, способном изменить спрос на токен." },
+    conclusions: { tokenomics:"BNB получает поддержку от Auto-Burn и сжигания части gas fees, но сокращение предложения важно оценивать вместе с реальным спросом в Binance и BNB Chain.", financials:"Комиссии, Annualized Chain Fees / Market Cap, DEX-оборот и Volume / Market Cap связывают измеримый спрос с оценкой BNB, но не измеряют всю экономику Binance ecosystem.", capital:"TVL, Market Cap / TVL и Stablecoins / TVL показывают масштаб капитала и расчетной ликвидности BNB Chain как важный, но не единственный слой спроса на BNB.", valuation:"Оценка BNB сильнее, когда utility Binance и burn подтверждаются оборотом, платным on-chain спросом и устойчивым капиталом BNB Chain.", liquidity:"Биржевая ликвидность поддерживает доступность BNB, одновременно усиливая зависимость от Binance ecosystem.", narrative:"Для BNB релевантны новости о burn, utility, Binance ecosystem, BNB Chain и регулировании, способном изменить спрос на токен." },
   },
   [PROJECT_CATEGORIES.CONSUMER]: {
     hero: (name) => ({ title:name, subtitle:"Пользовательский проект", lead:`${name} оценивается через удержание аудитории и связь продукта с токеном.`, main_strength:"Повторяемое использование и потенциал сетевого эффекта.", main_risk:"Рост аудитории может не поддержать экономику токена.", status_text:"Фокус: удержание, повторное использование и монетизация." }),
@@ -280,11 +281,12 @@ export function selectReportMetricSlots(report, project) {
     return selected;
   };
 
+  const hybrid = profile.category === PROJECT_CATEGORIES.HYBRID_ECOSYSTEM;
   return {
     market: allocate("market", 8),
     tokenomics: allocate("tokenomics", 8),
-    financial: allocate("financial", 3),
-    capital: allocate("capital", 5).slice(0, 3),
+    financial: allocate("financial", hybrid ? 4 : 3),
+    capital: allocate("capital", 5).slice(0, hybrid ? 4 : 3),
   };
 }
 
@@ -296,6 +298,31 @@ export function applyProfileAwareSemantics(report, project, { preserveCurated = 
   const name = project.name || report.meta?.project_name || project.ticker;
   const ticker = project.ticker || report.meta?.ticker || "TOKEN";
   const useGeneratedCopy = !preserveCurated;
+
+  if (profile.analysisProfile === ANALYSIS_PROFILES.CEX_CHAIN_HYBRID && project.slug === "bnb") {
+    report.semantic_metrics = {
+      ...(report.semantic_metrics || {}),
+      exchange_utility:{ value:null, formatted:"Binance ecosystem utility", status:"static", source:"project structure" },
+      token_utility:{ value:null, formatted:"CEX utility + gas + ecosystem asset", status:"static", source:"project structure" },
+      adoption:{ value:null, formatted:"Binance ecosystem + BNB Chain", status:"static", source:"project structure" },
+    };
+    report.tokenomics = report.tokenomics || { metrics:{} };
+    report.tokenomics.metrics = {
+      ...(report.tokenomics.metrics || {}),
+      burn_mechanism:{ value:null, formatted:"Auto-Burn + BEP-95", status:"static", source:"BNB Chain documentation" },
+      burn_target:{ value:100_000_000, formatted:"100 млн BNB", status:"static", source:"BNB Chain documentation" },
+    };
+    report.tokenomics.text = [
+      "Circulating supply показывает доступное рынку предложение BNB, а current supply — сколько BNB остается после уже проведенных сжиганий; обе live-метрики нужно отслеживать вместе с целью в 100 млн BNB.",
+      "Auto-Burn периодически сокращает предложение по формуле, связанной с ценой BNB и активностью BNB Smart Chain, а BEP-95 дополнительно сжигает часть gas fees в реальном времени.",
+      "Burn усиливает scarcity-тезис, но не заменяет реальный спрос: оценка BNB должна подтверждаться utility внутри Binance, использованием BNB как gas/base asset и капиталом BNB Chain.",
+    ];
+    report.valuation = report.valuation || { metrics:{} };
+    report.valuation.text = [
+      "BNB нельзя оценивать только как L1 или только как биржевой токен: цену нужно сопоставлять с оборотом, комиссиями и капиталом BNB Chain, одновременно проверяя устойчивость utility внутри Binance.",
+      "Volume / Market Cap отражает торговую востребованность, Annualized Chain Fees / Market Cap — масштаб платного on-chain спроса относительно оценки, а TVL и Stablecoins / TVL — глубину капитала и расчетной ликвидности BNB Chain.",
+    ];
+  }
 
   if (profile.analysisProfile === ANALYSIS_PROFILES.ORACLE_UTILITY) {
     report.semantic_metrics = {

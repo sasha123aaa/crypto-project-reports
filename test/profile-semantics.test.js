@@ -36,13 +36,17 @@ test("BNB hybrid semantics prioritize burn and chain capital without becoming ET
     circulating_supply:metric(), total_supply:metric(), max_supply:metric(),
   } };
   report.semantic_metrics.exchange_utility = { value:null, formatted:"Binance ecosystem utility", status:"static", source:"test" };
+  report.valuation = { metrics:{ market_cap_tvl:metric(), stablecoins_tvl:metric(), annualized_chain_fees_market_cap:metric() } };
   report.charts = { price_history:[[1, 1], [2, 2]], volume_history:[[1, 1], [2, 2]], market_cap_history:[[1, 1], [2, 2]], chain_fees_history:[[1, 1], [2, 2]], tvl_history:[[1, 1], [2, 2]] };
   applyProfileAwareSemantics(report, PROJECTS.bnb);
 
-  assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "fdv", "volume_24h", "burn_mechanism", "tvl"]);
+  assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "burn_mechanism", "exchange_utility", "tvl"]);
   assert.deepEqual(report.meta.section_order, ["tokenomics", "financials", "tvl_and_capital", "summary", "final_verdict", "narrative_and_news"]);
   assert.match(report.hero.lead, /Binance|BNB Chain|сокращение предложения/i);
   assert.match(report.tokenomics.conclusion, /Auto-Burn|gas fees|спросом/i);
+  assert.match(report.tokenomics.text.join(" "), /circulating supply|current supply|100 млн|BEP-95|реальный спрос/i);
+  assert.ok(report.metric_slots.financial.some(({ key }) => key === "annualized_chain_fees_market_cap"));
+  assert.ok(report.metric_slots.capital.some(({ key }) => key === "stablecoins_tvl"));
   assert.match(report.final_verdict.paragraphs.join(" "), /hybrid-активом|Binance|BNB Chain/i);
   assert.doesNotMatch(report.hero.lead, /базов.*инфраструктур|независим.*денежн/i);
   assert.deepEqual(report.chart_slots.map(({ key }) => key), ["price_history", "chain_fees_history", "tvl_history", "volume_history"]);

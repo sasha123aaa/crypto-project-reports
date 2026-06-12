@@ -205,6 +205,7 @@ async function fetchLiveMetrics(project) {
       marketCapTVL: safeDivide(marketCap, tvl),
       volumeMarketCap: safePercent(volume24h, marketCap),
       stablecoinsTVL: safeDivide(stablecoins, tvl),
+      annualizedChainFeesMarketCap: safePercent(chainFees24h == null ? null : chainFees24h * 365, marketCap),
     },
     btc: project.slug === "btc" ? {
       ...btcValuation?.current,
@@ -369,6 +370,7 @@ export function mergeLiveMetrics(report, live) {
     report.financials.metrics.volume_market_cap = metric;
   }
   if (isValidNumber(live.valuation.stablecoinsTVL)) report.valuation.metrics.stablecoins_tvl = calcMetric(live.valuation.stablecoinsTVL, `${live.valuation.stablecoinsTVL.toFixed(2)}x`);
+  if (isValidNumber(live.valuation.annualizedChainFeesMarketCap)) report.valuation.metrics.annualized_chain_fees_market_cap = calcMetric(live.valuation.annualizedChainFeesMarketCap, `${live.valuation.annualizedChainFeesMarketCap.toFixed(2)}%`);
   mergeBitcoinMetrics(report, live);
   if (live.charts.priceHistory?.length) report.charts.price_history = live.charts.priceHistory;
   if (live.charts.volumeHistory?.length) report.charts.volume_history = live.charts.volumeHistory;

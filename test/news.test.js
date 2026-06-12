@@ -263,6 +263,8 @@ test("strict BTC relevance keeps Bitcoin-focused market coverage and rejects sid
 
 test("strict BNB relevance keeps burn, Binance ecosystem, and BNB Chain impact", () => {
   const feeds = getNewsFeeds(PROJECTS.bnb);
+  assert.ok(feeds.some((feed) => feed.source === "Binance Blog" && feed.layer === "project"));
+  assert.ok(feeds.some((feed) => feed.source === "BNB Chain Blog" && feed.layer === "project"));
   const date = now.toISOString();
   const selected = selectDiverseNews([
     { title:"Ethereum upgrade boosts altcoin market", url:"https://coindesk.test/ethereum-upgrade", date, source:"CoinDesk", snippet:"BNB also rose." },
