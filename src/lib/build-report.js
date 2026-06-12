@@ -64,7 +64,7 @@ export async function buildReport(project){
   const stablecoinsToTVL = calcStablecoinsToTVL(stablecoinsMcap, tvl);
 
   const report = {
-    meta:{ slug:project.slug, project_name:project.name, ticker:project.ticker, subtitle:project.subtitle, branding:project.branding || null, categories:project.categories, project_type:project.projectType, project_profile:getProjectProfile(project), project_resolution:project.resolution || null, report_version:"v1.0", updated_at:new Date().toISOString(), data_status:"partial" },
+    meta:{ slug:project.slug, project_name:project.name, ticker:project.ticker, subtitle:project.subtitle, branding:project.branding || null, market_symbols:project.marketSymbols || null, categories:project.categories, project_type:project.projectType, project_profile:getProjectProfile(project), project_resolution:project.resolution || null, report_version:"v1.0", updated_at:new Date().toISOString(), data_status:"partial" },
     hero:{ title:`${project.name} как базовая инфраструктура рынка`, subtitle:"Сильный фундаментал, зрелость актива и главный вопрос — удержание ценности внутри экосистемы.", lead:`${project.name} остается важным активом для инфраструктурного слоя крипторынка. Главная задача отчета — показать не только рыночный размер, но и качество экономики сети, капитала и пользовательской активности.`, main_strength:"Сильная инфраструктурная позиция, масштаб экосистемы и высокая ликвидность.", main_risk:"Часть ценности может уходить в смежные уровни экосистемы, а не оставаться напрямую в токене.", status_text:"Сильный фундаментал, но дальнейший тезис должен подтверждаться живой экономикой сети." },
     market:{
       price: metric(price, formatMoney(price), price!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "CoinGecko"),

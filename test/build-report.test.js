@@ -55,6 +55,9 @@ test("buildReport keeps curated ETH and SOL profiles and selected sections compa
       assert.ok(report.meta.section_selection.enabledSections.includes("market"));
       assert.ok(report.meta.section_selection.enabledSections.includes("tvl_and_capital"));
       assert.ok(report.meta.section_selection.enabledSections.includes("financials"));
+      assert.equal(report.meta.market_symbols.tradingView, `BINANCE:${project.ticker}USDT`);
+      assert.equal(report.meta.market_symbols.technical, `${project.ticker}USDT`);
+      assert.ok(report.executive_summary.items.length <= 3);
     }
   });
 });
@@ -113,6 +116,9 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
       assert.equal(report.meta.section_selection.sections.tvl_and_capital.status, "disabled_by_profile");
       assert.equal(report.meta.section_selection.sections.financials.status, "disabled_by_profile");
       assert.doesNotMatch(report.executive_summary.items.join(" "), /TVL|инфраструктур|сетевая экономика/i);
+      assert.ok(report.executive_summary.items.length <= 3);
+      assert.equal(report.meta.market_symbols.tradingView, `BINANCE:${report.meta.ticker}USDT`);
+      assert.equal(report.meta.market_symbols.technical, `${report.meta.ticker}USDT`);
       assert.match(report.final_verdict.subtitle, /Meme/);
       assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "trading_quality", "circulating_supply", "total_supply"]);
       assert.deepEqual(report.chart_slots.map(({ key }) => key), ["price_history", "volume_history", "market_cap_history"]);
@@ -122,6 +128,8 @@ test("DOGE, PEPE, and LINK runtime reports keep category-safe sections and summa
     assert.deepEqual(new Set(link.meta.section_selection.enabledSections), new Set(["market", "tokenomics", "liquidity_and_trading", "valuation", "narrative_and_news", "risks", "final_summary"]));
     assert.equal(link.meta.section_selection.sections.tvl_and_capital.status, "disabled_by_profile");
     assert.doesNotMatch(link.executive_summary.items.join(" "), /блокчейн-платформ|TVL|сетевая экономика/i);
+    assert.ok(link.executive_summary.items.length <= 3);
+    assert.equal(link.meta.market_symbols.tradingView, "BINANCE:LINKUSDT");
     assert.match(link.final_verdict.subtitle, /Utility/);
     assert.match(link.valuation.text.join(" "), /utility-токена/i);
     assert.equal(link.valuation.metrics.valuation_status.status, "unavailable");

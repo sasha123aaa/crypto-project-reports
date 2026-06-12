@@ -111,6 +111,8 @@ test("fetchProjectNews merges universal and project-specific feed layers", async
     assert.deepEqual(news.debug.sources.map(({ source, layer }) => ({ source, layer })), [
       { source:"Project Blog", layer:"project" },
       { source:"CoinDesk", layer:"universal" },
+      { source:"Decrypt", layer:"universal" },
+      { source:"Cointelegraph", layer:"universal" },
     ]);
   } finally { globalThis.fetch = originalFetch; }
 });
@@ -163,7 +165,7 @@ test("fetchProjectNews excludes stale feed items", async () => {
 
 test("Ethereum feeds completely exclude Ethereum Research", () => {
   const feeds = getNewsFeeds(PROJECTS.eth);
-  assert.deepEqual(feeds.map((feed) => feed.source), ["CoinDesk", "Ethereum Blog", "Week in Ethereum News", "Ethereum Cat Herders"]);
+  assert.deepEqual(feeds.map((feed) => feed.source), ["CoinDesk", "Decrypt", "Cointelegraph", "Ethereum Blog", "Week in Ethereum News", "Ethereum Cat Herders"]);
   assert.ok(feeds.every((feed) => feed.source !== "Ethereum Research"));
 });
 
@@ -235,4 +237,13 @@ test("strict runtime meme relevance keeps DOGE and PEPE focused", () => {
 
   assert.deepEqual(selectDiverseNews(candidates, universal, 5, doge).map((item) => item.title), ["Dogecoin payments expand at online merchant"]);
   assert.deepEqual(selectDiverseNews(candidates, universal, 5, pepe).map((item) => item.title), ["PEPE whales add liquidity after exchange listing"]);
+});
+
+
+test("strict projects publish at most three strong relevant stories", () => {
+  const date = now.toISOString();
+  const project = { ticker:"DOGE", newsRelevance:{ mode:"strict", directTerms:["dogecoin", "doge"], contextTerms:["dogecoin payment"], competingTerms:[] } };
+  const feeds = [{ source:"Decrypt", layer:"universal", priority:20 }];
+  const items = Array.from({ length:5 }, (_, index) => ({ title:`Dogecoin payment update ${index}`, url:`https://decrypt.test/dogecoin-${index}`, date, source:"Decrypt" }));
+  assert.equal(selectDiverseNews(items, feeds, 5, project).length, 3);
 });
