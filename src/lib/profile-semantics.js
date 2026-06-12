@@ -16,7 +16,8 @@ const KPI_DEFINITIONS = Object.freeze({
   rwa: { label: "RWA Active Mcap", path: "capital.metrics.rwa_active_mcap", capability: "hasRwa" },
   market_cap_tvl: { label: "Market Cap / TVL", path: "valuation.metrics.market_cap_tvl", capability: "hasTvl" },
   stablecoins_tvl: { label: "Stablecoins / TVL", path: "valuation.metrics.stablecoins_tvl", capability: "hasStablecoins" },
-  fees: { label: "Chain Fees 24h", path: "financials.metrics.chain_fees_24h", anyCapability: ["hasProtocolFees", "hasChainFees"] },
+  app_fees: { label: "Protocol / App Fees 24h", path: "financials.metrics.app_fees_24h", capability: "hasProtocolFees" },
+  fees: { label: "Chain Fees 24h", path: "financials.metrics.chain_fees_24h", capability: "hasChainFees" },
   dex_volume: { label: "DEX Volume 24h", path: "financials.metrics.dex_volume_24h", capability: "hasDexVolume" },
   trading_quality: { label: "Объем 24ч / капитализация", path: "financials.metrics.volume_market_cap" },
   liquidity: { label: "Ликвидность", path: "semantic_metrics.liquidity", capability: "hasLiquidityData" },
@@ -29,19 +30,26 @@ const KPI_DEFINITIONS = Object.freeze({
 
 export const METRIC_SLOT_PRIORITIES = Object.freeze({
   hero: {
-    [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins", "fees", "dex_volume", "users"],
-    [PROJECT_CATEGORIES.DEFI]: ["price", "market_cap", "tvl", "fees", "dex_volume", "liquidity", "trading_quality", "fdv", "users"],
-    [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "liquidity", "trading_quality", "concentration", "momentum"],
-    [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "volume_24h", "token_utility", "liquidity", "adoption", "concentration", "fdv"],
+    [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "tvl", "stablecoins", "fees", "app_fees", "dex_volume", "users"],
+    [PROJECT_CATEGORIES.DEFI]: ["price", "market_cap", "fdv", "tvl", "app_fees", "fees", "dex_volume", "users", "trading_quality", "liquidity"],
+    [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "trading_quality", "circulating_supply", "total_supply", "max_supply", "liquidity", "concentration", "momentum"],
+    [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "token_utility", "liquidity", "adoption", "concentration"],
     [PROJECT_CATEGORIES.CONSUMER]: ["price", "market_cap", "volume_24h", "users", "adoption", "momentum", "liquidity"],
+  },
+  market: {
+    [PROJECT_CATEGORIES.INFRA]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality"],
+    [PROJECT_CATEGORIES.DEFI]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "liquidity"],
+    [PROJECT_CATEGORIES.MEME]: ["price", "market_cap", "volume_24h", "trading_quality", "circulating_supply", "total_supply", "max_supply", "liquidity", "concentration", "momentum"],
+    [PROJECT_CATEGORIES.UTILITY]: ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "circulating_supply", "total_supply", "max_supply", "liquidity", "token_utility", "adoption"],
+    default: ["price", "market_cap", "fdv", "volume_24h", "trading_quality"],
   },
   tokenomics: {
     default: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply", "net_issuance", "burn_mechanism", "market_buyback"],
     [PROJECT_CATEGORIES.MEME]: ["market_cap", "fdv", "circulating_supply", "total_supply", "max_supply"],
   },
   financial: {
-    [PROJECT_CATEGORIES.INFRA]: ["fees", "dex_volume", "trading_quality"],
-    [PROJECT_CATEGORIES.DEFI]: ["fees", "dex_volume", "trading_quality"],
+    [PROJECT_CATEGORIES.INFRA]: ["fees", "app_fees", "dex_volume", "trading_quality"],
+    [PROJECT_CATEGORIES.DEFI]: ["app_fees", "fees", "dex_volume", "trading_quality"],
     [PROJECT_CATEGORIES.MEME]: [],
     default: ["trading_quality", "dex_volume", "fees"],
   },
@@ -53,6 +61,26 @@ export const METRIC_SLOT_PRIORITIES = Object.freeze({
 });
 
 export const HERO_KPI_PRIORITIES = METRIC_SLOT_PRIORITIES.hero;
+
+
+const CHART_DEFINITIONS = Object.freeze({
+  price_history: { label:"Цена", path:"charts.price_history" },
+  volume_history: { label:"Объем торгов", path:"charts.volume_history" },
+  market_cap_history: { label:"Рыночная капитализация", path:"charts.market_cap_history" },
+  app_fees_history: { label:"App Fees", path:"charts.app_fees_history", capability:"hasProtocolFees" },
+  chain_fees_history: { label:"Chain Fees", path:"charts.chain_fees_history", capability:"hasChainFees" },
+  dex_history: { label:"DEX-оборот", path:"charts.dex_history", capability:"hasDexVolume" },
+  tvl_history: { label:"TVL", path:"charts.tvl_history", capability:"hasTvl" },
+  stablecoins_history: { label:"Stablecoins", path:"charts.stablecoins_history", capability:"hasStablecoins" },
+});
+
+export const CHART_PACK_PRIORITIES = Object.freeze({
+  [PROJECT_CATEGORIES.INFRA]: ["price_history", "chain_fees_history", "app_fees_history", "dex_history", "tvl_history", "stablecoins_history"],
+  [PROJECT_CATEGORIES.DEFI]: ["price_history", "app_fees_history", "chain_fees_history", "dex_history", "tvl_history", "volume_history", "market_cap_history"],
+  [PROJECT_CATEGORIES.MEME]: ["price_history", "volume_history", "market_cap_history"],
+  [PROJECT_CATEGORIES.UTILITY]: ["price_history", "volume_history", "market_cap_history"],
+  [PROJECT_CATEGORIES.CONSUMER]: ["price_history", "volume_history", "market_cap_history"],
+});
 
 const PROFILE_COPY = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: {
@@ -121,8 +149,20 @@ export function selectHeroKpis(report, project, limit = 6) {
   return selectMetricSlots(report, project, "hero", limit);
 }
 
+export function selectChartSlots(report, project) {
+  const profile = getProjectProfile(project);
+  return (CHART_PACK_PRIORITIES[profile.category] || CHART_PACK_PRIORITIES[PROJECT_CATEGORIES.UTILITY]).flatMap((key) => {
+    const definition = CHART_DEFINITIONS[key];
+    const series = definition ? getPath(report, definition.path) : null;
+    return definition && supports(definition, profile.capabilities) && Array.isArray(series) && series.length > 1
+      ? [{ key, label:definition.label }]
+      : [];
+  });
+}
+
 export function selectReportMetricSlots(report, project) {
   return {
+    market: selectMetricSlots(report, project, "market", 8),
     tokenomics: selectMetricSlots(report, project, "tokenomics", 8),
     financial: selectMetricSlots(report, project, "financial", 3),
     capital: selectMetricSlots(report, project, "capital", 3),
@@ -140,6 +180,7 @@ export function applyProfileAwareSemantics(report, project, { preserveCurated = 
   report.hero = preserveCurated && report.hero ? report.hero : copy.hero(name);
   report.hero.kpis = selectHeroKpis(report, project);
   report.metric_slots = selectReportMetricSlots(report, project);
+  report.chart_slots = selectChartSlots(report, project);
   if (!preserveCurated || !report.executive_summary?.items?.length) report.executive_summary = { items:copy.executive(name) };
   if (!preserveCurated || !report.profile?.strengths?.length) report.profile = structuredClone(copy.profile);
   if (!preserveCurated || !report.final_verdict?.paragraphs?.length) report.final_verdict = copy.verdict(name, ticker);

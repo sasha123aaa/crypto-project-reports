@@ -168,6 +168,7 @@ async function fetchLiveMetrics(project) {
   const appFeesHistory = normalizeOverviewHistory(appFeesOverview?.totalDataChart);
   const chainFeesHistory = normalizeOverviewHistory(chainFeesOverview?.totalDataChart);
   const dexHistory = normalizeOverviewHistory(dexOverview?.totalDataChart);
+  const appFees24h = toNumber(appFeesOverview?.total24h);
   const chainFees24h = toNumber(chainFeesOverview?.total24h);
   const dexVolume24h = toNumber(dexOverview?.total24h);
 
@@ -177,7 +178,7 @@ async function fetchLiveMetrics(project) {
       source: marketMetricsMode === "live_cached_fallback" ? "CoinGecko cached snapshot" : (marketMetricsMode === "live_fresh_with_cached_fields" ? "CoinGecko + cached snapshot" : "CoinGecko"),
     },
     capital: { tvl, stablecoins, rwaActiveMcap: toNumber(rwa?.value), rwaSource: rwa?.source || "DefiLlama RWA", rwaUpdatedAt: rwa?.updated_at || null },
-    financials: { chainFees24h, dexVolume24h },
+    financials: { appFees24h, chainFees24h, dexVolume24h },
     users: {
       dailyActiveAddresses24h: toNumber(usersData?.dailyActiveAddresses24h),
       newAddresses24h: toNumber(usersData?.newAddresses24h),
@@ -194,6 +195,8 @@ async function fetchLiveMetrics(project) {
     },
     charts: {
       priceHistory: Array.isArray(cgChart?.prices) ? cgChart.prices : [],
+      volumeHistory: Array.isArray(cgChart?.total_volumes) ? cgChart.total_volumes : [],
+      marketCapHistory: Array.isArray(cgChart?.market_caps) ? cgChart.market_caps : [],
       tvlHistory,
       stableHistory,
       appFeesHistory,
@@ -322,6 +325,7 @@ export function mergeLiveMetrics(report, live) {
   report.capital.metrics.rwa_active_mcap = isValidNumber(live.capital.rwaActiveMcap)
     ? liveMetric(live.capital.rwaActiveMcap, formatMoney(live.capital.rwaActiveMcap), live.capital.rwaSource || "DefiLlama RWA", live.capital.rwaUpdatedAt)
     : unavailableMetric("DefiLlama RWA");
+  if (isValidNumber(live.financials.appFees24h)) report.financials.metrics.app_fees_24h = liveMetric(live.financials.appFees24h, formatMoney(live.financials.appFees24h), sourceDL);
   if (isValidNumber(live.financials.chainFees24h)) report.financials.metrics.chain_fees_24h = liveMetric(live.financials.chainFees24h, formatMoney(live.financials.chainFees24h), sourceDL);
   if (isValidNumber(live.financials.dexVolume24h)) {
     const metric = liveMetric(live.financials.dexVolume24h, formatMoney(live.financials.dexVolume24h), sourceDL);
@@ -336,6 +340,8 @@ export function mergeLiveMetrics(report, live) {
   }
   if (isValidNumber(live.valuation.stablecoinsTVL)) report.valuation.metrics.stablecoins_tvl = calcMetric(live.valuation.stablecoinsTVL, `${live.valuation.stablecoinsTVL.toFixed(2)}x`);
   if (live.charts.priceHistory?.length) report.charts.price_history = live.charts.priceHistory;
+  if (live.charts.volumeHistory?.length) report.charts.volume_history = live.charts.volumeHistory;
+  if (live.charts.marketCapHistory?.length) report.charts.market_cap_history = live.charts.marketCapHistory;
   if (live.charts.tvlHistory?.length) report.charts.tvl_history = live.charts.tvlHistory;
   if (live.charts.stableHistory?.length) report.charts.stablecoins_history = live.charts.stableHistory;
   if (live.charts.appFeesHistory?.length) report.charts.app_fees_history = live.charts.appFeesHistory;

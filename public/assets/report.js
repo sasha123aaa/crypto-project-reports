@@ -130,6 +130,31 @@ function metricSlotsHtml(report, slot) {
   return Array.isArray(selected) ? selected.map((item) => metricHtml(item.label, item.metric)).join("") : "";
 }
 
+function hasChartSlot(report, key) {
+  return Array.isArray(report?.chart_slots) && report.chart_slots.some((slot) => slot.key === key);
+}
+
+function selectedChartHtml(report, key, id, label, caption) {
+  return hasChartSlot(report, key) ? compactChartHtml(id, label, caption) : "";
+}
+
+function selectedChartGroupHtml(report, className, definitions) {
+  const charts = definitions.map(([key, id, label, caption]) => selectedChartHtml(report, key, id, label, caption)).filter(Boolean).join("");
+  return charts ? `<div class="${className}">${charts}</div>` : "";
+}
+
+function marketPackHtml(report) {
+  const category = report?.meta?.project_profile?.category;
+  const marketCharts = [
+    selectedChartHtml(report, "volume_history", "volumeHistoryChart", "Объем торгов", "История рыночного оборота"),
+    selectedChartHtml(report, "market_cap_history", "marketCapHistoryChart", "Рыночная капитализация", "История рыночной оценки"),
+  ].filter(Boolean).join("");
+  if (!["meme", "utility", "defi"].includes(category) && !marketCharts) return "";
+  const metrics = metricSlotsHtml(report, "market");
+  if (!metrics && !marketCharts) return "";
+  return `<section class="panel section-flow market-pack-section"><div class="section-title">Рынок и торговля</div><div class="section-sub">Категорийный набор рыночных метрик: показываются только доступные данные</div>${metrics ? `<div class="hero-grid market-kpis">${metrics}</div>` : ""}${marketCharts ? `<div class="capital-charts">${marketCharts}</div>` : ""}</section>`;
+}
+
 function heroKpisHtml(report) {
   const selected = report?.hero?.kpis;
   if (Array.isArray(selected)) return selected.map((item) => metricHtml(item.label, item.metric)).join("");
@@ -281,6 +306,10 @@ function normalizeLlamaSeries(rows = [], key) {
     if (!Number.isFinite(ts) || !Number.isFinite(value)) return null;
     return { ts, label: new Date(ts).toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit" }), value };
   }).filter(Boolean);
+}
+
+function normalizeMarketSeries(rows = []) {
+  return normalizeLlamaOverviewChart(rows);
 }
 
 function normalizeLlamaOverviewChart(rows = []) {
@@ -493,17 +522,18 @@ async function loadReport() {
       return;
     }
 
-    const tvSymbolMap = { eth:"BINANCE:ETHUSDT", sol:"BINANCE:SOLUSDT", link:"BINANCE:LINKUSDT" };
+    const tvSymbolMap = { eth:"BINANCE:ETHUSDT", sol:"BINANCE:SOLUSDT", doge:"BINANCE:DOGEUSDT", pepe:"BINANCE:PEPEUSDT", link:"BINANCE:LINKUSDT" };
     app.innerHTML = `<div class="layout"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="project-main">${escapeHtml(data.meta.project_name)}</div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
       <section class="panel hero-overview"><div class="hero-heading">${ethereumIconHtml(data.meta.ticker)}<div class="hero-identity"><div class="hero-title-row"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><span class="hero-ticker">${escapeHtml(data.meta.ticker)}</span></div>${data.hero.subtitle && data.hero.subtitle !== data.meta.ticker ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}</div></div><p class="lead hero-lead">${escapeHtml(data.hero.lead)}</p>
       <div class="hero-grid hero-kpis">${heroKpisHtml(data)}</div>
       <div class="three-col hero-thesis top-gap"><div class="list-item"><strong>Главная сила</strong><span>${escapeHtml(data.hero.main_strength || "—")}</span></div><div class="list-item"><strong>Главный риск</strong><span>${escapeHtml(data.hero.main_risk || "—")}</span></div><div class="list-item"><strong>Общий статус</strong><span>${escapeHtml(data.hero.status_text || "—")}</span></div></div></section>
       ${tradingViewCard()}
+      ${marketPackHtml(data)}
       ${technicalBiasHtml(data.technical_bias)}
       ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel"><div class="section-title">Executive Summary</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
       ${shouldRenderSection(data, "tokenomics") ? `<section class="panel section-flow tokenomics-section"><div class="section-title">Токеномика</div><div class="section-sub">Баланс предложения, выпуска и механик токена ${escapeHtml(data.meta.ticker)}</div><div class="hero-grid">${metricSlotsHtml(data, "tokenomics")}</div>${insightHtml(data.tokenomics)}</section>` : ""}
-      ${shouldRenderSection(data, "financials") ? `<section class="panel section-flow finance-section"><div class="section-title">Финансы</div>${(data.financials.text || []).slice(0, 2).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid finance-kpis">${metricSlotsHtml(data, "financial")}</div><div class="financial-fee-charts">${compactChartHtml("appFeesChart", "App Fees", "Комиссии приложений внутри экосистемы")}${compactChartHtml("chainFeesChart", "Chain Fees", "Сетевые комиссии базового слоя")}</div><div class="chart-stack">${compactChartHtml("dexChart", "DEX-оборот", "On-chain торговая активность")}</div>${insightHtml(data.financials)}</section>` : ""}
-      ${shouldRenderSection(data, "tvl_and_capital") ? `<section class="panel section-flow capital-section"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).slice(0, 1).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid capital-kpis">${metricSlotsHtml(data, "capital")}</div><div class="capital-charts">${compactChartHtml("tvlChart", "TVL", "Капитал в DeFi-слое")}${compactChartHtml("stableChart", "Stablecoins", "Расчетная ликвидность сети")}</div>${insightHtml(data.capital)}</section>` : ""}
+      ${shouldRenderSection(data, "financials") ? `<section class="panel section-flow finance-section"><div class="section-title">Финансы</div>${(data.financials.text || []).slice(0, 2).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid finance-kpis">${metricSlotsHtml(data, "financial")}</div>${selectedChartGroupHtml(data, "financial-fee-charts", [["app_fees_history", "appFeesChart", "App Fees", "Комиссии приложений внутри экосистемы"], ["chain_fees_history", "chainFeesChart", "Chain Fees", "Сетевые комиссии базового слоя"]])}${selectedChartGroupHtml(data, "chart-stack", [["dex_history", "dexChart", "DEX-оборот", "On-chain торговая активность"]])}${insightHtml(data.financials)}</section>` : ""}
+      ${shouldRenderSection(data, "tvl_and_capital") ? `<section class="panel section-flow capital-section"><div class="section-title">TVL и капитал</div>${(data.capital.text || []).slice(0, 1).map((p) => `<p class="lead compact-lead">${escapeHtml(p)}</p>`).join("")}<div class="hero-grid capital-kpis">${metricSlotsHtml(data, "capital")}</div>${selectedChartGroupHtml(data, "capital-charts", [["tvl_history", "tvlChart", "TVL", "Капитал в DeFi-слое"], ["stablecoins_history", "stableChart", "Stablecoins", "Расчетная ликвидность сети"]])}${insightHtml(data.capital)}</section>` : ""}
       ${usersSectionHtml(data)}
       ${shouldRenderSection(data, "risks") || shouldRenderSection(data, "final_summary") ? `<section class="panel"><div class="section-title">Резюме</div><div class="columns-4 profile-grid"><div><h3>Сильные стороны</h3>${listHtml(data.profile.strengths)}</div><div><h3>Слабые стороны</h3>${listHtml(data.profile.weaknesses)}</div><div><h3>Риски</h3>${listHtml(data.profile.risks)}</div><div><h3>Что отслеживать</h3>${listHtml(data.profile.watch)}</div></div></section>` : ""}
       ${finalVerdictHtml(data)}
@@ -517,7 +547,11 @@ async function loadReport() {
     const appFeesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.app_fees_history), { trimLeadingZeroes:true });
     const chainFeesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.chain_fees_history), { trimLeadingZeroes:true });
     const dexSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.dex_history), { trimLeadingZeroes:true });
+    const volumeHistorySeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.volume_history), { trimLeadingZeroes:true });
+    const marketCapHistorySeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.market_cap_history), { trimLeadingZeroes:true });
 
+    createDashboardChart("volumeHistoryChart", volumeHistorySeries, "Объем торгов", { color:"#60a5fa" });
+    createDashboardChart("marketCapHistoryChart", marketCapHistorySeries, "Рыночная капитализация", { color:"#a78bfa" });
     createDashboardChart("appFeesChart", appFeesSeries, "App Fees", { color:"#a78bfa" });
     createDashboardChart("chainFeesChart", chainFeesSeries, "Chain Fees", { color:"#f59e80" });
     createDashboardChart("dexChart", dexSeries, "DEX Volume", { color:"#60a5fa" });

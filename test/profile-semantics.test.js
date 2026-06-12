@@ -26,12 +26,12 @@ test("hero KPI selection promotes available category metrics over unavailable pl
   assert.deepEqual(keys, ["price", "market_cap", "fdv", "volume_24h", "stablecoins", "fees"]);
 });
 
-test("utility example selects utility and adoption metrics instead of infra capital metrics", () => {
+test("utility example prioritizes valuation and utility metrics instead of infra capital metrics", () => {
   const project = PROJECT_PROFILE_EXAMPLES.utility;
   const report = applyProfileAwareSemantics(baseReport(), project);
   const keys = report.hero.kpis.map(({ key }) => key);
 
-  assert.deepEqual(keys, ["price", "market_cap", "volume_24h", "token_utility", "liquidity", "adoption"]);
+  assert.deepEqual(keys, ["price", "market_cap", "fdv", "volume_24h", "trading_quality", "token_utility"]);
   assert.match(report.hero.lead, /роль токена/i);
   assert.match(report.final_verdict.subtitle, /Utility/i);
   assert.ok(report.profile.watch.some((item) => /product demand/i.test(item)));
@@ -41,7 +41,7 @@ test("meme semantics focus final verdict on unwind rather than network economics
   const project = { name:"Example Meme", ticker:"MEME", projectProfile:{ category:"meme", capabilities:{ hasLiquidityData:true, hasWhaleData:true, hasNarrativeMomentum:true } } };
   const report = applyProfileAwareSemantics(baseReport(), project);
 
-  assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "liquidity", "trading_quality", "concentration"]);
+  assert.deepEqual(report.hero.kpis.map(({ key }) => key), ["price", "market_cap", "volume_24h", "trading_quality", "liquidity", "concentration"]);
   assert.match(report.hero.status_text, /Meme-тезис/);
   assert.match(report.final_verdict.paragraphs.join(" "), /unwind/i);
   assert.doesNotMatch(report.executive_summary.items.join(" "), /L1|инфраструктур/i);
@@ -120,4 +120,20 @@ test("SOL slots omit unsupported RWA and DOGE slots avoid infra financial/capita
   assert.deepEqual(dogeSlots.capital, []);
   assert.deepEqual(dogeSlots.financial, []);
   assert.ok(!dogeSlots.tokenomics.some(({ key }) => key === "max_supply"));
+});
+
+test("category chart packs only select available relevant series", async () => {
+  const { selectChartSlots } = await import("../src/lib/profile-semantics.js");
+  const charts = {
+    price_history:[[1, 1], [2, 2]],
+    volume_history:[[1, 10], [2, 20]],
+    market_cap_history:[[1, 100], [2, 200]],
+    tvl_history:[[1, 50], [2, 60]],
+    chain_fees_history:[[1, 5], [2, 6]],
+  };
+  const meme = { projectProfile:{ category:"meme", capabilities:{ hasTokenomics:true, hasLiquidityData:true } } };
+  const infra = { projectProfile:{ category:"infra", capabilities:{ hasTvl:true, hasChainFees:true } } };
+
+  assert.deepEqual(selectChartSlots({ charts }, meme).map(({ key }) => key), ["price_history", "volume_history", "market_cap_history"]);
+  assert.deepEqual(selectChartSlots({ charts }, infra).map(({ key }) => key), ["price_history", "chain_fees_history", "tvl_history"]);
 });
