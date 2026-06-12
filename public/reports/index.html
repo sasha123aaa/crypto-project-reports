@@ -8,7 +8,20 @@
   <link rel="stylesheet" href="/assets/app.css" />
 </head>
 <body>
-  <div id="app" class="report-page"><div class="loading">Загрузка отчета…</div></div>
+  <header class="report-entry">
+    <a class="report-brand" href="/">Crypto Project Reports</a>
+    <form class="project-search project-search-compact" data-project-search>
+      <label class="search-label" for="report-project-search">Открыть другой отчет</label>
+      <div class="search-control">
+        <input id="report-project-search" name="project" type="search" placeholder="ETH, SOL, DOGE…" autocomplete="off" list="known-projects" aria-describedby="report-search-status" />
+        <button type="submit">Открыть</button>
+      </div>
+      <div id="report-search-status" class="search-status" data-search-status aria-live="polite"></div>
+    </form>
+    <datalist id="known-projects"><option value="ETH"><option value="SOL"><option value="DOGE"><option value="PEPE"><option value="LINK"></datalist>
+  </header>
+  <div id="app" class="report-page"><div class="report-state loading-state"><span class="state-spinner" aria-hidden="true"></span><div><strong>Собираем отчет…</strong><span>Подключаем доступные источники данных.</span></div></div></div>
+  <script src="/assets/search.js"></script>
   <script src="/assets/report.js"></script>
 </body>
 </html>

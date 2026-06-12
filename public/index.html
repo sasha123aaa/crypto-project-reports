@@ -11,7 +11,16 @@
     <section class="hero-card">
       <div class="eyebrow">Crypto Project Reports</div>
       <h1>Живые разборы криптопроектов</h1>
-      <p class="lead">Универсальный формат клиентских и рабочих deep dive отчетов по монетам и проектам.</p>
+      <p class="lead">Введите тикер, slug или название проекта — мы откроем готовый curated или runtime отчет.</p>
+      <form class="project-search project-search-hero" data-project-search>
+        <label class="search-label" for="home-project-search">Тикер или проект</label>
+        <div class="search-control">
+          <input id="home-project-search" name="project" type="search" placeholder="Например, ETH, DOGE или Chainlink" autocomplete="off" list="known-projects" aria-describedby="home-search-status" />
+          <button type="submit">Открыть отчет</button>
+        </div>
+        <div id="home-search-status" class="search-status" data-search-status aria-live="polite"></div>
+      </form>
+      <datalist id="known-projects"><option value="ETH"><option value="SOL"><option value="DOGE"><option value="PEPE"><option value="LINK"></datalist>
       <div class="cards">
         <a class="project-card" href="/reports/?slug=eth"><div class="project-title">Ethereum</div><div class="project-sub">ETH • infrastructure asset</div></a>
         <a class="project-card" href="/reports/?slug=sol"><div class="project-title">Solana</div><div class="project-sub">SOL • infrastructure asset</div></a>
@@ -19,5 +28,6 @@
       </div>
     </section>
   </div>
+  <script src="/assets/search.js"></script>
 </body>
 </html>
