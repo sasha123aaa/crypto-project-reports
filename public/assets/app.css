@@ -579,3 +579,30 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 @keyframes readiness-progress{0%{transform:translateX(-110%)}100%{transform:translateX(330%)}}
 @media(prefers-reduced-motion:reduce){.state-spinner,.loading-state::after{animation:none}}
 .state-retry{appearance:none;font:inherit;cursor:pointer;background:rgba(111,151,241,.12);color:#dce7ff}.state-retry:hover{background:rgba(111,151,241,.22)}
+
+/* Unified premium report-loading experience. */
+.loading-experience{display:grid;gap:18px;animation:state-fade-in .35s ease both}
+.loading-experience .report-state{min-height:132px;justify-content:flex-start;padding:24px 28px}
+.loading-experience .state-copy{flex:1}.loading-experience .state-actions{margin-left:auto}
+.state-extended{border-color:rgba(126,165,255,.4);background:linear-gradient(135deg,rgba(64,105,202,.14),rgba(255,255,255,.025))}
+.state-retrying{border-color:rgba(161,139,255,.38);background:linear-gradient(135deg,rgba(116,86,210,.13),rgba(255,255,255,.025))}
+.state-icon{display:grid!important;place-items:center;width:38px;height:38px;margin:0!important;border:1px solid rgba(126,165,255,.32);border-radius:50%;color:#bcd0ff!important;background:rgba(111,151,241,.1);font-size:16px!important;font-weight:900}
+.error-state{min-height:260px;border-color:rgba(126,165,255,.24);background:radial-gradient(circle at 50% 0,rgba(74,124,237,.12),transparent 55%),rgba(255,255,255,.02);animation:state-fade-in .35s ease both}
+.error-state strong{font-size:22px}.error-state .state-message{max-width:520px}.error-state .state-actions{flex-wrap:wrap;justify-content:center}
+.report-skeleton{display:grid;grid-template-columns:280px minmax(0,1fr);gap:24px;opacity:.72}
+.skeleton-content{display:grid;gap:24px}.skeleton-card{overflow:hidden;padding:24px;border:1px solid rgba(255,255,255,.075);border-radius:24px;background:rgba(255,255,255,.018);box-shadow:var(--shadow)}
+.skeleton-sidebar{min-height:310px}.skeleton-hero{min-height:310px}.skeleton-section{min-height:310px}.skeleton-summary{min-height:180px}
+.skeleton-line,.skeleton-kpis span,.skeleton-tags span,.skeleton-chart{position:relative;display:block;overflow:hidden;border-radius:10px;background:rgba(183,199,231,.075)}
+.skeleton-line::after,.skeleton-kpis span::after,.skeleton-tags span::after,.skeleton-chart::after{content:"";position:absolute;inset:0;transform:translateX(-110%);background:linear-gradient(90deg,transparent,rgba(188,208,255,.11),transparent);animation:skeleton-shimmer 2.2s ease-in-out infinite}
+.skeleton-mark{width:48px;height:48px;border-radius:15px}.skeleton-name{width:72%;height:25px;margin-top:24px}.skeleton-short{width:42%;height:13px;margin-top:13px}
+.skeleton-tags{display:flex;gap:8px;margin-top:25px}.skeleton-tags span{width:72px;height:28px;border-radius:999px}
+.skeleton-heading{width:45%;height:42px}.skeleton-copy{width:82%;height:13px;margin-top:22px}.skeleton-copy-short{width:58%;margin-top:10px}
+.skeleton-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:32px}.skeleton-kpis span{height:102px;border:1px solid rgba(255,255,255,.04);border-radius:18px}
+.skeleton-section-title{width:32%;height:25px}.skeleton-chart{height:210px;margin-top:24px;border-radius:18px}
+.report-ready-enter{animation:report-ready-enter .45s cubic-bezier(.2,.7,.2,1) both}
+@keyframes skeleton-shimmer{to{transform:translateX(110%)}}
+@keyframes state-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes report-ready-enter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@media(max-width:1180px){.report-skeleton{grid-template-columns:1fr}.skeleton-sidebar{display:none}}
+@media(max-width:700px){.loading-experience{gap:12px}.loading-experience .report-state{min-height:170px;align-items:flex-start;flex-wrap:wrap;padding:20px}.loading-experience .state-actions{width:100%;margin-left:42px}.loading-experience .state-actions .state-link{width:100%}.report-skeleton{gap:12px}.skeleton-card{padding:18px;border-radius:20px}.skeleton-hero{min-height:280px}.skeleton-kpis{grid-template-columns:1fr 1fr;gap:10px}.skeleton-kpis span{height:82px}.skeleton-kpis span:last-child{display:none}.skeleton-section{min-height:240px}.skeleton-chart{height:150px}.skeleton-summary{display:none}}
+@media(prefers-reduced-motion:reduce){.skeleton-line::after,.skeleton-kpis span::after,.skeleton-tags span::after,.skeleton-chart::after,.loading-experience,.error-state,.report-ready-enter{animation:none}}
