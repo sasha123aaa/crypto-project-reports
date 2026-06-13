@@ -27,6 +27,15 @@ const INFRA_CATEGORY = /layer[ -]?1|layer[ -]?2|smart contract platform|blockcha
 const DEFI_CATEGORY = /decentralized finance|\bdefi\b|decentralized exchange|\bdex\b|lending|yield|liquid staking|derivatives/i;
 const CONSUMER_CATEGORY = /gaming|metaverse|social|consumer|entertainment|fan token|nft|play to earn/i;
 const KNOWN_MEME_IDENTITIES = new Set(["doge", "dogecoin", "pepe", "shib", "shiba-inu"]);
+const NON_CANONICAL_ASSET = /\b(binance[ -]?peg|wrapped|bridged|wormhole|portal|multichain|synthetic|mirrored|pegged|on[ -](?:bnb|binance-smart)-chain)\b/i;
+const CANONICAL_ASSET_IDS = Object.freeze({
+  xrp: "ripple",
+  ripple: "ripple",
+  ltc: "litecoin",
+  litecoin: "litecoin",
+  zec: "zcash",
+  zcash: "zcash",
+});
 
 
 const KNOWN_PROJECT_BRANDING = Object.freeze({
@@ -110,14 +119,20 @@ function findDiscoveryMatch(rows, coin, fields) {
 function selectCoinMatch(rows, input) {
   const normalized = normalizeProjectInput(input);
   if (!Array.isArray(rows) || !normalized) return null;
+  const explicitlyNonCanonical = NON_CANONICAL_ASSET.test(String(input));
+  const canonicalId = CANONICAL_ASSET_IDS[normalized];
   return rows
     .map((coin) => ({
       coin,
-      rank: normalizeProjectInput(coin?.symbol) === normalized ? 3 : normalizeProjectInput(coin?.id) === normalized ? 2 : normalizeProjectInput(coin?.name) === normalized ? 1 : 0,
+      rank: normalizeProjectInput(coin?.symbol) === normalized ? 300 : normalizeProjectInput(coin?.id) === normalized ? 200 : normalizeProjectInput(coin?.name) === normalized ? 100 : 0,
+      canonicalBonus: canonicalId && normalizeProjectInput(coin?.id) === canonicalId ? 1000 : 0,
+      wrapperPenalty: !explicitlyNonCanonical && NON_CANONICAL_ASSET.test([
+        coin?.id, coin?.name, ...(coin?.categories || []), ...(coin?.tags || []),
+      ].filter(Boolean).join(" ")) ? 500 : 0,
       marketCapRank: Number.isFinite(Number(coin?.market_cap_rank)) ? Number(coin.market_cap_rank) : Number.MAX_SAFE_INTEGER,
     }))
     .filter(({ rank }) => rank > 0)
-    .sort((a, b) => b.rank - a.rank || a.marketCapRank - b.marketCapRank)[0]?.coin || null;
+    .sort((a, b) => (b.rank + b.canonicalBonus - b.wrapperPenalty) - (a.rank + a.canonicalBonus - a.wrapperPenalty) || a.marketCapRank - b.marketCapRank)[0]?.coin || null;
 }
 
 function inferIdentitySignals(input) {
