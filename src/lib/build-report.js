@@ -10,6 +10,7 @@ import { getProjectProfile, getSectionSelection } from "../config/projects.js";
 import { applySectionSelection, isSectionSelected } from "./section-selection.js";
 import { applyProfileAwareSemantics } from "./profile-semantics.js";
 import { applyInferredTitleSubtitle } from "./title-subtitle-inference.js";
+import { orchestrateReportSources } from "./report-readiness.js";
 
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item)=>String(item.name).toLowerCase()===String(chainName).toLowerCase()) : null; }
 function findStableChainData(chains, chainKey){ return Array.isArray(chains) ? chains.find((item)=>String(item.gecko_id || item.name || "").toLowerCase()===String(chainKey).toLowerCase()) : null; }
@@ -18,19 +19,20 @@ function lastChartValue(chart, valueKey="totalLiquidityUSD"){ if(!Array.isArray(
 export async function buildReport(project){
   const initialSelection = getSectionSelection(project);
   const selected = (section) => isSectionSelected(initialSelection, section);
-  const [cgMarket,cgChart,chains,tvlHistory,stableHistory,stableChains,appFees,chainFees,dex,ta,news] = await Promise.allSettled([
-    project.coingeckoId ? fetchCoinGeckoMarket(project.coingeckoId) : Promise.resolve(null),
-    project.coingeckoId ? fetchCoinGeckoChart(project.coingeckoId,365) : Promise.resolve(null),
-    project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaChains() : Promise.resolve(null),
-    project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaTVLHistory(project.defillamaChain) : Promise.resolve(null),
-    project.stablecoinChain && selected("stablecoins") ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve(null),
-    project.stablecoinChain && selected("stablecoins") ? fetchStablecoinChains() : Promise.resolve(null),
-    project.defillamaChain && selected("financials") ? fetchAppFeesOverview(project.defillamaChain) : Promise.resolve(null),
-    project.defillamaChain && selected("financials") ? fetchChainFeesOverview(project.defillamaChain) : Promise.resolve(null),
-    project.defillamaChain && (selected("financials") || selected("liquidity_and_trading")) ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
-    getTechnicalBias(marketTechnicalRoute(project.marketSymbols)),
-    selected("narrative_and_news") ? fetchProjectNews(project) : Promise.resolve(null),
+  const { results, summary:sourceReadiness } = await orchestrateReportSources([
+    { name:"market", critical:true, attempts:3, load:()=>project.coingeckoId ? fetchCoinGeckoMarket(project.coingeckoId) : null, validate:(value)=>[value?.current_price,value?.market_cap,value?.total_volume].every((item)=>Number.isFinite(Number(item)) && Number(item)>0) },
+    { name:"price_chart", load:()=>project.coingeckoId ? fetchCoinGeckoChart(project.coingeckoId,365) : null },
+    { name:"chains", load:()=>project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaChains() : null },
+    { name:"tvl_history", load:()=>project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaTVLHistory(project.defillamaChain) : null },
+    { name:"stablecoin_history", load:()=>project.stablecoinChain && selected("stablecoins") ? fetchStablecoinHistory(project.stablecoinChain) : null },
+    { name:"stablecoin_chains", load:()=>project.stablecoinChain && selected("stablecoins") ? fetchStablecoinChains() : null },
+    { name:"app_fees", load:()=>project.defillamaChain && selected("financials") ? fetchAppFeesOverview(project.defillamaChain) : null },
+    { name:"chain_fees", load:()=>project.defillamaChain && selected("financials") ? fetchChainFeesOverview(project.defillamaChain) : null },
+    { name:"dex", load:()=>project.defillamaChain && (selected("financials") || selected("liquidity_and_trading")) ? fetchDexOverview(project.defillamaChain) : null },
+    { name:"technical_bias", load:()=>getTechnicalBias(marketTechnicalRoute(project.marketSymbols)) },
+    { name:"news", load:()=>selected("narrative_and_news") ? fetchProjectNews(project) : null },
   ]);
+  const { market:cgMarket, price_chart:cgChart, chains, tvl_history:tvlHistory, stablecoin_history:stableHistory, stablecoin_chains:stableChains, app_fees:appFees, chain_fees:chainFees, dex, technical_bias:ta, news } = results;
 
   const market = cgMarket.status==="fulfilled" ? cgMarket.value : null;
   const chart = cgChart.status==="fulfilled" ? cgChart.value : null;
@@ -69,7 +71,7 @@ export async function buildReport(project){
   const dexVolumeToMarketCap = calcVolumeToMarketCap(dexVolume24h, marketCap);
 
   const report = {
-    meta:{ slug:project.slug, project_name:project.name, ticker:project.ticker, subtitle:project.subtitle, branding:project.branding || null, market_symbols:project.marketSymbols || null, categories:project.categories, project_type:project.projectType, project_profile:getProjectProfile(project), project_resolution:project.resolution || null, report_version:"v1.0", updated_at:new Date().toISOString(), data_status:"partial" },
+    meta:{ slug:project.slug, project_name:project.name, ticker:project.ticker, subtitle:project.subtitle, branding:project.branding || null, market_symbols:project.marketSymbols || null, categories:project.categories, project_type:project.projectType, project_profile:getProjectProfile(project), project_resolution:project.resolution || null, source_readiness:sourceReadiness, report_version:"v1.0", updated_at:new Date().toISOString(), data_status:"partial" },
     hero:{ title:`${project.name} как базовая инфраструктура рынка`, subtitle:"Сильный фундаментал, зрелость актива и главный вопрос — удержание ценности внутри экосистемы.", lead:`${project.name} остается важным активом для инфраструктурного слоя крипторынка. Главная задача отчета — показать не только рыночный размер, но и качество экономики сети, капитала и пользовательской активности.`, main_strength:"Сильная инфраструктурная позиция, масштаб экосистемы и высокая ликвидность.", main_risk:"Часть ценности может уходить в смежные уровни экосистемы, а не оставаться напрямую в токене.", status_text:"Сильный фундаментал, но дальнейший тезис должен подтверждаться живой экономикой сети." },
     market:{
       price: metric(price, formatPrice(price), price!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "CoinGecko"),

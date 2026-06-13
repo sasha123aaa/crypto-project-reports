@@ -669,7 +669,7 @@ async function initTradingView(symbol) {
 function reportStateHtml(kind, title, message) {
   const spinner = kind === "loading" ? `<span class="state-spinner" aria-hidden="true"></span>` : "";
   const actions = kind === "loading" ? "" : `<div class="state-actions"><a class="state-link" href="/">Выбрать другой проект</a></div>`;
-  return `<div class="report-state ${kind === "loading" ? "loading-state" : "error-state"}">${spinner}<div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(message)}</span></div>${actions}</div>`;
+  return `<div class="report-state ${kind === "loading" ? "loading-state" : "error-state"}">${spinner}<div><strong>${escapeHtml(title)}</strong><span class="state-message">${escapeHtml(message)}</span></div>${actions}</div>`;
 }
 
 async function loadReport() {
@@ -678,10 +678,24 @@ async function loadReport() {
   const app = document.getElementById("app");
   const reportSearch = document.getElementById("report-project-search");
   if (reportSearch) reportSearch.value = slug.toUpperCase();
-  app.innerHTML = reportStateHtml("loading", `Собираем отчет по ${slug.toUpperCase()}…`, "Подключаем доступные источники данных. Runtime-отчет может занять несколько секунд.");
+  const loadingPhases = [
+    "Определяем профиль проекта и структуру отчета.",
+    "Ждем цену, капитализацию и объем торгов.",
+    "Собираем основные метрики и проверяем готовность страницы.",
+  ];
+  let phaseIndex = 0;
+  app.setAttribute("aria-busy", "true");
+  app.innerHTML = reportStateHtml("loading", `Собираем отчет по ${slug.toUpperCase()}…`, loadingPhases[phaseIndex]);
+  const phaseTimer = setInterval(() => {
+    phaseIndex = Math.min(phaseIndex + 1, loadingPhases.length - 1);
+    const message = app.querySelector(".loading-state .state-message");
+    if (message) message.textContent = loadingPhases[phaseIndex];
+  }, 2800);
+  const controller = new AbortController();
+  const requestTimer = setTimeout(() => controller.abort(), 40_000);
 
   try {
-    const res = await fetch(`/api/report/${encodeURIComponent(slug)}`, { cache:"no-store", headers:{ "cache-control":"no-cache" } });
+    const res = await fetch(`/api/report/${encodeURIComponent(slug)}`, { cache:"no-store", headers:{ "cache-control":"no-cache" }, signal:controller.signal });
     const data = await res.json();
     if (!res.ok) {
       if (res.status === 404) {
@@ -689,6 +703,10 @@ async function loadReport() {
       } else {
         app.innerHTML = reportStateHtml("error", "Недостаточно данных для отчета", "Сейчас не удалось собрать отчет. Попробуйте еще раз позже или выберите другой проект.");
       }
+      return;
+    }
+    if (data?.meta?.readiness?.state !== "ready") {
+      app.innerHTML = reportStateHtml("error", "Отчет еще не готов", "Критические данные не прошли проверку готовности. Попробуйте еще раз позже.");
       return;
     }
 
@@ -736,8 +754,15 @@ async function loadReport() {
     createDashboardChart("btcEtfCumulativeChart", btcEtfCumulativeSeries, "Spot BTC ETF Cumulative Flow", { color:"#65a0ff" });
     createDashboardChart("issuanceChart", issuanceSeries, "Годовой темп эмиссии", { color:"#55d6a5", prefix:"", suffix:"%" });
     if (tradingViewSymbol) initTradingView(tradingViewSymbol);
-  } catch {
-    app.innerHTML = reportStateHtml("error", "Не удалось загрузить отчет", "Проверьте соединение и попробуйте еще раз.");
+  } catch (error) {
+    const message = error?.name === "AbortError"
+      ? "Источники не успели вернуть критические данные за отведенное время. Попробуйте еще раз позже."
+      : "Проверьте соединение и попробуйте еще раз.";
+    app.innerHTML = reportStateHtml("error", "Не удалось загрузить отчет", message);
+  } finally {
+    clearInterval(phaseTimer);
+    clearTimeout(requestTimer);
+    app.removeAttribute("aria-busy");
   }
 }
 

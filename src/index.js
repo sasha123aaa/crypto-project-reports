@@ -11,6 +11,7 @@ import { fetchBitcoinValuationHistory } from "./adapters/coinmetrics.js";
 import { fetchBitcoinEtfFlows } from "./adapters/farside.js";
 import { formatCompactNumber, formatMoney, formatPrice } from "./lib/formatters.js";
 import { applyProfileAwareSemantics } from "./lib/profile-semantics.js";
+import { orchestrateReportSources, publishReportReadiness } from "./lib/report-readiness.js";
 
 export default {
   async fetch(request, env) {
@@ -54,6 +55,8 @@ async function handleHybridReportApi(request, env, url) {
     applyProfileAwareSemantics(report, project, { preserveCurated:Boolean(project.reportOptions?.preserveCuratedSemantics) });
     applySectionSelection(report, project);
     applyBlockRenderingRules(report, project, live);
+    const readiness = publishReportReadiness(report, project, live.readinessSummary);
+    if (readiness.state !== "ready") return json({ error:"Critical report data unavailable", readiness }, 503, { cacheControl:"no-store" });
 
     const statuses = Object.values(live.debug || {});
     const hasFulfilled = statuses.includes("fulfilled");
@@ -78,6 +81,8 @@ async function handleHybridReportApi(request, env, url) {
     applyProfileAwareSemantics(report, project, { preserveCurated:Boolean(project.reportOptions?.preserveCuratedSemantics) });
     applySectionSelection(report, project);
     applyBlockRenderingRules(report, project, null);
+    const readiness = publishReportReadiness(report, project);
+    if (readiness.state !== "ready") return json({ error:"Critical report data unavailable", readiness }, 503, { cacheControl:"no-store" });
     return json(report, 200, { cacheControl: resolveReportCacheControl(report.meta.data_status) });
   }
 }
@@ -89,9 +94,11 @@ async function handleRuntimeReport(project) {
     report.meta = report.meta || {};
     report.meta.project_resolution = project.resolution;
     report.meta.branding = project.branding || report.meta.branding || null;
-  report.meta.market_symbols = project.marketSymbols || report.meta.market_symbols || null;
+    report.meta.market_symbols = project.marketSymbols || report.meta.market_symbols || null;
     report.meta.data_status = "runtime-partial";
     report.meta.generated_at = new Date().toISOString();
+    const readiness = publishReportReadiness(report, project, report.meta.source_readiness);
+    if (readiness.state !== "ready") return json({ error:"Critical runtime report data unavailable", readiness }, 503, { cacheControl:"no-store" });
     return json(report, 200, { cacheControl:resolveReportCacheControl(report.meta.data_status) });
   } catch (error) {
     return json({ error:"Runtime report build failed", ticker:project.ticker, reason:error instanceof Error ? error.message : String(error) }, 502);
@@ -115,26 +122,26 @@ async function loadStaticReportJson(request, env, slug) {
 async function fetchLiveMetrics(project) {
   const initialSelection = getSectionSelection(project);
   const selected = (section) => isSectionSelected(initialSelection, section);
-  const results = await Promise.allSettled([
-    fetchCoinGeckoMarket(project.coingeckoId),
-    fetchCoinGeckoChart(project.coingeckoId),
-    project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaChains() : Promise.resolve(null),
-    project.stablecoinChain && selected("stablecoins") ? fetchStablecoinChains() : Promise.resolve(null),
-    project.defillamaChain && selected("financials") ? fetchAppFeesOverview(project.defillamaChain) : Promise.resolve(null),
-    project.defillamaChain && selected("financials") ? fetchChainFeesOverview(project.defillamaChain) : Promise.resolve(null),
-    project.defillamaChain && (selected("financials") || selected("liquidity_and_trading")) ? fetchDexOverview(project.defillamaChain) : Promise.resolve(null),
-    project.defillamaChain && selected("tvl_and_capital") ? fetchTVLHistory(project.defillamaChain) : Promise.resolve([]),
-    project.stablecoinChain && selected("stablecoins") ? fetchStablecoinHistory(project.stablecoinChain) : Promise.resolve([]),
-    selected("users_and_activity") ? fetchUsersMetrics(project, { toNumber }) : Promise.resolve(null),
-    getTechnicalBias(marketTechnicalRoute(project.marketSymbols)),
-    project.rwaChain && selected("rwa") ? fetchDefiLlamaRwaActiveMcap(project.rwaChain) : Promise.resolve(null),
-    selected("narrative_and_news") ? fetchProjectNews(project) : Promise.resolve(null),
-    project.slug === "btc" ? fetchBitcoinValuationHistory() : Promise.resolve(null),
-    project.slug === "btc" ? fetchCoinGeckoGlobal() : Promise.resolve(null),
-    project.slug === "btc" ? fetchBitcoinEtfFlows() : Promise.resolve(null),
+  const { results, summary:readinessSummary } = await orchestrateReportSources([
+    { name:"cgMarket", critical:true, attempts:3, load:()=>fetchCoinGeckoMarket(project.coingeckoId), validate:hasCoreCoinGeckoMarketValue },
+    { name:"cgChart", load:()=>fetchCoinGeckoChart(project.coingeckoId) },
+    { name:"chains", load:()=>project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaChains() : null },
+    { name:"stableChains", load:()=>project.stablecoinChain && selected("stablecoins") ? fetchStablecoinChains() : null },
+    { name:"appFeesOverview", load:()=>project.defillamaChain && selected("financials") ? fetchAppFeesOverview(project.defillamaChain) : null },
+    { name:"chainFeesOverview", load:()=>project.defillamaChain && selected("financials") ? fetchChainFeesOverview(project.defillamaChain) : null },
+    { name:"dexOverview", load:()=>project.defillamaChain && (selected("financials") || selected("liquidity_and_trading")) ? fetchDexOverview(project.defillamaChain) : null },
+    { name:"tvlHistory", load:()=>project.defillamaChain && selected("tvl_and_capital") ? fetchTVLHistory(project.defillamaChain) : [] },
+    { name:"stableHistory", load:()=>project.stablecoinChain && selected("stablecoins") ? fetchStablecoinHistory(project.stablecoinChain) : [] },
+    { name:"users", load:()=>selected("users_and_activity") ? fetchUsersMetrics(project, { toNumber }) : null },
+    { name:"technicalBias", load:()=>getTechnicalBias(marketTechnicalRoute(project.marketSymbols)) },
+    { name:"rwa", load:()=>project.rwaChain && selected("rwa") ? fetchDefiLlamaRwaActiveMcap(project.rwaChain) : null },
+    { name:"news", load:()=>selected("narrative_and_news") ? fetchProjectNews(project) : null },
+    { name:"btcValuation", load:()=>project.slug === "btc" ? fetchBitcoinValuationHistory() : null },
+    { name:"btcDominance", load:()=>project.slug === "btc" ? fetchCoinGeckoGlobal() : null },
+    { name:"btcEtfFlows", load:()=>project.slug === "btc" ? fetchBitcoinEtfFlows() : null },
   ]);
 
-  const [cgMarketRes,cgChartRes,chainsRes,stableChainsRes,appFeesOverviewRes,chainFeesOverviewRes,dexOverviewRes,tvlHistoryRes,stableHistoryRes,usersRes,technicalBiasRes,rwaRes,newsRes,btcValuationRes,cgGlobalRes,btcEtfRes] = results;
+  const { cgMarket:cgMarketRes, cgChart:cgChartRes, chains:chainsRes, stableChains:stableChainsRes, appFeesOverview:appFeesOverviewRes, chainFeesOverview:chainFeesOverviewRes, dexOverview:dexOverviewRes, tvlHistory:tvlHistoryRes, stableHistory:stableHistoryRes, users:usersRes, technicalBias:technicalBiasRes, rwa:rwaRes, news:newsRes, btcValuation:btcValuationRes, btcDominance:cgGlobalRes, btcEtfFlows:btcEtfRes } = results;
   const cgMarket = cgMarketRes.status === "fulfilled" ? cgMarketRes.value : null;
   const cachedCoinGeckoMarket = getCoinGeckoMarketSnapshot(project.coingeckoId);
   const hasFreshCoinGeckoMarket = hasAnyCoinGeckoMarketValue(cgMarket);
@@ -253,6 +260,7 @@ async function fetchLiveMetrics(project) {
       btcDominance: cgGlobalRes.status,
       btcEtfFlows: btcEtfRes.status,
     },
+    readinessSummary,
     debugReasons: {
       cgMarket: cgMarketError,
       cgMarketFallback: {
@@ -565,6 +573,12 @@ function hasCompleteCoinGeckoTokenomics(row) {
 
 function hasAnyCoinGeckoMarketValue(row) {
   return COINGECKO_MARKET_FIELDS.some((key) => isValidNumber(toNumber(row?.[key])));
+}
+function hasCoreCoinGeckoMarketValue(row) {
+  return ["current_price", "market_cap", "total_volume"].every((key) => {
+    const value = toNumber(row?.[key]);
+    return isValidNumber(value) && value > 0;
+  });
 }
 async function fetchJsonWithTimeout(url, timeoutMs = 9000) {
   const controller = new AbortController();
