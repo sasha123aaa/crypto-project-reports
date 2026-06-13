@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clearReportCache, getCachedReport, getFallbackReport, responseFromSnapshot, runSingleFlight, setCachedReport } from "../src/lib/report-cache.js";
+import { clearReportCache, getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, responseFromSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "../src/lib/report-cache.js";
 
 test("report cache serves fresh then stale successful snapshots", () => {
   clearReportCache();
@@ -33,4 +33,20 @@ test("single flight deduplicates concurrent report builds", async () => {
   const [first, second] = await Promise.all([runSingleFlight("eth", producer), runSingleFlight("ETH", producer)]);
   assert.equal(builds, 1);
   assert.equal(first, second);
+});
+
+test("persistent KV stores last-known-good reports and project resolution separately", async () => {
+  const values = new Map();
+  const env = { REPORT_CACHE:{
+    async get(key, options) { return options?.type === "json" && values.has(key) ? JSON.parse(values.get(key)) : null; },
+    async put(key, value) { values.set(key, value); },
+  } };
+  const snapshot = { status:200, body:'{"ok":true}', contentType:"application/json" };
+  await setPersistentReport(env, "ZEN", snapshot);
+  await setPersistentResolution(env, "ZEN", { slug:"zen", ticker:"ZEN", coingeckoId:"zencash" });
+
+  assert.equal((await getPersistentReport(env, "zen")).body, snapshot.body);
+  assert.deepEqual(await getPersistentResolution(env, "zen"), { slug:"zen", ticker:"ZEN", coingeckoId:"zencash" });
+  assert.ok(values.has("report:zen"));
+  assert.ok(values.has("resolution:zen"));
 });

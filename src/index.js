@@ -12,7 +12,7 @@ import { fetchBitcoinEtfFlows } from "./adapters/farside.js";
 import { formatCompactNumber, formatMoney, formatPrice } from "./lib/formatters.js";
 import { applyProfileAwareSemantics } from "./lib/profile-semantics.js";
 import { orchestrateReportSources, publishReportReadiness } from "./lib/report-readiness.js";
-import { getCachedReport, getFallbackReport, responseFromSnapshot, responseSnapshot, runSingleFlight, setCachedReport } from "./lib/report-cache.js";
+import { getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, responseFromSnapshot, responseSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "./lib/report-cache.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -40,9 +40,17 @@ async function handleHybridReportApi(request, env, url, ctx) {
     return responseFromSnapshot(cached, "stale");
   }
 
+  const persistent = await getPersistentReport(env, input);
+  if (persistent) {
+    const refresh = runSingleFlight(input, () => buildAndCacheReport(request, env, url, input));
+    if (ctx?.waitUntil) ctx.waitUntil(refresh);
+    else refresh.catch(() => {});
+    return responseFromSnapshot(persistent, "persistent-stale");
+  }
+
   const snapshot = await runSingleFlight(input, () => buildAndCacheReport(request, env, url, input));
   if (snapshot.status >= 500) {
-    const fallback = getFallbackReport(input);
+    const fallback = getFallbackReport(input) || await getPersistentReport(env, input);
     if (fallback) return responseFromSnapshot(fallback, "fallback");
   }
   return responseFromSnapshot(snapshot, "miss");
@@ -51,13 +59,16 @@ async function handleHybridReportApi(request, env, url, ctx) {
 async function buildAndCacheReport(request, env, url, input) {
   const response = await buildHybridReportResponse(request, env, url, input);
   const snapshot = await responseSnapshot(response);
-  return setCachedReport(input, snapshot);
+  setCachedReport(input, snapshot);
+  await setPersistentReport(env, input, snapshot);
+  return snapshot;
 }
 
 async function buildHybridReportResponse(request, env, url, input) {
   let project;
   try {
-    project = await resolveProject(input);
+    project = await getPersistentResolution(env, input) || await resolveProject(input);
+    if (project) await setPersistentResolution(env, input, project);
   } catch (error) {
     return json({ error:"Project resolution failed", kind:"temporary_fetch_issue", recoverable:true, input, reason:error instanceof Error ? error.message : String(error) }, 502);
   }
@@ -130,7 +141,7 @@ async function handleRuntimeReport(project, { curatedFallback = false } = {}) {
     }
     report.meta.generated_at = new Date().toISOString();
     const readiness = publishReportReadiness(report, project, report.meta.source_readiness);
-    if (!curatedFallback && readiness.state !== "ready") return json({ error:"Critical runtime report data unavailable", readiness }, 503, { cacheControl:"no-store" });
+    if (!curatedFallback && readiness.state === "blocked") return json({ error:"Critical runtime report data unavailable", readiness }, 503, { cacheControl:"no-store" });
     return json(report, 200, { cacheControl:resolveReportCacheControl(report.meta.data_status) });
   } catch (error) {
     return json({ error:"Runtime report build failed", ticker:project.ticker, reason:error instanceof Error ? error.message : String(error) }, 502);

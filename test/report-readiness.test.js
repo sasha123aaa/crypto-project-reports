@@ -52,6 +52,16 @@ test("page-ready gate requires identity, profile, structure, symbols, and all he
   assert.deepEqual(blocked.missing, ["volume_24h"]);
 });
 
+test("runtime report with identity and one market metric is partial but usable", () => {
+  const project = {
+    resolution:{ mode:"runtime" },
+    projectProfile:{},
+    marketSymbols:{ technical:"ZENUSDT" },
+  };
+  const report = { meta:{ section_selection:{ sections:{} } }, market:{ price:{ value:10 } } };
+  assert.equal(assessReportReadiness(report, project).state, "partial");
+});
+
 
 test("source orchestration does not retry hard 4xx failures", async () => {
   let attempts = 0;
