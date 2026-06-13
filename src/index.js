@@ -62,6 +62,7 @@ async function buildHybridReportResponse(request, env, url, input) {
 
   const slug = project.slug;
   const staticJson = await loadStaticReportJson(request, env, slug);
+  if (staticJson.missing) return handleRuntimeReport(project, { curatedFallback:true });
   if (!staticJson.ok) return staticJson.response;
   const report = staticJson.data;
   report.meta = report.meta || {};
@@ -109,17 +110,23 @@ async function buildHybridReportResponse(request, env, url, input) {
 }
 
 
-async function handleRuntimeReport(project) {
+async function handleRuntimeReport(project, { curatedFallback = false } = {}) {
   try {
     const report = await buildReport(project);
     report.meta = report.meta || {};
     report.meta.project_resolution = project.resolution;
     report.meta.branding = project.branding || report.meta.branding || null;
     report.meta.market_symbols = project.marketSymbols || report.meta.market_symbols || null;
-    report.meta.data_status = "runtime-partial";
+    report.meta.data_status = curatedFallback ? "curated-runtime-partial" : "runtime-partial";
+    if (curatedFallback) {
+      report.meta.static_report = {
+        status:"missing",
+        fallback:"runtime-build",
+      };
+    }
     report.meta.generated_at = new Date().toISOString();
     const readiness = publishReportReadiness(report, project, report.meta.source_readiness);
-    if (readiness.state !== "ready") return json({ error:"Critical runtime report data unavailable", readiness }, 503, { cacheControl:"no-store" });
+    if (!curatedFallback && readiness.state !== "ready") return json({ error:"Critical runtime report data unavailable", readiness }, 503, { cacheControl:"no-store" });
     return json(report, 200, { cacheControl:resolveReportCacheControl(report.meta.data_status) });
   } catch (error) {
     return json({ error:"Runtime report build failed", ticker:project.ticker, reason:error instanceof Error ? error.message : String(error) }, 502);
@@ -132,7 +139,7 @@ async function loadStaticReportJson(request, env, slug) {
   const response = await env.ASSETS.fetch(assetRequest);
 
   if (response.status === 404) {
-    return { ok: false, response: json({ error: "Report JSON not found", slug }, 404) };
+    return { ok:false, missing:true };
   }
   if (!response.ok) {
     return { ok: false, response: json({ error: "Failed to load report JSON", slug, status: response.status }, 500) };
