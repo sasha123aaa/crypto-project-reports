@@ -14,6 +14,8 @@ test("normalization produces stable lowercase slugs", () => {
   assert.equal(normalizeProjectInput("  ETH  "), "eth");
   assert.equal(normalizeProjectInput("Example Token"), "example-token");
   assert.equal(normalizeProjectInput("example_token"), "example-token");
+  assert.equal(normalizeProjectInput("  NEAR.Protocol!  "), "near-protocol");
+  assert.equal(normalizeProjectInput("$MNT"), "mnt");
   assert.equal(normalizeProjectInput(null), "");
 });
 
@@ -27,16 +29,48 @@ test("registered lookup supports slug, ticker, name, CoinGecko id, and aliases",
   for (const input of ["sol", "SOL", "Solana"]) {
     assert.equal(getRegisteredProject(input), PROJECTS.sol);
   }
+  for (const input of ["near", "near protocol", "near-protocol", "NEAR", "NEAR.Protocol!"]) {
+    assert.equal(getRegisteredProject(input), PROJECTS.near);
+  }
+  for (const input of ["mnt", "mantle", "MNT", "$MNT"]) {
+    assert.equal(getRegisteredProject(input), PROJECTS.mnt);
+  }
 });
 
 test("resolver gives curated projects priority without runtime discovery", async () => {
-  for (const [input, expected] of [["btc", PROJECTS.btc], ["BTC", PROJECTS.btc], ["bitcoin", PROJECTS.btc], ["eth", PROJECTS.eth], ["ETH", PROJECTS.eth], ["ethereum", PROJECTS.eth], ["sol", PROJECTS.sol], ["solana", PROJECTS.sol]]) {
+  for (const [input, expected] of [["btc", PROJECTS.btc], ["BTC", PROJECTS.btc], ["bitcoin", PROJECTS.btc], ["eth", PROJECTS.eth], ["ETH", PROJECTS.eth], ["ethereum", PROJECTS.eth], ["sol", PROJECTS.sol], ["solana", PROJECTS.sol], ["near", PROJECTS.near], ["near protocol", PROJECTS.near], ["mnt", PROJECTS.mnt], ["mantle", PROJECTS.mnt]]) {
     const project = await resolveProject(input, noDiscoveryCalls);
     assert.equal(project.slug, expected.slug);
     assert.equal(project.ticker, expected.ticker);
     assert.equal(project.resolution.mode, "registered");
     assert.equal(project.resolution.source, "curated");
     assert.deepEqual(project.resolution.normalized, { slug:expected.slug, ticker:expected.ticker });
+  }
+});
+
+test("ticker, slug, name, and alias resolution stays stable for supported projects", async () => {
+  const cases = [
+    ["btc", "btc", "curated"],
+    ["eth", "eth", "curated"],
+    ["bnb", "bnb", "curated"],
+    ["sol", "sol", "curated"],
+    ["doge", "doge", "fallback"],
+    ["pepe", "pepe", "fallback"],
+    ["hype", "hype", "curated"],
+    ["link", "link", "curated"],
+    ["near", "near", "curated"],
+    ["near protocol", "near", "curated"],
+    ["near-protocol", "near", "curated"],
+    ["NEAR", "near", "curated"],
+    ["mnt", "mnt", "curated"],
+    ["mantle", "mnt", "curated"],
+    ["MNT", "mnt", "curated"],
+  ];
+
+  for (const [input, slug, source] of cases) {
+    const project = await resolveProject(input, noDiscoveryCalls);
+    assert.equal(project.slug, slug, input);
+    assert.equal(project.resolution.source, source, input);
   }
 });
 

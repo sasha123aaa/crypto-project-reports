@@ -409,7 +409,8 @@ export const PROJECTS = {
     slug: "mnt",
     name: "Mantle",
     ticker: "MNT",
-    aliases: ["mantle", "mantle network"],
+    aliases: ["mnt", "mantle", "mantle network"],
+    searchTerms: ["mnt", "mantle"],
     subtitle: "MNT • hybrid infrastructure / ecosystem asset",
     branding: { iconKey: "mantle", accent: "#d7ff3f" },
     projectType: "infra_ecosystem_growth_asset",
@@ -443,7 +444,8 @@ export const PROJECTS = {
     slug: "near",
     name: "NEAR Protocol",
     ticker: "NEAR",
-    aliases: ["near protocol", "near ecosystem"],
+    aliases: ["near", "near protocol", "near-protocol", "near ecosystem"],
+    searchTerms: ["near", "near protocol", "near-protocol"],
     subtitle: "NEAR • infrastructure + narrative / ecosystem growth asset",
     branding: { iconKey: "near", accent: "#7cf7c4" },
     projectType: "infra_ecosystem_growth_asset",
@@ -560,15 +562,26 @@ export function normalizeProjectInput(input) {
   return String(input ?? "")
     .trim()
     .toLowerCase()
-    .replace(/[\s_]+/g, "-")
-    .replace(/-+/g, "-");
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function matchesRegisteredIdentity(project, normalized, fields) {
+  return fields.some((field) => normalizeProjectInput(field) === normalized);
 }
 
 export function getRegisteredProject(input) {
   const normalized = normalizeProjectInput(input);
   if (!normalized) return null;
-  return Object.values(PROJECTS).find((project) => [project.slug, project.ticker, project.name, project.coingeckoId, ...(project.aliases || [])]
-    .some((value) => normalizeProjectInput(value) === normalized)) || null;
+
+  const projects = Object.values(PROJECTS);
+  // Resolve curated identities in deterministic priority order before runtime discovery.
+  return projects.find((project) => matchesRegisteredIdentity(project, normalized, [project.slug]))
+    || projects.find((project) => matchesRegisteredIdentity(project, normalized, [project.ticker]))
+    || projects.find((project) => matchesRegisteredIdentity(project, normalized, [...(project.aliases || []), ...(project.searchTerms || []), project.coingeckoId]))
+    || projects.find((project) => matchesRegisteredIdentity(project, normalized, [project.name]))
+    || null;
 }
 
 export function getProjectBySlug(slug) {

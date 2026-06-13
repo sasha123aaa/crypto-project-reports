@@ -28,7 +28,7 @@ const COINGECKO_MARKET_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 const coinGeckoMarketSnapshots = new Map();
 
 async function handleHybridReportApi(request, env, url, ctx) {
-  const input = url.pathname.replace("/api/report/", "").replace(/\/$/, "").trim().toLowerCase();
+  const input = decodeURIComponent(url.pathname.replace("/api/report/", "").replace(/\/$/, "")).trim().toLowerCase();
   if (!input) return json({ error: "Missing report slug or ticker" }, 400);
 
   const cached = getCachedReport(input);

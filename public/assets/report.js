@@ -1,6 +1,15 @@
+function normalizeProjectInput(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 function getSlug() {
   const url = new URL(window.location.href);
-  return url.searchParams.get("slug") || "eth";
+  return normalizeProjectInput(url.searchParams.get("slug")) || "eth";
 }
 
 const METRIC_HELP = {
