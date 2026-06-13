@@ -12,12 +12,13 @@ import { fetchBitcoinEtfFlows } from "./adapters/farside.js";
 import { formatCompactNumber, formatMoney, formatPrice } from "./lib/formatters.js";
 import { applyProfileAwareSemantics } from "./lib/profile-semantics.js";
 import { orchestrateReportSources, publishReportReadiness } from "./lib/report-readiness.js";
+import { getCachedReport, responseFromSnapshot, responseSnapshot, runSingleFlight, setCachedReport } from "./lib/report-cache.js";
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/report/")) {
-      return handleHybridReportApi(request, env, url);
+      return handleHybridReportApi(request, env, url, ctx);
     }
     return env.ASSETS.fetch(request);
   },
@@ -26,10 +27,30 @@ export default {
 const COINGECKO_MARKET_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 const coinGeckoMarketSnapshots = new Map();
 
-async function handleHybridReportApi(request, env, url) {
-  const input = url.pathname.replace("/api/report/", "").replace(/\/$/, "");
+async function handleHybridReportApi(request, env, url, ctx) {
+  const input = url.pathname.replace("/api/report/", "").replace(/\/$/, "").trim().toLowerCase();
   if (!input) return json({ error: "Missing report slug or ticker" }, 400);
 
+  const cached = getCachedReport(input);
+  if (cached?.cacheState === "fresh") return responseFromSnapshot(cached, "fresh");
+  if (cached?.cacheState === "stale") {
+    const refresh = runSingleFlight(input, () => buildAndCacheReport(request, env, url, input));
+    if (ctx?.waitUntil) ctx.waitUntil(refresh);
+    else refresh.catch(() => {});
+    return responseFromSnapshot(cached, "stale");
+  }
+
+  const snapshot = await runSingleFlight(input, () => buildAndCacheReport(request, env, url, input));
+  return responseFromSnapshot(snapshot, "miss");
+}
+
+async function buildAndCacheReport(request, env, url, input) {
+  const response = await buildHybridReportResponse(request, env, url, input);
+  const snapshot = await responseSnapshot(response);
+  return setCachedReport(input, snapshot);
+}
+
+async function buildHybridReportResponse(request, env, url, input) {
   let project;
   try {
     project = await resolveProject(input);
@@ -707,6 +728,8 @@ function shouldRenderUsersBlock(report, project, usersState){
   return true;
 }
 function resolveReportCacheControl(dataStatus){
-  return "no-store, max-age=0";
+  return dataStatus === "hybrid-live"
+    ? "public, max-age=120, s-maxage=120, stale-while-revalidate=900"
+    : "public, max-age=60, s-maxage=120, stale-while-revalidate=900";
 }
 function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ return new Response(JSON.stringify(data,null,2),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":cacheControl}}); }

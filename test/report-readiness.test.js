@@ -22,7 +22,7 @@ function readyReport(project) {
 test("source orchestration retries critical data and does not block on timed-out optional data", async () => {
   let attempts = 0;
   const { results, summary } = await orchestrateReportSources([
-    { name:"market", critical:true, attempts:3, load:async () => {
+    { name:"market", critical:true, attempts:3, retryDelays:[1, 1], load:async () => {
       attempts += 1;
       if (attempts < 3) throw new Error("temporary market failure");
       return { current_price:1, market_cap:2, total_volume:3 };
@@ -50,4 +50,16 @@ test("page-ready gate requires identity, profile, structure, symbols, and all he
   const blocked = assessReportReadiness(incomplete, { ...PROJECTS.bnb, resolution:{ mode:"registered" } });
   assert.equal(blocked.state, "blocked");
   assert.deepEqual(blocked.missing, ["volume_24h"]);
+});
+
+
+test("source orchestration does not retry hard 4xx failures", async () => {
+  let attempts = 0;
+  const hardError = Object.assign(new Error("market status: 404"), { status:404 });
+  const { results } = await orchestrateReportSources([
+    { name:"market", critical:true, attempts:3, retryDelays:[1, 1], load:async () => { attempts += 1; throw hardError; } },
+  ]);
+  assert.equal(results.market.status, "rejected");
+  assert.equal(results.market.attempts, 1);
+  assert.equal(attempts, 1);
 });

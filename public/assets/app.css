@@ -578,3 +578,4 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 .loading-state .state-message{min-height:40px;max-width:520px}
 @keyframes readiness-progress{0%{transform:translateX(-110%)}100%{transform:translateX(330%)}}
 @media(prefers-reduced-motion:reduce){.state-spinner,.loading-state::after{animation:none}}
+.state-retry{appearance:none;font:inherit;cursor:pointer;background:rgba(111,151,241,.12);color:#dce7ff}.state-retry:hover{background:rgba(111,151,241,.22)}

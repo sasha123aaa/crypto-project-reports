@@ -1,6 +1,11 @@
 const DEFAULT_TIMEOUTS = Object.freeze({ critical:14_000, optional:6_500 });
 
 function errorMessage(error) { return error instanceof Error ? error.message : String(error); }
+function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+function isRetryableError(error) {
+  const status = Number(error?.status || error?.details?.status || errorMessage(error).match(/(?:error|status):?\s*(\d{3})/i)?.[1]);
+  return !Number.isFinite(status) || status === 408 || status === 425 || status === 429 || status >= 500;
+}
 function finitePositive(value) { return Number.isFinite(Number(value)) && Number(value) > 0; }
 
 export function withTimeout(promise, timeoutMs, sourceName = "source") {
@@ -14,17 +19,22 @@ export function withTimeout(promise, timeoutMs, sourceName = "source") {
 async function runCriticalSource(source, timeoutMs) {
   const attempts = Math.max(1, source.attempts || 3);
   const attemptTimeout = Math.max(1_000, Math.floor(timeoutMs / attempts));
+  const retryDelays = source.retryDelays || [500, 1200];
   let lastError;
+  let attemptCount = 0;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    attemptCount = attempt;
     try {
       const value = await withTimeout(Promise.resolve().then(source.load), attemptTimeout, source.name);
       if (source.validate && !source.validate(value)) throw new Error(`${source.name} returned incomplete critical data`);
       return { status:"fulfilled", value, critical:true, attempts:attempt };
     } catch (error) {
       lastError = error;
+      if (!isRetryableError(error)) break;
+      if (attempt < attempts) await delay(retryDelays[Math.min(attempt - 1, retryDelays.length - 1)] || 0);
     }
   }
-  return { status:"rejected", reason:lastError, critical:true, attempts };
+  return { status:"rejected", reason:lastError, critical:true, attempts:attemptCount };
 }
 
 async function runOptionalSource(source, timeoutMs) {
