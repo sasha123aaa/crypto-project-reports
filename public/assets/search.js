@@ -16,8 +16,9 @@
     return String(value || "")
       .trim()
       .toLowerCase()
-      .replace(/[\s_]+/g, "-")
-      .replace(/-+/g, "-");
+      .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
   }
 
   function setFormState(form, message, type) {
