@@ -278,6 +278,37 @@ test("successful discovery with no exact match returns project-not-found", async
   assert.equal(project, null);
 });
 
+test("ordinary tickers prefer canonical assets over pegged and wrapped results", async () => {
+  const cases = [
+    ["xrp", { id:"ripple", symbol:"xrp", name:"XRP" }, { id:"binance-peg-xrp", symbol:"xrp", name:"Binance-Peg XRP" }],
+    ["ltc", { id:"litecoin", symbol:"ltc", name:"Litecoin" }, { id:"binance-peg-litecoin", symbol:"ltc", name:"Binance-Peg Litecoin" }],
+    ["zec", { id:"zcash", symbol:"zec", name:"Zcash" }, { id:"binance-peg-zec", symbol:"zec", name:"Binance-Peg ZEC" }],
+  ];
+
+  for (const [input, canonical, wrapper] of cases) {
+    const project = await resolveProject(input, {
+      ...discoveryFor(canonical, { categories:[], image:{ large:`https://assets.test/${canonical.id}.png` } }),
+      searchCoinGeckoProjects: async () => [
+        { ...wrapper, market_cap_rank:1, categories:["Wrapped Tokens"] },
+        { ...canonical, market_cap_rank:100 },
+      ],
+    });
+    assert.equal(project.coingeckoId, canonical.id, input);
+    assert.equal(project.name, canonical.name, input);
+    assert.equal(project.branding.iconUrl, `https://assets.test/${canonical.id}.png`, input);
+  }
+});
+
+test("explicit wrapped asset input can resolve the wrapped result", async () => {
+  const wrapper = { id:"binance-peg-xrp", symbol:"xrp", name:"Binance-Peg XRP", market_cap_rank:1 };
+  const project = await resolveProject("binance-peg xrp", {
+    ...discoveryFor(wrapper, { categories:["Wrapped Tokens"] }),
+    searchCoinGeckoProjects: async () => [wrapper, { id:"ripple", symbol:"xrp", name:"XRP", market_cap_rank:5 }],
+  });
+  assert.equal(project.coingeckoId, wrapper.id);
+  assert.equal(project.name, wrapper.name);
+});
+
 
 test("market symbols keep project symbol separate and prefer Bybit", () => {
   for (const ticker of ["BTC", "ETH", "SOL", "DOGE", "PEPE", "LINK"]) {
