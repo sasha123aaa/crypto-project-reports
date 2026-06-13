@@ -675,12 +675,18 @@ async function initTradingView(symbol) {
   }
 }
 
-function reportStateHtml(kind, title, message, { retry = false } = {}) {
-  const spinner = kind === "loading" ? `<span class="state-spinner" aria-hidden="true"></span>` : "";
+function reportSkeletonHtml() {
+  return `<div class="report-skeleton" aria-hidden="true"><aside class="skeleton-card skeleton-sidebar"><span class="skeleton-line skeleton-mark"></span><span class="skeleton-line skeleton-name"></span><span class="skeleton-line skeleton-short"></span><div class="skeleton-tags"><span></span><span></span></div></aside><main class="skeleton-content"><section class="skeleton-card skeleton-hero"><span class="skeleton-line skeleton-heading"></span><span class="skeleton-line skeleton-copy"></span><span class="skeleton-line skeleton-copy skeleton-copy-short"></span><div class="skeleton-kpis"><span></span><span></span><span></span></div></section><section class="skeleton-card skeleton-section"><span class="skeleton-line skeleton-section-title"></span><span class="skeleton-chart"></span></section><section class="skeleton-card skeleton-summary"><span class="skeleton-line skeleton-section-title"></span><span class="skeleton-line skeleton-copy"></span><span class="skeleton-line skeleton-copy skeleton-copy-short"></span></section></main></div>`;
+}
+
+function reportStateHtml(kind, title, message, { retry = false, variant = "initial" } = {}) {
+  const isLoading = kind === "loading";
+  const spinner = isLoading ? `<span class="state-spinner" aria-hidden="true"></span>` : `<span class="state-icon" aria-hidden="true">!</span>`;
   const retryAction = retry ? `<button class="state-link state-retry" type="button" data-report-retry>Повторить загрузку</button>` : "";
-  const otherAction = kind === "loading" ? "" : `<a class="state-link" href="/">Выбрать другой проект</a>`;
+  const otherAction = isLoading ? "" : `<a class="state-link" href="/">Выбрать другой проект</a>`;
   const actions = retryAction || otherAction ? `<div class="state-actions">${retryAction}${otherAction}</div>` : "";
-  return `<div class="report-state ${kind === "loading" ? "loading-state" : "error-state"}">${spinner}<div><strong>${escapeHtml(title)}</strong><span class="state-message">${escapeHtml(message)}</span></div>${actions}</div>`;
+  const status = `<div class="report-state ${isLoading ? "loading-state" : "error-state"} state-${escapeHtml(variant)}" role="status">${spinner}<div class="state-copy"><strong>${escapeHtml(title)}</strong><span class="state-message">${escapeHtml(message)}</span></div>${actions}</div>`;
+  return isLoading ? `<div class="loading-experience">${status}${reportSkeletonHtml()}</div>` : status;
 }
 
 function setReportState(app, kind, title, message, options = {}) {
@@ -757,8 +763,10 @@ async function loadReport() {
   const reportSearch = document.getElementById("report-project-search");
   if (reportSearch) reportSearch.value = slug.toUpperCase();
   const loadingPhases = [
-    "Загружаем отчет и определяем профиль проекта.",
-    "Собираем данные по проекту.",
+    "Загружаем отчет…",
+    "Собираем данные по проекту…",
+    "Подтягиваем рыночные метрики…",
+    "Формируем структуру отчета…",
     "Это занимает больше времени, чем обычно…",
   ];
   let phaseIndex = 0;
@@ -766,12 +774,12 @@ async function loadReport() {
   setReportState(app, "loading", `Собираем отчет по ${slug.toUpperCase()}…`, loadingPhases[phaseIndex]);
   const phaseTimer = setInterval(() => {
     phaseIndex = Math.min(phaseIndex + 1, loadingPhases.length - 1);
-    setReportState(app, "loading", `Собираем отчет по ${slug.toUpperCase()}…`, loadingPhases[phaseIndex], { retry:phaseIndex === loadingPhases.length - 1 });
+    setReportState(app, "loading", `Собираем отчет по ${slug.toUpperCase()}…`, loadingPhases[phaseIndex], { retry:phaseIndex === loadingPhases.length - 1, variant:phaseIndex === loadingPhases.length - 1 ? "extended" : "initial" });
   }, 3500);
 
   try {
     const { response:res, data, fromCache } = await fetchReportWithRetry(slug, (attempt) => {
-      if (isActive()) setReportState(app, "loading", `Повторяем попытку загрузки (${attempt}/${REPORT_RETRY_DELAYS_MS.length + 1})…`, "Временная ошибка источника — отчет продолжает собираться.", { retry:true });
+      if (isActive()) setReportState(app, "loading", "Повторяем попытку загрузки…", `Отчет продолжает собираться · попытка ${attempt} из ${REPORT_RETRY_DELAYS_MS.length + 1}`, { retry:true, variant:"retrying" });
     }, isActive);
     if (!isActive()) return;
     if (!res.ok) {
@@ -789,7 +797,7 @@ async function loadReport() {
     if (fromCache) data.meta.data_status = `${data.meta.data_status || "report"}-cached-fallback`;
 
     const tradingViewSymbol = data?.meta?.market_symbols?.tradingView || null;
-    app.innerHTML = `<div class="layout"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="sidebar-project-mark">${projectIconHtml(data.meta, true)}<div class="project-main">${escapeHtml(data.meta.project_name)}</div></div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
+    app.innerHTML = `<div class="layout report-ready-enter"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="sidebar-project-mark">${projectIconHtml(data.meta, true)}<div class="project-main">${escapeHtml(data.meta.project_name)}</div></div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
       <section class="panel hero-overview"><div class="hero-heading">${projectIconHtml(data.meta)}<div class="hero-identity"><div class="hero-title-row"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><span class="hero-ticker">${escapeHtml(data.meta.ticker)}</span></div>${data.hero.subtitle && data.hero.subtitle !== data.meta.ticker ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}</div></div><p class="lead hero-lead">${escapeHtml(data.hero.lead)}</p>
       <div class="hero-grid hero-kpis">${heroKpisHtml(data)}</div>
       <div class="three-col hero-thesis top-gap"><div class="list-item"><strong>Главная сила</strong><span>${escapeHtml(data.hero.main_strength || "—")}</span></div><div class="list-item"><strong>Главный риск</strong><span>${escapeHtml(data.hero.main_risk || "—")}</span></div><div class="list-item"><strong>Что проверить</strong><span>${escapeHtml(data.hero.status_text || "—")}</span></div></div></section>
