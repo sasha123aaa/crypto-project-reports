@@ -78,8 +78,11 @@ export function assessReportReadiness(report, project, sourceSummary = {}) {
     volume_24h:hasMetric(report, "volume_24h"),
   };
   const missing = Object.entries(checks).filter(([, ready]) => !ready).map(([name]) => name);
+  const runtime = project?.resolution?.mode === "runtime";
+  const usableRuntime = runtime && checks.project_resolution && checks.project_profile
+    && checks.market_symbol_mapping && (checks.price || checks.market_cap || checks.volume_24h);
   return {
-    state:missing.length ? "blocked" : "ready",
+    state:missing.length ? (usableRuntime ? "partial" : "blocked") : "ready",
     checks,
     missing,
     critical_sources:sourceSummary.critical || ["project_resolution", "report_structure", "market"],
