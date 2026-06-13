@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clearReportCache, getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, responseFromSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "../src/lib/report-cache.js";
+import { clearReportCache, getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, reportQuality, responseFromSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "../src/lib/report-cache.js";
 
 test("report cache serves fresh then stale successful snapshots", () => {
   clearReportCache();
@@ -49,4 +49,43 @@ test("persistent KV stores last-known-good reports and project resolution separa
   assert.deepEqual(await getPersistentResolution(env, "zen"), { slug:"zen", ticker:"ZEN", coingeckoId:"zencash" });
   assert.ok(values.has("report:zen"));
   assert.ok(values.has("resolution:zen"));
+});
+
+test("higher-quality live reports replace fallback reports, but manual never replaces live", () => {
+  clearReportCache();
+  const partial = { status:200, body:'{"meta":{"source_state":"partial"}}' };
+  const live = { status:200, body:'{"meta":{"source_state":"live"}}' };
+  const manual = { status:200, body:'{"meta":{"source_state":"manual"}}' };
+  setCachedReport("eth", partial);
+  setCachedReport("eth", live);
+  setCachedReport("eth", manual);
+  assert.equal(reportQuality(getCachedReport("eth")), 5);
+  assert.equal(getCachedReport("eth").body, live.body);
+});
+
+test("manual responses are not retained as last-known-good snapshots", async () => {
+  clearReportCache();
+  const manual = { status:200, body:'{"meta":{"source_state":"manual"}}' };
+  setCachedReport("eth", manual);
+  assert.equal(getCachedReport("eth"), null);
+
+  const values = new Map();
+  const env = { REPORT_CACHE:{
+    async get(key, options) { return options?.type === "json" && values.has(key) ? JSON.parse(values.get(key)) : null; },
+    async put(key, value) { values.set(key, value); },
+  } };
+  await setPersistentReport(env, "eth", manual);
+  assert.equal(values.has("report:eth"), false);
+});
+
+test("stale last-known-good responses identify themselves as snapshots", async () => {
+  const response = responseFromSnapshot({
+    status:200,
+    body:'{"meta":{"source_state":"live"},"market":{}}',
+    contentType:"application/json",
+    cacheControl:"public",
+  }, "persistent-stale");
+  const report = await response.json();
+  assert.equal(report.meta.source_state, "snapshot");
+  assert.equal(report.meta.snapshot_of, "live");
 });

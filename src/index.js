@@ -92,6 +92,10 @@ async function buildHybridReportResponse(request, env, url, input) {
     applyProfileAwareSemantics(report, project, { preserveCurated:Boolean(project.reportOptions?.preserveCuratedSemantics) });
     applySectionSelection(report, project);
     applyBlockRenderingRules(report, project, live);
+    const marketAttempts = live.readinessSummary?.attempts?.cgMarket || 1;
+    report.meta.source_state = live.debug?.cgMarket === "fulfilled"
+      ? (marketAttempts > 1 ? "retry-live" : "live")
+      : "manual";
     const readiness = publishReportReadiness(report, project, live.readinessSummary);
     if (readiness.state !== "ready") return json({ error:"Critical report data unavailable", readiness }, 503, { cacheControl:"no-store" });
 
@@ -102,7 +106,6 @@ async function buildHybridReportResponse(request, env, url, input) {
     report.meta.updated_at = new Date().toISOString();
     report.meta.live_debug = live.debug || {};
     report.meta.live_debug_reasons = live.debugReasons || {};
-
     if (hasFulfilled && hasRejected) report.meta.data_status = "hybrid-partial-live";
     else if (hasFulfilled) report.meta.data_status = "hybrid-live";
     else report.meta.data_status = "hybrid-fallback";
@@ -113,6 +116,7 @@ async function buildHybridReportResponse(request, env, url, input) {
     report.meta = report.meta || {};
     report.meta.updated_at = new Date().toISOString();
     report.meta.data_status = "hybrid-fallback";
+    report.meta.source_state = "manual";
     report.meta.live_error = error instanceof Error ? error.message : String(error);
     report.meta.generated_at = new Date().toISOString();
     applyProfileAwareSemantics(report, project, { preserveCurated:Boolean(project.reportOptions?.preserveCuratedSemantics) });
@@ -133,6 +137,7 @@ async function handleRuntimeReport(project, { curatedFallback = false } = {}) {
     report.meta.branding = project.branding || report.meta.branding || null;
     report.meta.market_symbols = project.marketSymbols || report.meta.market_symbols || null;
     report.meta.data_status = curatedFallback ? "curated-runtime-partial" : "runtime-partial";
+    report.meta.source_state = report.meta.source_state || "live";
     if (curatedFallback) {
       report.meta.static_report = {
         status:"missing",

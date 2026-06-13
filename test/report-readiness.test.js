@@ -59,7 +59,9 @@ test("runtime report with identity and one market metric is partial but usable",
     marketSymbols:{ technical:"ZENUSDT" },
   };
   const report = { meta:{ section_selection:{ sections:{} } }, market:{ price:{ value:10 } } };
-  assert.equal(assessReportReadiness(report, project).state, "partial");
+  const readiness = assessReportReadiness(report, project);
+  assert.equal(readiness.state, "partial");
+  assert.equal(readiness.usable, true);
 });
 
 

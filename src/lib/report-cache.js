@@ -6,6 +6,7 @@ const reportCache = new Map();
 const inFlightReports = new Map();
 const PERSISTENT_ORIGIN = "https://report-cache.internal";
 const LAST_KNOWN_GOOD_TTL_SECONDS = 30 * 24 * 60 * 60;
+const SOURCE_QUALITY = Object.freeze({ error:0, manual:1, partial:2, snapshot:3, "retry-live":4, live:5 });
 
 function normalizeKey(key) { return String(key || "").trim().toLowerCase(); }
 
@@ -27,6 +28,10 @@ export function getFallbackReport(key) {
 export function setCachedReport(key, snapshot, options = {}) {
   const normalized = normalizeKey(key);
   if (!normalized || snapshot?.status !== 200) return snapshot;
+  // Manual reports are an emergency response, never a last-known-good snapshot.
+  if (snapshotSourceState(snapshot) === "manual") return snapshot;
+  const current = reportCache.get(normalized);
+  if (current && reportQuality(snapshot) < storedEntryQuality(current)) return current.snapshot;
   if (!reportCache.has(normalized) && reportCache.size >= MAX_REPORT_CACHE_ENTRIES) {
     reportCache.delete(reportCache.keys().next().value);
   }
@@ -76,6 +81,9 @@ export async function getPersistentReport(env, key) {
 
 export async function setPersistentReport(env, key, snapshot, options = {}) {
   if (!normalizeKey(key) || snapshot?.status !== 200) return snapshot;
+  if (snapshotSourceState(snapshot) === "manual") return snapshot;
+  const current = await readPersistent(env, "report", key);
+  if (current?.snapshot && reportQuality(snapshot) < storedEntryQuality(current)) return current.snapshot;
   const entry = {
     snapshot,
     storedAt:Date.now(),
@@ -113,7 +121,10 @@ export async function responseSnapshot(response) {
 }
 
 export function responseFromSnapshot(snapshot, cacheState = "miss") {
-  return new Response(snapshot.body, {
+  const body = cacheState.includes("stale") || cacheState === "fallback"
+    ? withSourceState(snapshot.body, "snapshot", snapshotSourceState(snapshot))
+    : snapshot.body;
+  return new Response(body, {
     status:snapshot.status,
     headers:{
       "content-type":snapshot.contentType,
@@ -121,6 +132,38 @@ export function responseFromSnapshot(snapshot, cacheState = "miss") {
       "x-report-cache":cacheState,
     },
   });
+}
+
+export function snapshotSourceState(snapshot) {
+  try {
+    return JSON.parse(snapshot?.body || "{}")?.meta?.source_state || "partial";
+  } catch {
+    return "partial";
+  }
+}
+
+export function reportQuality(snapshot) {
+  return SOURCE_QUALITY[snapshotSourceState(snapshot)] ?? SOURCE_QUALITY.partial;
+}
+
+function storedEntryQuality(entry, now = Date.now()) {
+  if (now - Number(entry?.storedAt || 0) > Number(entry?.freshTtlMs || DEFAULT_FRESH_TTL_MS)) {
+    return SOURCE_QUALITY.snapshot;
+  }
+  return reportQuality(entry?.snapshot);
+}
+
+function withSourceState(body, sourceState, snapshotOf) {
+  try {
+    const data = JSON.parse(body);
+    if (!data || Array.isArray(data) || typeof data !== "object" || data.error) return body;
+    data.meta = data.meta || {};
+    data.meta.source_state = sourceState;
+    data.meta.snapshot_of = snapshotOf;
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return body;
+  }
 }
 
 export function clearReportCache() {

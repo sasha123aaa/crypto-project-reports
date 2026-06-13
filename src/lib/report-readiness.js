@@ -60,6 +60,7 @@ export async function orchestrateReportSources(sources, timeouts = {}) {
       optional: sources.filter((source) => !source.critical).map((source) => source.name),
       failedCritical: entries.filter(([, result]) => result.critical && result.status === "rejected").map(([name]) => name),
       failedOptional: entries.filter(([, result]) => !result.critical && result.status === "rejected").map(([name]) => name),
+      attempts:Object.fromEntries(entries.map(([name, result]) => [name, result.attempts || 1])),
       timeouts: limits,
     },
   };
@@ -83,6 +84,8 @@ export function assessReportReadiness(report, project, sourceSummary = {}) {
     && checks.market_symbol_mapping && (checks.price || checks.market_cap || checks.volume_24h);
   return {
     state:missing.length ? (usableRuntime ? "partial" : "blocked") : "ready",
+    source_state:report?.meta?.source_state || (missing.length ? "partial" : "live"),
+    usable:Boolean(!missing.length || usableRuntime || report?.meta?.source_state === "manual" || report?.meta?.source_state === "snapshot"),
     checks,
     missing,
     critical_sources:sourceSummary.critical || ["project_resolution", "report_structure", "market"],
