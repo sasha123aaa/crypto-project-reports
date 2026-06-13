@@ -312,7 +312,7 @@ function projectIconHtml(meta = {}, compact = false) {
   const key = String(branding.iconKey || ticker).toLowerCase();
   const label = escapeHtml(meta.project_name || ticker || "Project");
   const accent = /^#[0-9a-f]{6}$/i.test(branding.accent || "") ? branding.accent : "#7898df";
-  const fallback = `<span class="project-icon-fallback">${escapeHtml(ticker.slice(0, 4) || "•")}</span>`;
+  const fallback = `<span class="project-icon-fallback" aria-hidden="true">${escapeHtml(ticker.slice(0, 4) || "•")}</span>`;
   const icons = {
     bitcoin:`<span class="brand-letter bitcoin-letter">₿</span>`,
     ethereum:`<svg viewBox="0 0 256 417" aria-hidden="true"><path class="eth-top-left" d="M127.9 0L125.1 9.5v274.2l2.8 2.8 127.9-75.6z"/><path class="eth-top-right" d="M127.9 0L0 210.9l127.9 75.6V154.1z"/><path class="eth-bottom-left" d="M127.9 310.7l-1.6 1.9v98.2l1.6 4.7 128-180.3z"/><path class="eth-bottom-right" d="M127.9 415.5V310.7L0 235.2z"/><path class="eth-center-left" d="M127.9 286.5l127.9-75.6-127.9-56.8z"/><path class="eth-center-right" d="M0 210.9l127.9 75.6V154.1z"/></svg>`,
@@ -327,10 +327,13 @@ function projectIconHtml(meta = {}, compact = false) {
     mantle:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#d7ff3f" stroke-width="10" stroke-linejoin="round" d="M12 76V24l19 26 19-26 19 26 19-26v52"/></svg>`,
     near:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#7cf7c4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" d="M18 78V22l64 56V22L18 78"/></svg>`,
   };
-  const remote = typeof branding.iconUrl === "string" && /^https:\/\//i.test(branding.iconUrl)
-    ? `<img src="${escapeHtml(branding.iconUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
-    : "";
-  return `<span class="project-icon${compact ? " project-icon-compact" : ""}" aria-label="${label}" style="--project-accent:${accent}">${remote}${icons[key] || fallback}</span>`;
+  const local = icons[key] || fallback;
+  const remoteUrls = [...new Set([...(Array.isArray(branding.iconUrls) ? branding.iconUrls : []), branding.iconUrl]
+    .filter((url) => typeof url === "string" && /^https:\/\//i.test(url)))];
+  const remote = remoteUrls.slice().reverse().map((url) =>
+    `<img src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">`
+  ).join("");
+  return `<span class="project-icon${compact ? " project-icon-compact" : ""}" aria-label="${label}" style="--project-accent:${accent}">${local}${remote}</span>`;
 }
 function tokenomicsSectionHtml(report) {
   if (!shouldRenderSection(report, "tokenomics")) return "";
