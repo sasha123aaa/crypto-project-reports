@@ -12,7 +12,7 @@ import { fetchBitcoinEtfFlows } from "./adapters/farside.js";
 import { formatCompactNumber, formatMoney, formatPrice } from "./lib/formatters.js";
 import { applyProfileAwareSemantics } from "./lib/profile-semantics.js";
 import { orchestrateReportSources, publishReportReadiness } from "./lib/report-readiness.js";
-import { getCachedReport, responseFromSnapshot, responseSnapshot, runSingleFlight, setCachedReport } from "./lib/report-cache.js";
+import { getCachedReport, getFallbackReport, responseFromSnapshot, responseSnapshot, runSingleFlight, setCachedReport } from "./lib/report-cache.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -41,6 +41,10 @@ async function handleHybridReportApi(request, env, url, ctx) {
   }
 
   const snapshot = await runSingleFlight(input, () => buildAndCacheReport(request, env, url, input));
+  if (snapshot.status >= 500) {
+    const fallback = getFallbackReport(input);
+    if (fallback) return responseFromSnapshot(fallback, "fallback");
+  }
   return responseFromSnapshot(snapshot, "miss");
 }
 
@@ -55,9 +59,9 @@ async function buildHybridReportResponse(request, env, url, input) {
   try {
     project = await resolveProject(input);
   } catch (error) {
-    return json({ error:"Project resolution failed", input, reason:error instanceof Error ? error.message : String(error) }, 502);
+    return json({ error:"Project resolution failed", kind:"temporary_fetch_issue", recoverable:true, input, reason:error instanceof Error ? error.message : String(error) }, 502);
   }
-  if (!project) return json({ error: "Unknown project slug or ticker", input }, 404);
+  if (!project) return json({ error: "Unknown project slug or ticker", kind:"project_not_found", recoverable:false, input }, 404);
   if (project.resolution?.mode === "runtime") return handleRuntimeReport(project);
 
   const slug = project.slug;
@@ -136,13 +140,18 @@ async function handleRuntimeReport(project, { curatedFallback = false } = {}) {
 async function loadStaticReportJson(request, env, slug) {
   const jsonUrl = new URL(`/data/reports/${slug}.json`, request.url);
   const assetRequest = new Request(jsonUrl.toString(), request);
-  const response = await env.ASSETS.fetch(assetRequest);
+  let response;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    response = await env.ASSETS.fetch(assetRequest.clone());
+    if (response.ok || response.status === 404 || response.status < 500) break;
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, [150, 400][attempt]));
+  }
 
   if (response.status === 404) {
     return { ok:false, missing:true };
   }
   if (!response.ok) {
-    return { ok: false, response: json({ error: "Failed to load report JSON", slug, status: response.status }, 500) };
+    return { ok: false, response: json({ error:"Failed to load report JSON", kind:"temporary_fetch_issue", recoverable:true, slug, status:response.status }, 503, { cacheControl:"no-store" }) };
   }
   return { ok: true, data: await response.json() };
 }

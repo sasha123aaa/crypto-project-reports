@@ -689,7 +689,7 @@ function setReportState(app, kind, title, message, options = {}) {
 }
 
 const REPORT_CACHE_TTL_MS = 15 * 60 * 1000;
-const REPORT_RETRY_DELAYS_MS = [500, 1200];
+const REPORT_RETRY_DELAYS_MS = [500, 1200, 2500];
 let reportLoadGeneration = 0;
 let activeReportController = null;
 
@@ -771,7 +771,7 @@ async function loadReport() {
 
   try {
     const { response:res, data, fromCache } = await fetchReportWithRetry(slug, (attempt) => {
-      if (isActive()) setReportState(app, "loading", `Повторяем попытку загрузки (${attempt}/3)…`, "Временная ошибка источника — отчет продолжает собираться.", { retry:true });
+      if (isActive()) setReportState(app, "loading", `Повторяем попытку загрузки (${attempt}/${REPORT_RETRY_DELAYS_MS.length + 1})…`, "Временная ошибка источника — отчет продолжает собираться.", { retry:true });
     }, isActive);
     if (!isActive()) return;
     if (!res.ok) {

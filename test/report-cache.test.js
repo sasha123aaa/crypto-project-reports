@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clearReportCache, getCachedReport, responseFromSnapshot, runSingleFlight, setCachedReport } from "../src/lib/report-cache.js";
+import { clearReportCache, getCachedReport, getFallbackReport, responseFromSnapshot, runSingleFlight, setCachedReport } from "../src/lib/report-cache.js";
 
 test("report cache serves fresh then stale successful snapshots", () => {
   clearReportCache();
@@ -16,6 +16,14 @@ test("report cache does not store error responses and marks cache responses", as
   assert.equal(getCachedReport("bad"), null);
   const response = responseFromSnapshot({ status:200, body:"{}", contentType:"application/json", cacheControl:"public" }, "stale");
   assert.equal(response.headers.get("x-report-cache"), "stale");
+});
+
+test("report cache retains the last successful model as an outage fallback", () => {
+  clearReportCache();
+  setCachedReport("eth", { status:200, body:'{"ok":true}' }, { freshTtlMs:1, staleTtlMs:1 });
+  assert.equal(getCachedReport("eth", Date.now() + 10), null);
+  assert.equal(getFallbackReport("eth").status, 200);
+  assert.equal(getFallbackReport("eth").cacheState, "fallback");
 });
 
 test("single flight deduplicates concurrent report builds", async () => {

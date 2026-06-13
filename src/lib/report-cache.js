@@ -12,11 +12,14 @@ export function getCachedReport(key, now = Date.now()) {
   const entry = reportCache.get(normalized);
   if (!entry) return null;
   const ageMs = now - entry.storedAt;
-  if (ageMs > entry.staleTtlMs) {
-    reportCache.delete(normalized);
-    return null;
-  }
+  if (ageMs > entry.staleTtlMs) return null;
   return { ...entry.snapshot, cacheState:ageMs <= entry.freshTtlMs ? "fresh" : "stale", ageMs };
+}
+
+/** Return the last successful model even after SWR expiry, for controlled outage fallback. */
+export function getFallbackReport(key) {
+  const entry = reportCache.get(normalizeKey(key));
+  return entry ? { ...entry.snapshot, cacheState:"fallback", ageMs:Date.now() - entry.storedAt } : null;
 }
 
 export function setCachedReport(key, snapshot, options = {}) {
