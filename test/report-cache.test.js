@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clearReportCache, getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, reportQuality, responseFromSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "../src/lib/report-cache.js";
+import { REPORT_CACHE_VERSION, clearReportCache, getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, reportQuality, responseFromSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "../src/lib/report-cache.js";
 
 test("report cache serves fresh then stale successful snapshots", () => {
   clearReportCache();
@@ -47,8 +47,13 @@ test("persistent KV stores last-known-good reports and project resolution separa
 
   assert.equal((await getPersistentReport(env, "zen")).body, snapshot.body);
   assert.deepEqual(await getPersistentResolution(env, "zen"), { slug:"zen", ticker:"ZEN", coingeckoId:"zencash" });
-  assert.ok(values.has("report:zen"));
-  assert.ok(values.has("resolution:zen"));
+  assert.ok(values.has(`${REPORT_CACHE_VERSION}:report:zen`));
+  assert.ok(values.has(`${REPORT_CACHE_VERSION}:resolution:zen`));
+});
+
+test("cache responses expose canonical-resolution cache version", () => {
+  const response = responseFromSnapshot({ status:200, body:"{}", contentType:"application/json", cacheControl:"public" });
+  assert.equal(response.headers.get("x-report-cache-version"), REPORT_CACHE_VERSION);
 });
 
 test("higher-quality live reports replace fallback reports, but manual never replaces live", () => {

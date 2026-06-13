@@ -698,19 +698,43 @@ function setReportState(app, kind, title, message, options = {}) {
 }
 
 const REPORT_CACHE_TTL_MS = 15 * 60 * 1000;
+const REPORT_CACHE_VERSION = "canonical-resolution-v2";
+const REPORT_CACHE_PREFIX = `report:${REPORT_CACHE_VERSION}:`;
 const REPORT_RETRY_DELAYS_MS = [500, 1200, 2500];
 let reportLoadGeneration = 0;
 let activeReportController = null;
 
+function canonicalReportIdentity(data) {
+  return String(data?.meta?.slug || data?.meta?.project_resolution?.normalized?.slug || "").trim().toLowerCase();
+}
+
+function purgeLegacyReportCache() {
+  try {
+    for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith("report:") && !key.startsWith(REPORT_CACHE_PREFIX)) sessionStorage.removeItem(key);
+    }
+  } catch { /* storage is best-effort */ }
+}
+
 function cachedReport(slug) {
   try {
-    const cached = JSON.parse(sessionStorage.getItem(`report:${slug}`));
-    return cached && Date.now() - cached.storedAt <= REPORT_CACHE_TTL_MS ? cached.data : null;
+    const normalizedInput = String(slug).toLowerCase();
+    const cached = JSON.parse(sessionStorage.getItem(`${REPORT_CACHE_PREFIX}${normalizedInput}`));
+    const identity = canonicalReportIdentity(cached?.data);
+    if (!cached || cached.version !== REPORT_CACHE_VERSION || cached.input !== normalizedInput || cached.canonicalIdentity !== identity || !identity || Date.now() - cached.storedAt > REPORT_CACHE_TTL_MS) {
+      sessionStorage.removeItem(`${REPORT_CACHE_PREFIX}${normalizedInput}`);
+      return null;
+    }
+    return cached.data;
   } catch { return null; }
 }
 
 function storeReport(slug, data) {
-  try { sessionStorage.setItem(`report:${slug}`, JSON.stringify({ storedAt:Date.now(), data })); } catch { /* storage is best-effort */ }
+  const input = String(slug).toLowerCase();
+  const canonicalIdentity = canonicalReportIdentity(data);
+  if (!canonicalIdentity) return;
+  try { sessionStorage.setItem(`${REPORT_CACHE_PREFIX}${input}`, JSON.stringify({ version:REPORT_CACHE_VERSION, input, canonicalIdentity, storedAt:Date.now(), data })); } catch { /* storage is best-effort */ }
 }
 
 function isTemporaryReportStatus(status) { return status === 408 || status === 425 || status === 429 || status >= 500; }
@@ -721,7 +745,7 @@ async function fetchReportAttempt(slug, timeoutMs = 25_000) {
   activeReportController = controller;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`/api/report/${encodeURIComponent(slug)}`, { cache:"default", signal:controller.signal });
+    const response = await fetch(`/api/report/${encodeURIComponent(slug)}?client_cache_version=${encodeURIComponent(REPORT_CACHE_VERSION)}`, { cache:"reload", signal:controller.signal });
     let data = null;
     try { data = await response.json(); } catch { /* handled as a temporary invalid response */ }
     return { response, data };
@@ -859,4 +883,5 @@ async function loadReport() {
   }
 }
 
+purgeLegacyReportCache();
 loadReport();

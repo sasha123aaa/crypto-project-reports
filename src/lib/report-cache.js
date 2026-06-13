@@ -1,6 +1,7 @@
 const DEFAULT_FRESH_TTL_MS = 2 * 60 * 1000;
 const DEFAULT_STALE_TTL_MS = 15 * 60 * 1000;
 const MAX_REPORT_CACHE_ENTRIES = 50;
+export const REPORT_CACHE_VERSION = "canonical-resolution-v2";
 
 const reportCache = new Map();
 const inFlightReports = new Map();
@@ -9,9 +10,10 @@ const LAST_KNOWN_GOOD_TTL_SECONDS = 30 * 24 * 60 * 60;
 const SOURCE_QUALITY = Object.freeze({ error:0, manual:1, partial:2, snapshot:3, "retry-live":4, live:5 });
 
 function normalizeKey(key) { return String(key || "").trim().toLowerCase(); }
+function versionedKey(key) { return `${REPORT_CACHE_VERSION}:${normalizeKey(key)}`; }
 
 export function getCachedReport(key, now = Date.now()) {
-  const normalized = normalizeKey(key);
+  const normalized = versionedKey(key);
   const entry = reportCache.get(normalized);
   if (!entry) return null;
   const ageMs = now - entry.storedAt;
@@ -21,12 +23,12 @@ export function getCachedReport(key, now = Date.now()) {
 
 /** Return the last successful model even after SWR expiry, for controlled outage fallback. */
 export function getFallbackReport(key) {
-  const entry = reportCache.get(normalizeKey(key));
+  const entry = reportCache.get(versionedKey(key));
   return entry ? { ...entry.snapshot, cacheState:"fallback", ageMs:Date.now() - entry.storedAt } : null;
 }
 
 export function setCachedReport(key, snapshot, options = {}) {
-  const normalized = normalizeKey(key);
+  const normalized = versionedKey(key);
   if (!normalized || snapshot?.status !== 200) return snapshot;
   // Manual reports are an emergency response, never a last-known-good snapshot.
   if (snapshotSourceState(snapshot) === "manual") return snapshot;
@@ -46,7 +48,7 @@ export function setCachedReport(key, snapshot, options = {}) {
 }
 
 function persistentKey(namespace, key) {
-  return `${namespace}:${normalizeKey(key)}`;
+  return `${REPORT_CACHE_VERSION}:${namespace}:${normalizeKey(key)}`;
 }
 
 async function readPersistent(env, namespace, key) {
@@ -104,7 +106,7 @@ export async function setPersistentResolution(env, key, project) {
 }
 
 export function runSingleFlight(key, producer) {
-  const normalized = normalizeKey(key);
+  const normalized = versionedKey(key);
   if (inFlightReports.has(normalized)) return inFlightReports.get(normalized);
   const pending = Promise.resolve().then(producer).finally(() => inFlightReports.delete(normalized));
   inFlightReports.set(normalized, pending);
@@ -130,6 +132,7 @@ export function responseFromSnapshot(snapshot, cacheState = "miss") {
       "content-type":snapshot.contentType,
       "cache-control":snapshot.cacheControl,
       "x-report-cache":cacheState,
+      "x-report-cache-version":REPORT_CACHE_VERSION,
     },
   });
 }
