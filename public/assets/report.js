@@ -666,49 +666,118 @@ async function initTradingView(symbol) {
   }
 }
 
-function reportStateHtml(kind, title, message) {
+function reportStateHtml(kind, title, message, { retry = false } = {}) {
   const spinner = kind === "loading" ? `<span class="state-spinner" aria-hidden="true"></span>` : "";
-  const actions = kind === "loading" ? "" : `<div class="state-actions"><a class="state-link" href="/">Выбрать другой проект</a></div>`;
+  const retryAction = retry ? `<button class="state-link state-retry" type="button" data-report-retry>Повторить загрузку</button>` : "";
+  const otherAction = kind === "loading" ? "" : `<a class="state-link" href="/">Выбрать другой проект</a>`;
+  const actions = retryAction || otherAction ? `<div class="state-actions">${retryAction}${otherAction}</div>` : "";
   return `<div class="report-state ${kind === "loading" ? "loading-state" : "error-state"}">${spinner}<div><strong>${escapeHtml(title)}</strong><span class="state-message">${escapeHtml(message)}</span></div>${actions}</div>`;
 }
 
+function setReportState(app, kind, title, message, options = {}) {
+  app.innerHTML = reportStateHtml(kind, title, message, options);
+  app.querySelector("[data-report-retry]")?.addEventListener("click", () => loadReport());
+}
+
+const REPORT_CACHE_TTL_MS = 15 * 60 * 1000;
+const REPORT_RETRY_DELAYS_MS = [500, 1200];
+let reportLoadGeneration = 0;
+let activeReportController = null;
+
+function cachedReport(slug) {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(`report:${slug}`));
+    return cached && Date.now() - cached.storedAt <= REPORT_CACHE_TTL_MS ? cached.data : null;
+  } catch { return null; }
+}
+
+function storeReport(slug, data) {
+  try { sessionStorage.setItem(`report:${slug}`, JSON.stringify({ storedAt:Date.now(), data })); } catch { /* storage is best-effort */ }
+}
+
+function isTemporaryReportStatus(status) { return status === 408 || status === 425 || status === 429 || status >= 500; }
+function wait(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+async function fetchReportAttempt(slug, timeoutMs = 25_000) {
+  const controller = new AbortController();
+  activeReportController = controller;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`/api/report/${encodeURIComponent(slug)}`, { cache:"default", signal:controller.signal });
+    let data = null;
+    try { data = await response.json(); } catch { /* handled as a temporary invalid response */ }
+    return { response, data };
+  } finally {
+    clearTimeout(timer);
+    if (activeReportController === controller) activeReportController = null;
+  }
+}
+
+async function fetchReportWithRetry(slug, onAttempt, isActive) {
+  let lastFailure;
+  for (let attempt = 0; attempt <= REPORT_RETRY_DELAYS_MS.length; attempt += 1) {
+    if (!isActive()) throw new DOMException("Superseded report load", "AbortError");
+    if (attempt > 0) {
+      onAttempt(attempt + 1);
+      await wait(REPORT_RETRY_DELAYS_MS[attempt - 1]);
+    }
+    try {
+      const result = await fetchReportAttempt(slug);
+      if (result.response.ok && result.data?.meta?.readiness?.state === "ready") {
+        storeReport(slug, result.data);
+        return { ...result, fromCache:false };
+      }
+      if (result.response.ok) lastFailure = result;
+      else if (!isTemporaryReportStatus(result.response.status)) return { ...result, fromCache:false };
+      else lastFailure = result;
+    } catch (error) { lastFailure = { error }; }
+  }
+  const fallback = cachedReport(slug);
+  if (fallback) return { response:{ ok:true, status:200 }, data:fallback, fromCache:true };
+  if (lastFailure?.response) return { ...lastFailure, fromCache:false };
+  throw lastFailure?.error || new Error("Report request failed");
+}
+
 async function loadReport() {
+  const loadGeneration = ++reportLoadGeneration;
+  activeReportController?.abort();
+  const isActive = () => loadGeneration === reportLoadGeneration;
   injectEnhancementStyles();
   const slug = getSlug();
   const app = document.getElementById("app");
   const reportSearch = document.getElementById("report-project-search");
   if (reportSearch) reportSearch.value = slug.toUpperCase();
   const loadingPhases = [
-    "Определяем профиль проекта и структуру отчета.",
-    "Ждем цену, капитализацию и объем торгов.",
-    "Собираем основные метрики и проверяем готовность страницы.",
+    "Загружаем отчет и определяем профиль проекта.",
+    "Собираем данные по проекту.",
+    "Это занимает больше времени, чем обычно…",
   ];
   let phaseIndex = 0;
   app.setAttribute("aria-busy", "true");
-  app.innerHTML = reportStateHtml("loading", `Собираем отчет по ${slug.toUpperCase()}…`, loadingPhases[phaseIndex]);
+  setReportState(app, "loading", `Собираем отчет по ${slug.toUpperCase()}…`, loadingPhases[phaseIndex]);
   const phaseTimer = setInterval(() => {
     phaseIndex = Math.min(phaseIndex + 1, loadingPhases.length - 1);
-    const message = app.querySelector(".loading-state .state-message");
-    if (message) message.textContent = loadingPhases[phaseIndex];
-  }, 2800);
-  const controller = new AbortController();
-  const requestTimer = setTimeout(() => controller.abort(), 40_000);
+    setReportState(app, "loading", `Собираем отчет по ${slug.toUpperCase()}…`, loadingPhases[phaseIndex], { retry:phaseIndex === loadingPhases.length - 1 });
+  }, 3500);
 
   try {
-    const res = await fetch(`/api/report/${encodeURIComponent(slug)}`, { cache:"no-store", headers:{ "cache-control":"no-cache" }, signal:controller.signal });
-    const data = await res.json();
+    const { response:res, data, fromCache } = await fetchReportWithRetry(slug, (attempt) => {
+      if (isActive()) setReportState(app, "loading", `Повторяем попытку загрузки (${attempt}/3)…`, "Временная ошибка источника — отчет продолжает собираться.", { retry:true });
+    }, isActive);
+    if (!isActive()) return;
     if (!res.ok) {
       if (res.status === 404) {
-        app.innerHTML = reportStateHtml("error", "Проект не найден", "Проверьте тикер или slug и попробуйте другой проект.");
+        setReportState(app, "error", "Проект не найден", "Проверьте тикер или slug и попробуйте другой проект.", { retry:false });
       } else {
-        app.innerHTML = reportStateHtml("error", "Недостаточно данных для отчета", "Сейчас не удалось собрать отчет. Попробуйте еще раз позже или выберите другой проект.");
+        setReportState(app, "error", "Не удалось собрать отчет", "Автоматические попытки исчерпаны. Можно повторить загрузку без обновления страницы.", { retry:true });
       }
       return;
     }
     if (data?.meta?.readiness?.state !== "ready") {
-      app.innerHTML = reportStateHtml("error", "Отчет еще не готов", "Критические данные не прошли проверку готовности. Попробуйте еще раз позже.");
+      setReportState(app, "error", "Отчет временно недоступен", "Источники не вернули критические данные после повторных попыток.", { retry:true });
       return;
     }
+    if (fromCache) data.meta.data_status = `${data.meta.data_status || "report"}-cached-fallback`;
 
     const tradingViewSymbol = data?.meta?.market_symbols?.tradingView || null;
     app.innerHTML = `<div class="layout"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="sidebar-project-mark">${projectIconHtml(data.meta, true)}<div class="project-main">${escapeHtml(data.meta.project_name)}</div></div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
@@ -755,14 +824,14 @@ async function loadReport() {
     createDashboardChart("issuanceChart", issuanceSeries, "Годовой темп эмиссии", { color:"#55d6a5", prefix:"", suffix:"%" });
     if (tradingViewSymbol) initTradingView(tradingViewSymbol);
   } catch (error) {
+    if (!isActive()) return;
     const message = error?.name === "AbortError"
       ? "Источники не успели вернуть критические данные за отведенное время. Попробуйте еще раз позже."
       : "Проверьте соединение и попробуйте еще раз.";
-    app.innerHTML = reportStateHtml("error", "Не удалось загрузить отчет", message);
+    setReportState(app, "error", "Не удалось загрузить отчет", message, { retry:true });
   } finally {
     clearInterval(phaseTimer);
-    clearTimeout(requestTimer);
-    app.removeAttribute("aria-busy");
+    if (isActive()) app.removeAttribute("aria-busy");
   }
 }
 
