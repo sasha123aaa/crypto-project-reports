@@ -71,10 +71,15 @@ const KNOWN_NEWS_CONTEXT = Object.freeze({
   link: ["chainlink", "link token", "chainlink ccip", "chainlink integration", "chainlink data feeds", "chainlink staking", "oracle network"],
 });
 
-function runtimeBranding(coin, ticker) {
-  const known = KNOWN_PROJECT_BRANDING[String(ticker || "").toLowerCase()] || KNOWN_PROJECT_BRANDING[String(coin?.id || "").toLowerCase()];
-  const iconUrl = coin?.image?.large || coin?.image?.small || coin?.image?.thumb;
-  return { ...(known || {}), ...(typeof iconUrl === "string" && /^https:\/\//i.test(iconUrl) ? { iconUrl } : {}) };
+function trustedImageUrls(...coins) {
+  return [...new Set(coins.flatMap((coin) => [coin?.image?.large, coin?.image?.small, coin?.image?.thumb])
+    .filter((url) => typeof url === "string" && /^https:\/\//i.test(url)))];
+}
+
+function runtimeBranding(canonicalCoin, ticker, metadataCoin = canonicalCoin) {
+  const known = KNOWN_PROJECT_BRANDING[String(ticker || "").toLowerCase()] || KNOWN_PROJECT_BRANDING[String(canonicalCoin?.id || "").toLowerCase()];
+  const iconUrls = trustedImageUrls(canonicalCoin, metadataCoin);
+  return { ...(known || {}), ...(iconUrls.length ? { iconUrl:iconUrls[0], iconUrls, iconSource:"canonical_runtime_asset" } : {}) };
 }
 
 function runtimeNewsRelevance(coin, ticker) {
@@ -240,7 +245,7 @@ export function buildRuntimeProjectConfig(input, discovery) {
     ...(KNOWN_PROJECT_NEWS_FEEDS[ticker.toLowerCase()] ? { projectNewsFeeds:KNOWN_PROJECT_NEWS_FEEDS[ticker.toLowerCase()] } : {}),
     newsKeywords: [coin.name, coin.symbol, coin.id].filter(Boolean),
     newsRelevance: runtimeNewsRelevance(coin, ticker),
-    branding: runtimeBranding(coinDetails, ticker),
+    branding: runtimeBranding(coin, ticker, coinDetails),
     resolution: { mode:"runtime", source:"discovery", input:String(input ?? "").trim(), normalized:{ slug:normalizeProjectInput(coin.symbol || input), ticker }, signals },
     runtimeData: { tvl:chain?.tvl ?? protocol?.tvl ?? null },
   }, profile);

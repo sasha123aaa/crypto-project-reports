@@ -296,6 +296,8 @@ test("ordinary tickers prefer canonical assets over pegged and wrapped results",
     assert.equal(project.coingeckoId, canonical.id, input);
     assert.equal(project.name, canonical.name, input);
     assert.equal(project.branding.iconUrl, `https://assets.test/${canonical.id}.png`, input);
+    assert.deepEqual(project.branding.iconUrls, [`https://assets.test/${canonical.id}.png`], input);
+    assert.equal(project.branding.iconSource, "canonical_runtime_asset", input);
   }
 });
 
