@@ -103,5 +103,9 @@ export async function buildReport(project){
   applyProfileAwareSemantics(report, project, { preserveCurated:Boolean(project.reportOptions?.preserveCuratedSemantics) });
   applyInferredTitleSubtitle(report, project);
   applySectionSelection(report, project);
+  const marketAttempts = results.market?.attempts || 1;
+  report.meta.source_state = results.market?.status === "fulfilled"
+    ? (marketAttempts > 1 ? "retry-live" : "live")
+    : "partial";
   return report;
 }

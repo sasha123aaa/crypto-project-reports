@@ -797,7 +797,11 @@ async function loadReport() {
       setReportState(app, "error", "Отчет временно недоступен", "Источники не вернули критические данные после повторных попыток.", { retry:true });
       return;
     }
-    if (fromCache) data.meta.data_status = `${data.meta.data_status || "report"}-cached-fallback`;
+    if (fromCache) {
+      data.meta.snapshot_of = data.meta.source_state || "partial";
+      data.meta.source_state = "snapshot";
+      data.meta.data_status = `${data.meta.data_status || "report"}-cached-fallback`;
+    }
 
     const tradingViewSymbol = data?.meta?.market_symbols?.tradingView || null;
     app.innerHTML = `<div class="layout report-ready-enter"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="sidebar-project-mark">${projectIconHtml(data.meta, true)}<div class="project-main">${escapeHtml(data.meta.project_name)}</div></div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
