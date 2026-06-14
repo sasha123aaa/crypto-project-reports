@@ -3,11 +3,34 @@ const escapeHtml=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<'
 const slug=normalizeSlug(new URL(location.href).searchParams.get('slug'))||'eth',app=document.getElementById('trade-plan-app');document.getElementById('back-report').href=`/reports/?slug=${encodeURIComponent(slug)}`;
 const tfLabel={bullish:'Бычий',bearish:'Медвежий',neutral:'Нейтральный'},money=value=>Number.isFinite(value)?new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:value<1?6:2}).format(value):'—';
 const allocations={entry:10,average1:10,average2:20,average3:60};
-function projectIconHtml(meta={}){
-  const ticker=String(meta.ticker||slug).toUpperCase(),branding=meta.branding||{},key=String(branding.iconKey||ticker).toLowerCase(),accent=/^#[0-9a-f]{6}$/i.test(branding.accent||'')?branding.accent:'#7898df';
-  const fallback=`<span class="project-icon-fallback" aria-hidden="true">${escapeHtml(ticker.slice(0,4)||'•')}</span>`,labels={bitcoin:'₿',ethereum:'Ξ',solana:'SOL',bnb:'BNB',chainlink:'LINK',hyperliquid:'HYPE',pendle:'P',curve:'CRV',mantle:'MNT',near:'NEAR'};
-  const local=labels[key]?`<span class="brand-word">${labels[key]}</span>`:fallback,urls=[...new Set([...(Array.isArray(branding.iconUrls)?branding.iconUrls:[]),branding.iconUrl].filter(url=>typeof url==='string'&&/^https:\/\//i.test(url)))],remote=urls.slice().reverse().map(url=>`<img src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">`).join('');
-  return `<span class="project-icon plan-coin" aria-label="${escapeHtml(meta.project_name||ticker)}" style="--project-accent:${accent}">${local}${remote}</span>`;
+function projectIconHtml(meta = {}) {
+  const ticker = String(meta.ticker || "").toUpperCase();
+  const branding = meta.branding || {};
+  const key = String(branding.iconKey || ticker).toLowerCase();
+  const label = escapeHtml(meta.project_name || ticker || "Project");
+  const accent = /^#[0-9a-f]{6}$/i.test(branding.accent || "") ? branding.accent : "#7898df";
+  const fallback = `<span class="project-icon-fallback" aria-hidden="true">${escapeHtml(ticker.slice(0, 4) || "•")}</span>`;
+  const icons = {
+    bitcoin:`<span class="brand-letter bitcoin-letter">₿</span>`,
+    ethereum:`<svg viewBox="0 0 256 417" aria-hidden="true"><path class="eth-top-left" d="M127.9 0L125.1 9.5v274.2l2.8 2.8 127.9-75.6z"/><path class="eth-top-right" d="M127.9 0L0 210.9l127.9 75.6V154.1z"/><path class="eth-bottom-left" d="M127.9 310.7l-1.6 1.9v98.2l1.6 4.7 128-180.3z"/><path class="eth-bottom-right" d="M127.9 415.5V310.7L0 235.2z"/><path class="eth-center-left" d="M127.9 286.5l127.9-75.6-127.9-56.8z"/><path class="eth-center-right" d="M0 210.9l127.9 75.6V154.1z"/></svg>`,
+    solana:`<svg viewBox="0 0 128 104" aria-hidden="true"><defs><linearGradient id="sol-g" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#9945ff"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs><path fill="url(#sol-g)" d="M25 0h91l-13 17H12zM12 43h91l13 17H25zM25 86h91l-13 17H12z"/></svg>`,
+    dogecoin:`<span class="brand-letter dogecoin-letter">Ð</span>`,
+    pepe:`<span class="brand-word pepe-word">PEPE</span>`,
+    bnb:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="#f3ba2f" d="M50 5 65 20 50 35 35 20zm-30 30 15 15-15 15L5 50zm60 0 15 15-15 15-15-15zM50 65l15 15-15 15-15-15zm0-30 15 15-15 15-15-15z"/></svg>`,
+    chainlink:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#5578ff" stroke-width="15" d="M50 8 86 29v42L50 92 14 71V29z"/></svg>`,
+    hyperliquid:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#97fce4" stroke-width="12" stroke-linecap="round" d="M12 58c9-25 20-25 29 0s20 25 29 0 14-24 18-16"/></svg>`,
+    pendle:`<span class="brand-word">P</span>`,
+    curve:`<span class="brand-word">CRV</span>`,
+    mantle:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#d7ff3f" stroke-width="10" stroke-linejoin="round" d="M12 76V24l19 26 19-26 19 26 19-26v52"/></svg>`,
+    near:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#7cf7c4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" d="M18 78V22l64 56V22L18 78"/></svg>`,
+  };
+  const local = icons[key] || fallback;
+  const remoteUrls = [...new Set([...(Array.isArray(branding.iconUrls) ? branding.iconUrls : []), branding.iconUrl]
+    .filter((url) => typeof url === "string" && /^https:\/\//i.test(url)))];
+  const remote = remoteUrls.slice().reverse().map((url) =>
+    `<img src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">`
+  ).join("");
+  return `<span class="project-icon plan-coin" aria-label="${label}" style="--project-accent:${accent}">${local}${remote}</span>`;
 }
 
 const tfGroups=[{name:'Младшая группа',frames:['1m','3m','5m']},{name:'Средняя группа',frames:['15m','1h','4h']},{name:'Старшая группа',frames:['1d','1w','1M']}];

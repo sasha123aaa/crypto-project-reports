@@ -11,7 +11,11 @@ class TradePlanChart {
   }
   formatPrice(v){return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:v<1?6:2}).format(v)}
   formatTime(time){
-    const stamp=typeof time==='number'?time:typeof time==='string'?Date.parse(time)/1000:Date.UTC(time.year,time.month-1,time.day)/1000,date=new Date(stamp*1000);
+    let millis;
+    if(typeof time==='number')millis=Math.abs(time)>=1e12?time:time*1000;
+    else if(typeof time==='string')millis=Date.parse(time);
+    else if(time&&Number.isInteger(time.year)&&Number.isInteger(time.month)&&Number.isInteger(time.day))millis=Date.UTC(time.year,time.month-1,time.day);
+    const date=new Date(millis);
     if(!Number.isFinite(date.getTime()))return '';
     const intraday=['1m','3m','5m','15m','1h','4h'].includes(this.timeframe),monthly=['1w','1M'].includes(this.timeframe);
     return new Intl.DateTimeFormat('ru-RU',monthly?{month:'short',year:'numeric',timeZone:'UTC'}:intraday?{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'UTC'}:{day:'2-digit',month:'short',timeZone:'UTC'}).format(date).replace(',','');
