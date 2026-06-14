@@ -620,7 +620,7 @@ function createDashboardMultiChart(canvasId, datasets) {
   render(); return chart;
 }
 
-function technicalBiasHtml(bias) {
+function technicalBiasHtml(bias, slug) {
   const groups = [
     { chips: ["1m","3m","5m"], note: bias?.notes?.lower_tf || "—" },
     { chips: ["15m","1h","4h"], note: bias?.notes?.mid_tf || "—" },
@@ -635,7 +635,7 @@ function technicalBiasHtml(bias) {
     return `<div class="ta-group"><div class="ta-group-chips">${chipsHtml}</div><div class="list-item">${escapeHtml(group.note)}</div></div>`;
   }).join("");
 
-  return `<section class="panel"><div class="section-title">Быстрый теханализ</div><div class="section-sub">Краткая оценка структуры по ключевым таймфреймам</div><div class="ta-meta-row"><div class="ta-meta-box"><div class="metric-title">Источник</div><div class="ta-meta-value">${escapeHtml(bias?.source || "—")}</div></div><div class="ta-meta-box"><div class="metric-title">Обновлено</div><div class="ta-meta-value">${bias?.updated_at ? new Date(bias.updated_at).toLocaleString("ru-RU") : "—"}</div></div></div><div class="ta-groups">${groupsHtml}</div></section>`;
+  return `<section class="panel"><div class="chart-head"><div><div class="section-title">Быстрый теханализ</div><div class="section-sub">Краткая оценка структуры по ключевым таймфреймам</div></div><a class="trade-plan-link" href="/trade-plan/?slug=${encodeURIComponent(slug)}">Открыть торговый план</a></div><div class="ta-meta-row"><div class="ta-meta-box"><div class="metric-title">Источник</div><div class="ta-meta-value">${escapeHtml(bias?.source || "—")}</div></div><div class="ta-meta-box"><div class="metric-title">Обновлено</div><div class="ta-meta-value">${bias?.updated_at ? new Date(bias.updated_at).toLocaleString("ru-RU") : "—"}</div></div></div><div class="ta-groups">${groupsHtml}</div></section>`;
 }
 
 function buildUsersStatusCard(metrics) {
@@ -834,7 +834,7 @@ async function loadReport() {
       <div class="three-col hero-thesis top-gap"><div class="list-item"><strong>Главная сила</strong><span>${escapeHtml(data.hero.main_strength || "—")}</span></div><div class="list-item"><strong>Главный риск</strong><span>${escapeHtml(data.hero.main_risk || "—")}</span></div><div class="list-item"><strong>Что проверить</strong><span>${escapeHtml(data.hero.status_text || "—")}</span></div></div></section>
       ${tradingViewCard(tradingViewSymbol)}
       ${marketPackHtml(data)}
-      ${technicalBiasHtml(data.technical_bias)}
+      ${technicalBiasHtml(data.technical_bias, data.meta.slug || slug)}
       ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel executive-summary"><div class="section-title">Кратко для инвестора</div><div class="section-sub">Три проверки качества инвестиционного тезиса.</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
       ${orderedReportSectionsHtml(data)}
     </main></div>`;
