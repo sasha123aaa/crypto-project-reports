@@ -2,7 +2,7 @@ import { getSectionSelection } from "./config/projects.js";
 import { resolveProject } from "./lib/project-resolution.js";
 import { buildReport } from "./lib/build-report.js";
 import { applySectionSelection, isSectionSelected } from "./lib/section-selection.js";
-import { fetchMarketCandles, getTechnicalBias } from "./adapters/bybit.js";
+import { detectRangesWithPreview, fetchMarketCandles, getTechnicalBias } from "./adapters/bybit.js";
 import { marketTechnicalRoute } from "./lib/market-symbols.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
@@ -30,13 +30,15 @@ export default {
 async function handleTradePlanCandles(url) {
   const input = decodeURIComponent(url.pathname.replace("/api/trade-plan-candles/", "").replace(/\/$/, "")).trim().toLowerCase();
   const timeframe = url.searchParams.get("timeframe") || "4h";
-  if (!["1h", "4h", "1d"].includes(timeframe)) return json({ error:"Unsupported timeframe" }, 400, { cacheControl:"no-store" });
+  if (!["1m", "3m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"].includes(timeframe)) return json({ error:"Unsupported timeframe" }, 400, { cacheControl:"no-store" });
   try {
     const project = await resolveProject(input);
     const route = marketTechnicalRoute(project?.marketSymbols);
     if (!route) return json({ error:"Market route unavailable" }, 404, { cacheControl:"no-store" });
     const candles = await fetchMarketCandles(route, timeframe);
-    return json({ timeframe, source:route.source, candles }, 200, { cacheControl:"public, max-age=60" });
+    const rangeResult = detectRangesWithPreview(candles);
+    const range = rangeResult.previewRange || rangeResult.ranges.at(-1) || null;
+    return json({ timeframe, source:route.source, candles, range }, 200, { cacheControl:"public, max-age=60" });
   } catch (error) {
     return json({ error:"Candles unavailable", reason:error instanceof Error ? error.message : String(error) }, 502, { cacheControl:"no-store" });
   }
