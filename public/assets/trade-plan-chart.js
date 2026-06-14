@@ -1,7 +1,7 @@
 class TradePlanChart {
   constructor(container, options) {
     this.container=container;
-    container.innerHTML='<div class="trade-plan-plot"></div><aside class="trade-plan-gutter"><strong>Торговый план</strong><div class="trade-plan-gutter-levels"></div></aside>';
+    container.innerHTML='<aside class="trade-plan-gutter"><strong>Торговый план</strong><div class="trade-plan-gutter-levels"></div></aside><div class="trade-plan-plot"></div>';
     this.plot=container.querySelector('.trade-plan-plot'); this.gutter=container.querySelector('.trade-plan-gutter'); this.gutterLevels=container.querySelector('.trade-plan-gutter-levels');
     this.chart=LightweightCharts.createChart(this.plot,{layout:{background:{type:'solid',color:'#0b1020'},textColor:'#aeb8cc',fontFamily:'Inter,system-ui,sans-serif'},grid:{vertLines:{color:'rgba(255,255,255,.035)'},horzLines:{color:'rgba(255,255,255,.045)'}},rightPriceScale:{visible:true,borderColor:'rgba(255,255,255,.14)',minimumWidth:72,scaleMargins:{top:.12,bottom:.12}},timeScale:{borderColor:'rgba(255,255,255,.1)',timeVisible:true,rightOffset:8,barSpacing:5,minBarSpacing:1},crosshair:{mode:LightweightCharts.CrosshairMode.Normal},localization:{priceFormatter:v=>this.formatPrice(v)}});
     this.series=this.chart.addCandlestickSeries({upColor:'#42d392',downColor:'#ff6b7a',wickUpColor:'#42d392',wickDownColor:'#ff6b7a',borderVisible:false,priceLineVisible:false});

@@ -18,6 +18,18 @@ const RANGE_PARAMS = {
   minBars: 7,
 };
 
+export const RANGE_ANALYSIS_CANDLE_LIMIT = 500;
+
+export function analysisCandlesForRange(candles) {
+  return Array.isArray(candles) ? candles.slice(-RANGE_ANALYSIS_CANDLE_LIMIT) : [];
+}
+
+export function activeRangeForCandles(candles) {
+  const analysisCandles = analysisCandlesForRange(candles);
+  const result = detectRangesWithPreview(analysisCandles, RANGE_PARAMS.correctionPct, RANGE_PARAMS.maxRects, RANGE_PARAMS.minBars);
+  return { analysisCandles, range:result.previewRange || null };
+}
+
 function parseBybitKlineRow(row) {
   if (!Array.isArray(row) || row.length < 5) return null;
   const time = Number(row[0]);
@@ -649,8 +661,8 @@ export async function getTechnicalBias(routeInput) {
     TIMEFRAMES.map(async (tf) => {
       try {
         const candles = await fetchMarketCandles({ ...route, symbol }, tf);
-        const result = detectRangesWithPreview(candles, RANGE_PARAMS.correctionPct, RANGE_PARAMS.maxRects, RANGE_PARAMS.minBars);
-        timeframes[tf] = stateFromResult(result, candles);
+        const { range } = activeRangeForCandles(candles);
+        timeframes[tf] = stateFromRange(range);
       } catch {
         timeframes[tf] = "neutral";
       }
