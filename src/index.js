@@ -44,7 +44,9 @@ async function handleTradePlanCandles(url) {
     const candles = candleResult.candles;
     const { analysisCandles, range:rawRange } = activeRangeForCandles(candles);
     const range = rawRange ? { aTime:analysisCandles[rawRange[0]]?.time, bTime:analysisCandles[rawRange[1]]?.time, aPrice:rawRange[2], bPrice:rawRange[3], bullish:rawRange[4] } : null;
-    return json({ timeframe, source:candleResult.source, exchange:candleResult.exchange, symbol:candleResult.symbol, routes, candles, analysisCandleCount:analysisCandles.length, range, updated_at:new Date().toISOString(), last_candle_time:candles[candles.length - 1]?.time || null }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
+    const firstCandle = candles[0] || null;
+    const lastCandle = candles[candles.length - 1] || null;
+    return json({ timeframe, source:candleResult.source, exchange:candleResult.exchange, symbol:candleResult.symbol, routes, candles, candle_debug:{ count:candles.length, first_time:firstCandle?.time || null, last_time:lastCandle?.time || null, first_close:firstCandle?.close || null, last_close:lastCandle?.close || null, ascending:candles.every((c, index) => index === 0 || c.time > candles[index - 1].time) }, analysisCandleCount:analysisCandles.length, range, updated_at:new Date().toISOString(), last_candle_time:lastCandle?.time || null }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
   } catch (error) {
     return json({ error:"Candles unavailable", reason:error instanceof Error ? error.message : String(error) }, 502, { cacheControl:"no-store" });
   }

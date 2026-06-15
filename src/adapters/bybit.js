@@ -41,6 +41,40 @@ function parseBybitKlineRow(row) {
   return { time, open, high, low, close };
 }
 
+function normalizeCandles(rows, parser) {
+  const candles = (Array.isArray(rows) ? rows : [])
+    .map(parser)
+    .filter((c) => {
+      if (!c) return false;
+
+      const values = [c.time, c.open, c.high, c.low, c.close];
+      if (!values.every(Number.isFinite)) return false;
+
+      if (!(c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0)) return false;
+
+      const maxBody = Math.max(c.open, c.close);
+      const minBody = Math.min(c.open, c.close);
+
+      if (c.high < maxBody) return false;
+      if (c.low > minBody) return false;
+
+      return true;
+    })
+    .sort((a, b) => a.time - b.time);
+
+  const deduped = [];
+  for (const candle of candles) {
+    const previous = deduped[deduped.length - 1];
+    if (previous?.time === candle.time) {
+      deduped[deduped.length - 1] = candle;
+    } else {
+      deduped.push(candle);
+    }
+  }
+
+  return deduped;
+}
+
 function distanceToRange(price, low, high) {
   if (![price, low, high].every(Number.isFinite)) return Number.POSITIVE_INFINITY;
   if (price >= low && price <= high) return 0;
@@ -374,7 +408,7 @@ async function fetchBybitCandles(symbol, timeframe) {
   if (!res.ok) throw new Error(`Bybit kline HTTP ${res.status}`);
   const json = await res.json();
   const list = Array.isArray(json?.result?.list) ? json.result.list : [];
-  return list.slice().reverse().map(parseBybitKlineRow).filter(Boolean);
+  return normalizeCandles(list, parseBybitKlineRow);
 }
 
 function parseBinanceKlineRow(row) {
@@ -383,14 +417,21 @@ function parseBinanceKlineRow(row) {
 
 function parseGateKlineRow(row) {
   if (!Array.isArray(row) || row.length < 6) return null;
-  return parseBybitKlineRow([Number(row[0]) * 1000, row[5], row[3], row[4], row[2]]);
+
+  return parseBybitKlineRow([
+    Number(row[0]) * 1000,
+    row[5],
+    row[3],
+    row[4],
+    row[2],
+  ]);
 }
 
 async function fetchBinanceCandles(symbol, timeframe) {
   const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(timeframe)}&limit=1000`);
   if (!response.ok) throw new Error(`Binance kline HTTP ${response.status}`);
   const json = await response.json();
-  return (Array.isArray(json) ? json : []).map(parseBinanceKlineRow).filter(Boolean);
+  return normalizeCandles(json, parseBinanceKlineRow);
 }
 
 async function fetchGateCandles(symbol, timeframe) {
@@ -400,7 +441,7 @@ async function fetchGateCandles(symbol, timeframe) {
   const response = await fetch(`https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=${encodeURIComponent(pair)}&interval=${encodeURIComponent(interval)}&limit=1000`);
   if (!response.ok) throw new Error(`Gate.io kline HTTP ${response.status}`);
   const json = await response.json();
-  return (Array.isArray(json) ? json : []).slice().reverse().map(parseGateKlineRow).filter(Boolean);
+  return normalizeCandles(json, parseGateKlineRow);
 }
 
 export async function fetchMarketCandles(route, timeframe) {
@@ -420,6 +461,10 @@ function hasEnoughCandles(candles, minCandles = 50) {
   return Array.isArray(candles) && candles.length >= minCandles;
 }
 
+function isAscendingCandles(candles) {
+  return Array.isArray(candles) && candles.every((c, index) => index === 0 || c.time > candles[index - 1].time);
+}
+
 export async function fetchMarketCandlesWithFallback(routeInput, timeframe, options = {}) {
   const routes = normalizeRoutes(routeInput);
   const minCandles = options.minCandles || 50;
@@ -427,6 +472,14 @@ export async function fetchMarketCandlesWithFallback(routeInput, timeframe, opti
   for (const route of routes) {
     try {
       const candles = await fetchMarketCandles(route, timeframe);
+      if (!isAscendingCandles(candles)) {
+        errors.push({
+          exchange: route.exchange,
+          symbol: route.symbol,
+          reason: "candles are not sorted ascending",
+        });
+        continue;
+      }
       if (hasEnoughCandles(candles, minCandles)) {
         return { candles, route, source:route.source || `${route.exchange} spot`, exchange:route.exchange, symbol:route.symbol, status:"resolved" };
       }
