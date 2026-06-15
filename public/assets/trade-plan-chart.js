@@ -24,8 +24,22 @@ class TradePlanChart {
   applyDefaultView(){
     const count=this.candles?.length||0;
     if(!count)return;
-    const lastIndex=count-1,rightPaddingBars=28,visibleBars=Math.min(180,Math.max(120,count));
-    this.chart.timeScale().setVisibleLogicalRange({from:Math.max(0,lastIndex-visibleBars),to:lastIndex+rightPaddingBars});
+
+    const lastIndex=count-1;
+
+    // Нужно оставить справа место под overlay уровней.
+    // При 28 барах свечи все еще залезают в подписи уровней.
+    const rightPaddingBars=70;
+
+    // Чуть меньше видимой истории, чтобы последняя свеча была левее,
+    // а справа оставалась свободная зона под уровни.
+    const visibleBars=Math.min(150,Math.max(90,count));
+
+    this.chart.timeScale().setVisibleLogicalRange({
+      from:Math.max(0,lastIndex-visibleBars),
+      to:lastIndex+rightPaddingBars
+    });
+
     this.renderOverlay();
   }
   setData(options,behavior={}){
