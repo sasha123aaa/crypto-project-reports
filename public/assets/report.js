@@ -331,7 +331,7 @@ function projectIconHtml(meta = {}, compact = false) {
   const remoteUrls = [...new Set([...(Array.isArray(branding.iconUrls) ? branding.iconUrls : []), branding.iconUrl]
     .filter((url) => typeof url === "string" && /^https:\/\//i.test(url)))];
   const remote = remoteUrls.slice().reverse().map((url) =>
-    `<img src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">`
+    `<img src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.closest('.project-icon')?.classList.add('has-remote-icon')" onerror="this.remove()">`
   ).join("");
   return `<span class="project-icon${compact ? " project-icon-compact" : ""}" aria-label="${label}" style="--project-accent:${accent}">${local}${remote}</span>`;
 }

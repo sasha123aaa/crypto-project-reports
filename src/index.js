@@ -102,13 +102,14 @@ async function buildHybridReportResponse(request, env, url, input) {
   const report = staticJson.data;
   report.meta = report.meta || {};
   report.meta.project_resolution = project.resolution;
-  report.meta.branding = project.branding || report.meta.branding || null;
+  report.meta.branding = mergeBranding(report.meta.branding, project.branding);
   report.meta.market_symbols = project.marketSymbols || report.meta.market_symbols || null;
   applySectionSelection(report, project);
 
   try {
     const live = await fetchLiveMetrics(project);
     mergeLiveMetrics(report, live);
+    report.meta.branding = mergeBranding(report.meta.branding, project.branding, live.branding);
     applyProfileAwareSemantics(report, project, { preserveCurated:Boolean(project.reportOptions?.preserveCuratedSemantics) });
     applySectionSelection(report, project);
     applyBlockRenderingRules(report, project, live);
@@ -134,6 +135,7 @@ async function buildHybridReportResponse(request, env, url, input) {
     return json(report, 200, { cacheControl: resolveReportCacheControl(report.meta.data_status) });
   } catch (error) {
     report.meta = report.meta || {};
+    report.meta.branding = mergeBranding(report.meta.branding, project.branding);
     report.meta.updated_at = new Date().toISOString();
     report.meta.data_status = "hybrid-fallback";
     report.meta.source_state = "manual";
@@ -154,7 +156,7 @@ async function handleRuntimeReport(project, { curatedFallback = false } = {}) {
     const report = await buildReport(project);
     report.meta = report.meta || {};
     report.meta.project_resolution = project.resolution;
-    report.meta.branding = project.branding || report.meta.branding || null;
+    report.meta.branding = mergeBranding(report.meta.branding, project.branding);
     report.meta.market_symbols = project.marketSymbols || report.meta.market_symbols || null;
     report.meta.data_status = curatedFallback ? "curated-runtime-partial" : "runtime-partial";
     report.meta.source_state = report.meta.source_state || "live";
@@ -266,6 +268,10 @@ async function fetchLiveMetrics(project) {
   const dexVolume24h = toNumber(dexOverview?.total24h);
 
   return {
+    branding: {
+      iconUrl: typeof effectiveCoinGeckoMarket?.image === "string" ? effectiveCoinGeckoMarket.image : null,
+      iconSource: effectiveCoinGeckoMarket?.image ? "coingecko_market" : null,
+    },
     market: {
       price, marketCap, fdv, volume24h, circulatingSupply, totalSupply, maxSupply,
       source: marketMetricsMode === "live_cached_fallback" ? "CoinGecko cached snapshot" : (marketMetricsMode === "live_fresh_with_cached_fields" ? "CoinGecko + cached snapshot" : "CoinGecko"),
@@ -633,11 +639,37 @@ const COINGECKO_TOKENOMICS_FIELDS = ["market_cap", "fully_diluted_valuation", "c
 
 export function mergeCoinGeckoMarketData(primary, fallback) {
   if (!hasAnyCoinGeckoMarketValue(primary) && !hasAnyCoinGeckoMarketValue(fallback)) return null;
-  return Object.fromEntries(COINGECKO_MARKET_FIELDS.map((field) => {
+  const merged = Object.fromEntries(COINGECKO_MARKET_FIELDS.map((field) => {
     const primaryValue = toNumber(primary?.[field]);
     const fallbackValue = toNumber(fallback?.[field]);
     return [field, isValidNumber(primaryValue) ? primaryValue : fallbackValue];
   }));
+  const image = isHttpsUrl(primary?.image) ? primary.image : (isHttpsUrl(fallback?.image) ? fallback.image : null);
+  return image ? { ...merged, image } : merged;
+}
+
+function isHttpsUrl(value) {
+  return typeof value === "string" && /^https:\/\//i.test(value);
+}
+
+export function mergeBranding(...sources) {
+  const merged = {};
+  const iconUrls = [];
+
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    Object.assign(merged, source);
+    if (Array.isArray(source.iconUrls)) iconUrls.push(...source.iconUrls.filter(isHttpsUrl));
+    if (isHttpsUrl(source.iconUrl)) iconUrls.push(source.iconUrl);
+  }
+
+  const uniqueUrls = [...new Set(iconUrls)];
+  if (uniqueUrls.length) {
+    merged.iconUrl = uniqueUrls[0];
+    merged.iconUrls = uniqueUrls;
+    merged.iconSource = merged.iconSource || "merged_branding";
+  }
+  return Object.keys(merged).length ? merged : null;
 }
 
 function hasCompleteCoinGeckoTokenomics(row) {
