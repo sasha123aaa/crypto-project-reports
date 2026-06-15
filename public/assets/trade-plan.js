@@ -87,15 +87,15 @@ async function init(){
       const payload=await response.json(),range=payload.range||null;document.querySelector('.section-sub').textContent=`Рабочий диапазон · ${tf}`;
       if(!range)throw Error('range');const plan=buildPlan(range,payload.candles);updatePlan(plan);const chartOptions={candles:payload.candles,levels:plan.levels,range,timeframe:tf,showPlan:range.bullish};chart?chart.setData(chartOptions,{preserveView}):chart=new TradePlanChart(container,chartOptions);
     }
-    function updateTimer(){const seconds=Math.max(0,Math.ceil((nextRefreshAt-Date.now())/1000));countdown.textContent=`Обновление через ${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;if(!refreshing&&seconds===0)refresh()}
-    async function refresh(){
+    function updateTimer(){const seconds=Math.max(0,Math.ceil((nextRefreshAt-Date.now())/1000));countdown.textContent=`Обновление через ${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;if(!refreshing&&seconds===0)refreshTradePlan()}
+    async function refreshTradePlan({manual=false}={}){
       if(refreshing)return;refreshing=true;refreshButton.disabled=true;status.textContent='Обновляем...';
-      try{const fresh=await fetchReport();report=fresh;document.getElementById('market-context-content').innerHTML=renderTfAnalysis(fresh.technical_bias||{});document.getElementById('trade-plan-price').textContent=money(Number(fresh.market?.price?.value));await loadChart(activeTf,{preserveView:true});status.textContent=`Обновлено в ${new Date().toLocaleTimeString('ru-RU')}`;nextRefreshAt=Date.now()+REFRESH_INTERVAL_MS}
-      catch{status.textContent='Не удалось обновить';nextRefreshAt=Date.now()+REFRESH_INTERVAL_MS}
-      finally{refreshing=false;refreshButton.disabled=false;updateTimer()}
+      try{await loadChart(activeTf,{preserveView:true});status.textContent='Обновлено только что';try{const fresh=await fetchReport();report=fresh;document.getElementById('market-context-content').innerHTML=renderTfAnalysis(fresh.technical_bias||{});document.getElementById('trade-plan-price').textContent=money(Number(fresh.market?.price?.value))}catch(error){console.warn('Market context refresh failed',error)}}
+      catch(error){console.error('Trade plan refresh failed',error);status.textContent='Ошибка обновления'}
+      finally{nextRefreshAt=Date.now()+REFRESH_INTERVAL_MS;refreshing=false;refreshButton.disabled=false;updateTimer()}
     }
-    document.querySelectorAll('[data-timeframe]').forEach(b=>b.onclick=()=>{if(!refreshing)loadChart(b.dataset.timeframe,{preserveView:false}).catch(()=>{status.textContent='Не удалось обновить график'})});refreshButton.onclick=refresh;
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});await loadChart(activeTf,{preserveView:false});timerId=setInterval(updateTimer,1000);updateTimer();
+    document.querySelectorAll('[data-timeframe]').forEach(b=>b.onclick=()=>{if(!refreshing)loadChart(b.dataset.timeframe,{preserveView:false}).catch(()=>{status.textContent='Не удалось обновить график'})});refreshButton.addEventListener('click',event=>{event.preventDefault();refreshTradePlan({manual:true})});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshTradePlan()});await loadChart(activeTf,{preserveView:false});timerId=setInterval(updateTimer,1000);updateTimer();
   }catch{app.innerHTML='<div class="report-state error-state"><strong>Не удалось открыть торговый план</strong></div>'}
 }
 init();
