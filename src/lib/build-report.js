@@ -5,7 +5,7 @@ import { getUsersFallbackText } from "./fallbacks.js";
 import { fetchCoinGeckoMarket, fetchCoinGeckoChart, fetchProjectNews } from "../adapters/coingecko.js";
 import { fetchDefiLlamaChains, fetchDefiLlamaTVLHistory, fetchStablecoinHistory, fetchStablecoinChains, fetchAppFeesOverview, fetchChainFeesOverview, fetchDexOverview, normalizeStablecoinHistory, stablecoinMcapUsd } from "../adapters/defillama.js";
 import { getTechnicalBias } from "../adapters/bybit.js";
-import { marketTechnicalRoute } from "./market-symbols.js";
+import { marketTechnicalRoutes } from "./market-symbols.js";
 import { getProjectProfile, getSectionSelection } from "../config/projects.js";
 import { applySectionSelection, isSectionSelected } from "./section-selection.js";
 import { applyProfileAwareSemantics } from "./profile-semantics.js";
@@ -29,7 +29,7 @@ export async function buildReport(project){
     { name:"app_fees", load:()=>project.defillamaChain && selected("financials") ? fetchAppFeesOverview(project.defillamaChain) : null },
     { name:"chain_fees", load:()=>project.defillamaChain && selected("financials") ? fetchChainFeesOverview(project.defillamaChain) : null },
     { name:"dex", load:()=>project.defillamaChain && (selected("financials") || selected("liquidity_and_trading")) ? fetchDexOverview(project.defillamaChain) : null },
-    { name:"technical_bias", load:()=>getTechnicalBias(marketTechnicalRoute(project.marketSymbols)) },
+    { name:"technical_bias", load:()=>getTechnicalBias(marketTechnicalRoutes(project.marketSymbols)) },
     { name:"news", load:()=>selected("narrative_and_news") ? fetchProjectNews(project) : null },
   ]);
   const { market:cgMarket, price_chart:cgChart, chains, tvl_history:tvlHistory, stablecoin_history:stableHistory, stablecoin_chains:stableChains, app_fees:appFees, chain_fees:chainFees, dex, technical_bias:ta, news } = results;

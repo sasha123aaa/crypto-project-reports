@@ -1,6 +1,6 @@
 export const MARKET_EXCHANGE_PRIORITY = Object.freeze(["BYBIT", "BINANCE", "GATEIO"]);
 
-const EXCHANGE_LABELS = Object.freeze({
+export const EXCHANGE_LABELS = Object.freeze({
   BYBIT: "Bybit spot",
   BINANCE: "Binance spot",
   GATEIO: "Gate.io spot",
@@ -74,4 +74,23 @@ export function marketTechnicalRoute(marketSymbols) {
     symbol:marketSymbols.technical,
     source:EXCHANGE_LABELS[marketSymbols.exchange] || `${marketSymbols.exchange} spot`,
   };
+}
+
+export function marketTechnicalRoutes(marketSymbols) {
+  const routes = [];
+  const selected = marketTechnicalRoute(marketSymbols);
+  if (selected) routes.push(selected);
+
+  const candidates = Array.isArray(marketSymbols?.routes) ? marketSymbols.routes : [];
+  for (const route of candidates) {
+    if (!route?.exchange || !route?.symbol) continue;
+    const normalized = {
+      exchange:route.exchange,
+      symbol:route.symbol,
+      source:route.source || EXCHANGE_LABELS[route.exchange] || `${route.exchange} spot`,
+    };
+    const key = `${normalized.exchange}:${normalized.symbol}`;
+    if (!routes.some((item) => `${item.exchange}:${item.symbol}` === key)) routes.push(normalized);
+  }
+  return routes;
 }
