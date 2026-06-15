@@ -30,6 +30,7 @@ export function getFallbackReport(key) {
 export function setCachedReport(key, snapshot, options = {}) {
   const normalized = versionedKey(key);
   if (!normalized || snapshot?.status !== 200) return snapshot;
+  if (snapshotReadinessState(snapshot) === "blocked") return snapshot;
   // Manual reports are an emergency response, never a last-known-good snapshot.
   if (snapshotSourceState(snapshot) === "manual") return snapshot;
   const current = reportCache.get(normalized);
@@ -83,6 +84,7 @@ export async function getPersistentReport(env, key) {
 
 export async function setPersistentReport(env, key, snapshot, options = {}) {
   if (!normalizeKey(key) || snapshot?.status !== 200) return snapshot;
+  if (snapshotReadinessState(snapshot) === "blocked") return snapshot;
   if (snapshotSourceState(snapshot) === "manual") return snapshot;
   const current = await readPersistent(env, "report", key);
   if (current?.snapshot && reportQuality(snapshot) < storedEntryQuality(current)) return current.snapshot;
@@ -142,6 +144,14 @@ export function snapshotSourceState(snapshot) {
     return JSON.parse(snapshot?.body || "{}")?.meta?.source_state || "partial";
   } catch {
     return "partial";
+  }
+}
+
+function snapshotReadinessState(snapshot) {
+  try {
+    return JSON.parse(snapshot?.body || "{}")?.meta?.readiness?.state || null;
+  } catch {
+    return null;
   }
 }
 

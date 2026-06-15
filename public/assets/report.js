@@ -694,7 +694,7 @@ function reportStateHtml(kind, title, message, { retry = false, variant = "initi
 
 function setReportState(app, kind, title, message, options = {}) {
   app.innerHTML = reportStateHtml(kind, title, message, options);
-  app.querySelector("[data-report-retry]")?.addEventListener("click", () => loadReport());
+  app.querySelector("[data-report-retry]")?.addEventListener("click", () => loadReport({ forceRefresh:true }));
 }
 
 const REPORT_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -761,7 +761,7 @@ async function fetchReportAttempt(slug, timeoutMs = 25_000, forceRefresh = false
   }
 }
 
-async function fetchReportWithRetry(slug, onAttempt, isActive) {
+async function fetchReportWithRetry(slug, onAttempt, isActive, options = {}) {
   let lastFailure;
   for (let attempt = 0; attempt <= REPORT_RETRY_DELAYS_MS.length; attempt += 1) {
     if (!isActive()) throw new DOMException("Superseded report load", "AbortError");
@@ -770,7 +770,7 @@ async function fetchReportWithRetry(slug, onAttempt, isActive) {
       await wait(REPORT_RETRY_DELAYS_MS[attempt - 1]);
     }
     try {
-      const result = await fetchReportAttempt(slug, 25_000, attempt > 0);
+      const result = await fetchReportAttempt(slug, 25_000, options.forceRefresh || attempt > 0);
       if (result.response.ok && isUsableReport(result.data)) {
         storeReport(slug, result.data);
         return { ...result, fromCache:false };
@@ -786,7 +786,7 @@ async function fetchReportWithRetry(slug, onAttempt, isActive) {
   throw lastFailure?.error || new Error("Report request failed");
 }
 
-async function loadReport() {
+async function loadReport(options = {}) {
   const loadGeneration = ++reportLoadGeneration;
   activeReportController?.abort();
   const isActive = () => loadGeneration === reportLoadGeneration;
@@ -813,7 +813,7 @@ async function loadReport() {
   try {
     const { response:res, data, fromCache } = await fetchReportWithRetry(slug, (attempt) => {
       if (isActive()) setReportState(app, "loading", "Повторяем попытку загрузки…", `Отчет продолжает собираться · попытка ${attempt} из ${REPORT_RETRY_DELAYS_MS.length + 1}`, { retry:true, variant:"retrying" });
-    }, isActive);
+    }, isActive, options);
     if (!isActive()) return;
     if (!res.ok) {
       if (res.status === 404) {
