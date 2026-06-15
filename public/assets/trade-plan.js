@@ -32,6 +32,7 @@ function projectIconHtml(meta = {}) {
   ).join("");
   return `<span class="project-icon plan-coin" aria-label="${label}" style="--project-accent:${accent}">${local}${remote}</span>`;
 }
+function chartIconHtml(meta){return projectIconHtml(meta).replace('project-icon plan-coin','project-icon trade-chart-token-icon')}
 
 const tfGroups=[{name:'Младшая группа',frames:['1m','3m','5m']},{name:'Средняя группа',frames:['15m','1h','4h']},{name:'Старшая группа',frames:['1d','1w','1M']}];
 const tfContextLibrary={
@@ -86,7 +87,7 @@ async function init(){
       const candlesUrl=`/api/trade-plan-candles/${encodeURIComponent(slug)}?timeframe=${encodeURIComponent(tf)}&_=${Date.now()}`;
       const response=await fetch(candlesUrl,{cache:'no-store',headers:{'Cache-Control':'no-cache'}});if(!response.ok)throw Error('candles');
       const payload=await response.json(),range=payload.range||null,nextLastCandle=payload.candles?.[payload.candles.length-1]||null;document.querySelector('.section-sub').textContent=`Рабочий диапазон · ${tf}`;
-      if(!range)throw Error('range');const plan=buildPlan(range,payload.candles);updatePlan(plan);const chartOptions={candles:payload.candles,levels:plan.levels,range,timeframe:tf,showPlan:range.bullish};chart?chart.setData(chartOptions,{preserveView}):chart=new TradePlanChart(container,chartOptions);
+      if(!range)throw Error('range');const plan=buildPlan(range,payload.candles);updatePlan(plan);const chartOptions={candles:payload.candles,levels:plan.levels,range,timeframe:tf,showPlan:range.bullish,symbol:payload.symbol||meta.symbol||meta.ticker||slug.toUpperCase(),exchange:payload.exchange||'Bybit',iconHtml:chartIconHtml(meta)};chart?chart.setData(chartOptions,{preserveView}):chart=new TradePlanChart(container,chartOptions);
       const changed=!prevLastCandle||!nextLastCandle||prevLastCandle.time!==nextLastCandle.time||prevLastCandle.open!==nextLastCandle.open||prevLastCandle.high!==nextLastCandle.high||prevLastCandle.low!==nextLastCandle.low||prevLastCandle.close!==nextLastCandle.close;
       return {changed,lastCandleTime:nextLastCandle?.time||null};
     }

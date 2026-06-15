@@ -3,14 +3,24 @@ class TradePlanChart {
     this.container=container;
     container.innerHTML='<div class="trade-plan-plot"></div>';
     this.plot=container.querySelector('.trade-plan-plot');
+    this.infoOverlay=document.createElement('div');this.infoOverlay.className='trade-chart-info';this.plot.appendChild(this.infoOverlay);
     this.chart=LightweightCharts.createChart(this.plot,{layout:{background:{type:'solid',color:'#0b1020'},textColor:'#aeb8cc',fontFamily:'Inter,system-ui,sans-serif'},grid:{vertLines:{color:'rgba(255,255,255,.035)'},horzLines:{color:'rgba(255,255,255,.045)'}},leftPriceScale:{visible:false},rightPriceScale:{visible:true,borderVisible:true,borderColor:'rgba(255,255,255,.24)',minimumWidth:78,scaleMargins:{top:.12,bottom:.12}},timeScale:{borderColor:'rgba(255,255,255,.1)',timeVisible:true,secondsVisible:false,rightOffset:28,barSpacing:5,minBarSpacing:1},crosshair:{mode:LightweightCharts.CrosshairMode.Normal},localization:{priceFormatter:v=>this.formatPrice(v)}});
     this.series=this.chart.addCandlestickSeries({upColor:'#42d392',downColor:'#ff6b7a',wickUpColor:'#42d392',wickDownColor:'#ff6b7a',borderVisible:false,priceLineVisible:false});
+    this.chart.subscribeCrosshairMove(param=>{let hoveredCandle=param?.seriesData?.get?.(this.series);if(!hoveredCandle&&param?.time)hoveredCandle=this.candles?.find(c=>c.time===param.time);this.updateInfoOverlay(hoveredCandle||this.getLastCandle())});
     this.overlay=document.createElement('div');this.overlay.className='scenario-overlay';this.plot.appendChild(this.overlay);
     this.planOverlay=document.createElement('div');this.planOverlay.className='trade-plan-overlay';this.plot.appendChild(this.planOverlay);
     this.renderOverlay=()=>requestAnimationFrame(()=>this.updateOverlay()); this.chart.timeScale().subscribeVisibleLogicalRangeChange(this.renderOverlay);
     this.resizeObserver=new ResizeObserver(()=>{this.chart.applyOptions({width:this.plot.clientWidth,height:this.plot.clientHeight});this.renderOverlay()});this.resizeObserver.observe(container);this.setData(options);
   }
   formatPrice(v){return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:v<1?6:2}).format(v)}
+  formatPlainPrice(v){if(!Number.isFinite(Number(v)))return '—';return new Intl.NumberFormat('en-US',{minimumFractionDigits:Number(v)<1?5:2,maximumFractionDigits:Number(v)<1?6:2}).format(Number(v))}
+  getLastCandle(){return this.candles?.[this.candles.length-1]||null}
+  updateInfoOverlay(candle){
+    const current=candle||this.getLastCandle();
+    if(!this.infoOverlay||!current){if(this.infoOverlay)this.infoOverlay.innerHTML='';return}
+    const ticker=this.symbol||this.ticker||'',exchange=this.exchange||'Bybit',tf=this.timeframe||'';
+    this.infoOverlay.innerHTML=`<div class="trade-chart-info-main">${this.iconHtml||''}<strong>${ticker}</strong><span>· ${tf}</span><span>· ${exchange}</span></div><div class="trade-chart-ohlc"><span>ОТКР ${this.formatPlainPrice(current.open)}</span><span>МАКС ${this.formatPlainPrice(current.high)}</span><span>МИН ${this.formatPlainPrice(current.low)}</span><span>ЗАКР ${this.formatPlainPrice(current.close)}</span></div>`;
+  }
   formatTime(time){
     let millis;
     if(typeof time==='number')millis=Math.abs(time)>=1e12?time:time*1000;
@@ -47,7 +57,7 @@ class TradePlanChart {
     const logicalRange=preserveView?this.chart.timeScale().getVisibleLogicalRange():null;
     const priceScale=this.series.priceScale?.();
     const priceRange=preserveView&&priceScale?.getVisibleRange?priceScale.getVisibleRange():null;
-    Object.assign(this,options);this.container.classList.toggle('without-spot-plan',!this.showPlan);this.chart.applyOptions({timeScale:{timeVisible:['1m','3m','5m','15m','1h','4h'].includes(this.timeframe),secondsVisible:false,tickMarkFormatter:time=>this.formatTime(time)}});this.series.setData(this.candles);
+    Object.assign(this,options);this.container.classList.toggle('without-spot-plan',!this.showPlan);this.chart.applyOptions({timeScale:{timeVisible:['1m','3m','5m','15m','1h','4h'].includes(this.timeframe),secondsVisible:false,tickMarkFormatter:time=>this.formatTime(time)}});this.series.setData(this.candles);this.updateInfoOverlay(this.getLastCandle());
     if(preserveView&&logicalRange){requestAnimationFrame(()=>{this.chart.timeScale().setVisibleLogicalRange(logicalRange);if(priceRange&&priceScale?.setVisibleRange)priceScale.setVisibleRange(priceRange);this.renderOverlay()})}
     else requestAnimationFrame(()=>this.applyDefaultView())
   }
