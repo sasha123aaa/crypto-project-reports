@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchCoinGeckoMarket, mergeCoinGeckoMarketData, mergeLiveMetrics } from "../src/index.js";
+import { fetchCoinGeckoMarket, mergeBranding, mergeCoinGeckoMarketData, mergeLiveMetrics } from "../src/index.js";
 
 test("CoinGecko market merge fills missing tokenomics fields without overwriting fresh values", () => {
   const merged = mergeCoinGeckoMarketData(
@@ -13,6 +13,29 @@ test("CoinGecko market merge fills missing tokenomics fields without overwriting
   assert.equal(merged.fully_diluted_valuation, 301_000_000_000);
   assert.equal(merged.circulating_supply, 120_000_000);
   assert.equal(merged.total_supply, 120_500_000);
+});
+
+test("CoinGecko market merge preserves a trusted image URL", () => {
+  const merged = mergeCoinGeckoMarketData(
+    { current_price:2500, image:"https://assets.test/fresh.png" },
+    { market_cap:300_000_000_000, image:"https://assets.test/cached.png" },
+  );
+
+  assert.equal(merged.image, "https://assets.test/fresh.png");
+});
+
+test("branding merge keeps local identity and adds unique trusted remote icons", () => {
+  const merged = mergeBranding(
+    { iconKey:"ethereum", accent:"#8c9eff" },
+    { iconUrl:"http://unsafe.test/icon.png", iconUrls:["https://assets.test/icon.png"] },
+    { iconUrl:"https://assets.test/icon.png", iconSource:"coingecko_market" },
+  );
+
+  assert.equal(merged.iconKey, "ethereum");
+  assert.equal(merged.accent, "#8c9eff");
+  assert.equal(merged.iconUrl, "https://assets.test/icon.png");
+  assert.deepEqual(merged.iconUrls, ["https://assets.test/icon.png"]);
+  assert.equal(merged.iconSource, "coingecko_market");
 });
 
 test("CoinGecko fetch enriches a partial markets response from the coin-details fallback", async () => {
