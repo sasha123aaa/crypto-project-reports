@@ -269,8 +269,9 @@ async function fetchLiveMetrics(project) {
 
   return {
     branding: {
-      iconUrl: typeof effectiveCoinGeckoMarket?.image === "string" ? effectiveCoinGeckoMarket.image : null,
-      iconSource: effectiveCoinGeckoMarket?.image ? "coingecko_market" : null,
+      iconUrl: isHttpsUrl(effectiveCoinGeckoMarket?.image) ? effectiveCoinGeckoMarket.image : null,
+      iconUrls: isHttpsUrl(effectiveCoinGeckoMarket?.image) ? [effectiveCoinGeckoMarket.image] : [],
+      iconSource: isHttpsUrl(effectiveCoinGeckoMarket?.image) ? "coingecko_market" : null,
     },
     market: {
       price, marketCap, fdv, volume24h, circulatingSupply, totalSupply, maxSupply,
