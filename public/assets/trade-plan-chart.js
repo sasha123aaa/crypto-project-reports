@@ -29,11 +29,11 @@ class TradePlanChart {
 
     // Нужно оставить справа место под overlay уровней.
     // При 28 барах свечи все еще залезают в подписи уровней.
-    const rightPaddingBars=100;
+    const rightPaddingBars=125;
 
     // Чуть меньше видимой истории, чтобы последняя свеча была левее,
     // а справа оставалась свободная зона под уровни.
-    const visibleBars=Math.min(250,Math.max(120,count));
+    const visibleBars=Math.min(250,Math.max(250,count));
 
     this.chart.timeScale().setVisibleLogicalRange({
       from:Math.max(0,lastIndex-visibleBars),
