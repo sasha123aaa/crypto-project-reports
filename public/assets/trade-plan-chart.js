@@ -33,7 +33,7 @@ class TradePlanChart {
 
     // Чуть меньше видимой истории, чтобы последняя свеча была левее,
     // а справа оставалась свободная зона под уровни.
-    const visibleBars=Math.min(300,Math.max(150,count));
+    const visibleBars=Math.min(250,Math.max(120,count));
 
     this.chart.timeScale().setVisibleLogicalRange({
       from:Math.max(0,lastIndex-visibleBars),
