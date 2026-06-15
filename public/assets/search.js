@@ -7,7 +7,7 @@
     if (!POPULAR_SLUGS.has(slug) || warmed.has(slug) || warmInFlight) return;
     warmed.add(slug);
     warmInFlight = true;
-    fetch(`/api/report/${encodeURIComponent(slug)}?warm=1`, { cache:"force-cache", priority:"low" })
+    fetch(`/api/report-shell/${encodeURIComponent(slug)}?warm=1`, { cache:"force-cache", priority:"low" })
       .catch(() => warmed.delete(slug))
       .finally(() => { warmInFlight = false; });
   }

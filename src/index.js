@@ -1,6 +1,7 @@
 import { getSectionSelection } from "./config/projects.js";
 import { resolveProject } from "./lib/project-resolution.js";
 import { buildReport } from "./lib/build-report.js";
+import { buildReportShell } from "./lib/report-shell.js";
 import { applySectionSelection, isSectionSelected } from "./lib/section-selection.js";
 import { activeRangeForCandles, fetchMarketCandlesWithFallback, getTechnicalBias } from "./adapters/bybit.js";
 import { marketTechnicalRoutes } from "./lib/market-symbols.js";
@@ -22,12 +23,28 @@ export default {
     if (url.pathname.startsWith("/api/trade-plan-candles/")) {
       return handleTradePlanCandles(url);
     }
+    if (url.pathname.startsWith("/api/report-shell/")) {
+      return handleReportShellApi(request, env, url);
+    }
     if (url.pathname.startsWith("/api/report/")) {
       return handleHybridReportApi(request, env, url, ctx);
     }
     return env.ASSETS.fetch(request);
   },
 };
+
+async function handleReportShellApi(request, env, url) {
+  const input = decodeURIComponent(url.pathname.replace("/api/report-shell/", "").replace(/\/$/, "")).trim().toLowerCase();
+  if (!input) return json({ error:"Missing report slug or ticker" }, 400, { cacheControl:"no-store" });
+  try {
+    const persistentResolution = await getPersistentResolution(env, input);
+    const project = isBadFallbackResolution(persistentResolution) || !persistentResolution ? await resolveProject(input) : persistentResolution;
+    if (!project) return json({ error:"Unknown project", input }, 404, { cacheControl:"no-store" });
+    return json(await buildReportShell(project), 200, { cacheControl:"public, max-age=30, stale-while-revalidate=300" });
+  } catch (error) {
+    return json({ error:"Report shell unavailable", recoverable:true, input, reason:error instanceof Error ? error.message : String(error) }, 502, { cacheControl:"no-store" });
+  }
+}
 
 async function handleTradePlanCandles(url) {
   const input = decodeURIComponent(url.pathname.replace("/api/trade-plan-candles/", "").replace(/\/$/, "")).trim().toLowerCase();

@@ -75,7 +75,10 @@ function updatePlan(plan){updateTopLayer(plan);const levels=document.getElementB
 const REFRESH_INTERVAL_MS=60000;
 async function init(){
   try{
-    let report=await fetchReport(),activeTf='4h',chart=null,refreshing=false,nextRefreshAt=Date.now()+REFRESH_INTERVAL_MS,timerId;
+    async function fetchReportShell(){const res=await fetch(`/api/report-shell/${encodeURIComponent(slug)}?request_id=${Date.now()}`,{cache:'no-store'});if(!res.ok)throw Error('shell');return res.json()}
+    let report;
+    try{report=await fetchReportShell()}catch{report={meta:{slug,project_name:slug.toUpperCase(),ticker:slug.toUpperCase(),branding:null,market_symbols:null},market:{},technical_bias:null}}
+    let activeTf='4h',chart=null,refreshing=false,nextRefreshAt=Date.now()+REFRESH_INTERVAL_MS,timerId;
     const frames=['1m','3m','5m','15m','1h','4h','1d','1w','1M'];
     const meta=report.meta||{},price=Number(report.market?.price?.value);
     app.innerHTML=`<div class="trade-plan-page"><section class="panel plan-hero"><div class="plan-identity">${projectIconHtml(meta)}<div><div class="eyebrow">Торговый план актива</div><h1>${escapeHtml(meta.project_name||slug.toUpperCase())}</h1><div class="plan-meta"><strong id="trade-plan-price">${money(price)}</strong></div></div></div></section><section class="panel"><div class="section-title">Рыночный контекст</div><div id="market-context-content">${renderTfAnalysis(report.technical_bias||{})}</div></section>${renderTopLayer()}<section class="panel"><div class="chart-head trade-plan-live-head"><div><div class="section-title">Рабочий график</div><div class="section-sub"></div></div><div class="trade-plan-live-controls"><div class="trade-plan-refresh-copy"><span id="refresh-countdown">Обновление через 01:00</span><small id="refresh-status" aria-live="polite">Обновлено только что</small></div><button id="refresh-now" class="trade-plan-refresh-button" type="button">Обновить сейчас</button></div><div class="trade-plan-tf-switch">${frames.map(tf=>`<button class="${tf===activeTf?'active':''}" data-timeframe="${tf}">${tf}</button>`).join('')}</div></div><div id="trade-plan-chart" class="trade-plan-chart-shell"></div></section><section class="panel"><div class="section-title">Уровни сценария</div><div id="scenario-levels" class="plan-levels"></div><div class="position-allocation"><strong>Распределение позиции</strong></div></section><section class="panel"><div class="section-title">Состояние торгового плана</div><ul id="plan-checklist" class="plan-checklist"></ul></section><section class="panel plan-action"><div class="section-title">Что делать сейчас</div><div id="plan-action"></div></section></div>`;
@@ -99,7 +102,7 @@ async function init(){
       finally{nextRefreshAt=Date.now()+REFRESH_INTERVAL_MS;refreshing=false;refreshButton.disabled=false;updateTimer()}
     }
     document.querySelectorAll('[data-timeframe]').forEach(b=>b.onclick=()=>{if(!refreshing)loadChart(b.dataset.timeframe,{preserveView:false}).catch(()=>{status.textContent='Не удалось обновить график'})});refreshButton.addEventListener('click',event=>{event.preventDefault();refreshTradePlan({manual:true})});
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshTradePlan()});await loadChart(activeTf,{preserveView:false});timerId=setInterval(updateTimer,1000);updateTimer();
-  }catch{app.innerHTML='<div class="report-state error-state"><strong>Не удалось открыть торговый план</strong></div>'}
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshTradePlan()});await loadChart(activeTf,{preserveView:false});fetchReport().then(fresh=>{report=fresh;document.getElementById('market-context-content').innerHTML=renderTfAnalysis(fresh.technical_bias||{});document.getElementById('trade-plan-price').textContent=money(Number(fresh.market?.price?.value))}).catch(error=>console.warn('Full report context failed',error));timerId=setInterval(updateTimer,1000);updateTimer();
+  }catch(error){app.innerHTML='<div class="report-state error-state"><strong>Не удалось открыть торговый план</strong><span>График или торговая пара временно недоступны. Попробуйте другой таймфрейм или повторите загрузку.</span><button class="state-link state-retry" type="button" onclick="location.reload()">Повторить</button></div>';console.error('Trade plan init failed',error)}
 }
 init();
