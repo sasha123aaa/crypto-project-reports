@@ -113,5 +113,12 @@ export async function buildReport(project){
   report.meta.source_state = results.market?.status === "fulfilled"
     ? (marketAttempts > 1 ? "retry-live" : "live")
     : "partial";
+  report.meta.icon_debug = {
+    hasIconUrl:typeof report.meta.branding?.iconUrl === "string" && /^https:\/\//i.test(report.meta.branding.iconUrl),
+    iconUrl:report.meta.branding?.iconUrl || null,
+    iconUrlsCount:Array.isArray(report.meta.branding?.iconUrls) ? report.meta.branding.iconUrls.length : 0,
+    iconSource:report.meta.branding?.iconSource || null,
+    iconKey:report.meta.branding?.iconKey || null,
+  };
   return report;
 }

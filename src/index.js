@@ -12,7 +12,7 @@ import { fetchBitcoinEtfFlows } from "./adapters/farside.js";
 import { formatCompactNumber, formatMoney, formatPrice } from "./lib/formatters.js";
 import { applyProfileAwareSemantics } from "./lib/profile-semantics.js";
 import { orchestrateReportSources, publishReportReadiness } from "./lib/report-readiness.js";
-import { isHttpsUrl, mergeBranding } from "./lib/branding.js";
+import { brandingFromCoinGeckoAsset, isHttpsUrl, mergeBranding } from "./lib/branding.js";
 export { mergeBranding } from "./lib/branding.js";
 import { getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, REPORT_CACHE_VERSION, responseFromSnapshot, responseSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "./lib/report-cache.js";
 
@@ -57,6 +57,18 @@ async function handleTradePlanCandles(url) {
 const COINGECKO_MARKET_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 const coinGeckoMarketSnapshots = new Map();
 
+function attachBrandingDebug(report) {
+  const branding = report?.meta?.branding || {};
+  report.meta = report.meta || {};
+  report.meta.icon_debug = {
+    hasIconUrl:typeof branding.iconUrl === "string" && /^https:\/\//i.test(branding.iconUrl),
+    iconUrl:branding.iconUrl || null,
+    iconUrlsCount:Array.isArray(branding.iconUrls) ? branding.iconUrls.length : 0,
+    iconSource:branding.iconSource || null,
+    iconKey:branding.iconKey || null,
+  };
+}
+
 export function isBadFallbackResolution(project) {
   return project?.resolution?.source === "fallback" && !project?.coingeckoId;
 }
@@ -77,6 +89,15 @@ async function handleHybridReportApi(request, env, url, ctx) {
 
   if (forceRefresh || cacheVersionMismatch) {
     const snapshot = await runSingleFlight(input, () => buildAndCacheReport(request, env, url, input));
+
+    if (snapshot.status >= 500 || snapshot.status === 425 || snapshot.status === 429 || snapshot.status === 408) {
+      const fallback = getFallbackReport(input) || await getPersistentReport(env, input);
+
+      if (fallback) {
+        return responseFromSnapshot(fallback, forceRefresh ? "forced-refresh-fallback" : "version-refresh-fallback");
+      }
+    }
+
     return responseFromSnapshot(snapshot, "forced-refresh");
   }
 
@@ -165,6 +186,7 @@ async function buildHybridReportResponse(request, env, url, input) {
     else report.meta.data_status = "hybrid-fallback";
 
     report.meta.generated_at = new Date().toISOString();
+    attachBrandingDebug(report);
     return json(report, 200, { cacheControl: resolveReportCacheControl(report.meta.data_status) });
   } catch (error) {
     report.meta = report.meta || {};
@@ -179,6 +201,7 @@ async function buildHybridReportResponse(request, env, url, input) {
     applyBlockRenderingRules(report, project, null);
     const readiness = publishReportReadiness(report, project);
     if (!readiness.usable) return json({ error:"Critical report data unavailable", readiness }, 503, { cacheControl:"no-store" });
+    attachBrandingDebug(report);
     return json(report, 200, { cacheControl: resolveReportCacheControl(report.meta.data_status) });
   }
 }
@@ -202,6 +225,7 @@ async function handleRuntimeReport(project, { curatedFallback = false } = {}) {
     report.meta.generated_at = new Date().toISOString();
     const readiness = publishReportReadiness(report, project, report.meta.source_readiness);
     if (!readiness.usable) return json({ error:"Critical runtime report data unavailable", readiness }, 503, { cacheControl:"no-store" });
+    attachBrandingDebug(report);
     return json(report, 200, { cacheControl:resolveReportCacheControl(report.meta.data_status) });
   } catch (error) {
     return json({ error:"Runtime report build failed", ticker:project.ticker, reason:error instanceof Error ? error.message : String(error) }, 502);
@@ -301,11 +325,7 @@ async function fetchLiveMetrics(project) {
   const dexVolume24h = toNumber(dexOverview?.total24h);
 
   return {
-    branding: {
-      iconUrl: isHttpsUrl(effectiveCoinGeckoMarket?.image) ? effectiveCoinGeckoMarket.image : null,
-      iconUrls: isHttpsUrl(effectiveCoinGeckoMarket?.image) ? [effectiveCoinGeckoMarket.image] : [],
-      iconSource: isHttpsUrl(effectiveCoinGeckoMarket?.image) ? "coingecko_market" : null,
-    },
+    branding: brandingFromCoinGeckoAsset(effectiveCoinGeckoMarket),
     market: {
       price, marketCap, fdv, volume24h, circulatingSupply, totalSupply, maxSupply,
       source: marketMetricsMode === "live_cached_fallback" ? "CoinGecko cached snapshot" : (marketMetricsMode === "live_fresh_with_cached_fields" ? "CoinGecko + cached snapshot" : "CoinGecko"),

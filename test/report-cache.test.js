@@ -83,6 +83,21 @@ test("manual responses are not retained as last-known-good snapshots", async () 
   assert.equal(values.has("report:eth"), false);
 });
 
+test("blocked responses are not retained as last-known-good snapshots", async () => {
+  clearReportCache();
+  const blocked = { status:200, body:'{"meta":{"source_state":"partial","readiness":{"state":"blocked"}}}' };
+  setCachedReport("eth", blocked);
+  assert.equal(getCachedReport("eth"), null);
+
+  const values = new Map();
+  const env = { REPORT_CACHE:{
+    async get(key, options) { return options?.type === "json" && values.has(key) ? JSON.parse(values.get(key)) : null; },
+    async put(key, value) { values.set(key, value); },
+  } };
+  await setPersistentReport(env, "eth", blocked);
+  assert.equal(values.size, 0);
+});
+
 test("stale last-known-good responses identify themselves as snapshots", async () => {
   const response = responseFromSnapshot({
     status:200,
