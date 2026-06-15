@@ -38,7 +38,7 @@ async function handleTradePlanCandles(url) {
     const candles = await fetchMarketCandles(route, timeframe);
     const { analysisCandles, range:rawRange } = activeRangeForCandles(candles);
     const range = rawRange ? { aTime:analysisCandles[rawRange[0]]?.time, bTime:analysisCandles[rawRange[1]]?.time, aPrice:rawRange[2], bPrice:rawRange[3], bullish:rawRange[4] } : null;
-    return json({ timeframe, source:route.source, candles, analysisCandleCount:analysisCandles.length, range }, 200, { cacheControl:"public, max-age=60" });
+    return json({ timeframe, source:route.source, candles, analysisCandleCount:analysisCandles.length, range, updated_at:new Date().toISOString(), last_candle_time:candles[candles.length - 1]?.time || null }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
   } catch (error) {
     return json({ error:"Candles unavailable", reason:error instanceof Error ? error.message : String(error) }, 502, { cacheControl:"no-store" });
   }

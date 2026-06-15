@@ -11,8 +11,18 @@ test("manual refresh passes options instead of the click event", () => {
 test("chart refresh preserves the view and context failure is non-fatal", () => {
   const refreshSource = source.match(/async function refreshTradePlan[\s\S]*?(?=\n    document\.querySelectorAll)/)[0];
 
-  assert.match(refreshSource, /await loadChart\(activeTf,\{preserveView:true\}\);status\.textContent='Обновлено только что'/);
+  assert.match(refreshSource, /const chartRefresh=await loadChart\(activeTf,\{preserveView:true\}\)/);
+  assert.match(refreshSource, /status\.textContent=chartRefresh\.changed\?'Обновлено только что':'Свежих свечей пока нет'/);
   assert.match(refreshSource, /catch\(error\)\{console\.warn\('Market context refresh failed',error\)\}/);
   assert.match(refreshSource, /catch\(error\)\{console\.error\('Trade plan refresh failed',error\);status\.textContent='Ошибка обновления'\}/);
   assert.doesNotMatch(refreshSource, /Promise\.all/);
+});
+
+test("candle refresh bypasses caches and reports whether the latest candle changed", () => {
+  const loadChartSource = source.match(/async function loadChart[\s\S]*?(?=\n    function updateTimer)/)[0];
+
+  assert.match(loadChartSource, /timeframe=\$\{encodeURIComponent\(tf\)\}&_=\$\{Date\.now\(\)\}/);
+  assert.match(loadChartSource, /fetch\(candlesUrl,\{cache:'no-store',headers:\{'Cache-Control':'no-cache'\}\}\)/);
+  assert.match(loadChartSource, /const changed=!prevLastCandle\|\|!nextLastCandle\|\|/);
+  assert.match(loadChartSource, /return \{changed,lastCandleTime:nextLastCandle\?\.time\|\|null\}/);
 });

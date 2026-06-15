@@ -81,16 +81,19 @@ async function init(){
     const container=document.getElementById('trade-plan-chart'),refreshButton=document.getElementById('refresh-now'),status=document.getElementById('refresh-status'),countdown=document.getElementById('refresh-countdown');
     async function fetchReport(){const res=await fetch(`/api/report/${encodeURIComponent(slug)}`);if(!res.ok)throw Error('report');return res.json()}
     async function loadChart(tf,options={}){
-      const preserveView=options.preserveView===true;
+      const preserveView=options.preserveView===true,prevLastCandle=chart?.candles?.[chart.candles.length-1]||null;
       activeTf=tf;document.querySelectorAll('[data-timeframe]').forEach(b=>b.classList.toggle('active',b.dataset.timeframe===tf));
-      const response=await fetch(`/api/trade-plan-candles/${encodeURIComponent(slug)}?timeframe=${tf}`);if(!response.ok)throw Error('candles');
-      const payload=await response.json(),range=payload.range||null;document.querySelector('.section-sub').textContent=`Рабочий диапазон · ${tf}`;
+      const candlesUrl=`/api/trade-plan-candles/${encodeURIComponent(slug)}?timeframe=${encodeURIComponent(tf)}&_=${Date.now()}`;
+      const response=await fetch(candlesUrl,{cache:'no-store',headers:{'Cache-Control':'no-cache'}});if(!response.ok)throw Error('candles');
+      const payload=await response.json(),range=payload.range||null,nextLastCandle=payload.candles?.[payload.candles.length-1]||null;document.querySelector('.section-sub').textContent=`Рабочий диапазон · ${tf}`;
       if(!range)throw Error('range');const plan=buildPlan(range,payload.candles);updatePlan(plan);const chartOptions={candles:payload.candles,levels:plan.levels,range,timeframe:tf,showPlan:range.bullish};chart?chart.setData(chartOptions,{preserveView}):chart=new TradePlanChart(container,chartOptions);
+      const changed=!prevLastCandle||!nextLastCandle||prevLastCandle.time!==nextLastCandle.time||prevLastCandle.open!==nextLastCandle.open||prevLastCandle.high!==nextLastCandle.high||prevLastCandle.low!==nextLastCandle.low||prevLastCandle.close!==nextLastCandle.close;
+      return {changed,lastCandleTime:nextLastCandle?.time||null};
     }
     function updateTimer(){const seconds=Math.max(0,Math.ceil((nextRefreshAt-Date.now())/1000));countdown.textContent=`Обновление через ${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;if(!refreshing&&seconds===0)refreshTradePlan()}
     async function refreshTradePlan({manual=false}={}){
       if(refreshing)return;refreshing=true;refreshButton.disabled=true;status.textContent='Обновляем...';
-      try{await loadChart(activeTf,{preserveView:true});status.textContent='Обновлено только что';try{const fresh=await fetchReport();report=fresh;document.getElementById('market-context-content').innerHTML=renderTfAnalysis(fresh.technical_bias||{});document.getElementById('trade-plan-price').textContent=money(Number(fresh.market?.price?.value))}catch(error){console.warn('Market context refresh failed',error)}}
+      try{const chartRefresh=await loadChart(activeTf,{preserveView:true});status.textContent=chartRefresh.changed?'Обновлено только что':'Свежих свечей пока нет';try{const fresh=await fetchReport();report=fresh;document.getElementById('market-context-content').innerHTML=renderTfAnalysis(fresh.technical_bias||{});document.getElementById('trade-plan-price').textContent=money(Number(fresh.market?.price?.value))}catch(error){console.warn('Market context refresh failed',error)}}
       catch(error){console.error('Trade plan refresh failed',error);status.textContent='Ошибка обновления'}
       finally{nextRefreshAt=Date.now()+REFRESH_INTERVAL_MS;refreshing=false;refreshButton.disabled=false;updateTimer()}
     }
