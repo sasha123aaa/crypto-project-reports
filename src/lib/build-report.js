@@ -11,6 +11,7 @@ import { applySectionSelection, isSectionSelected } from "./section-selection.js
 import { applyProfileAwareSemantics } from "./profile-semantics.js";
 import { applyInferredTitleSubtitle } from "./title-subtitle-inference.js";
 import { orchestrateReportSources } from "./report-readiness.js";
+import { brandingFromCoinGeckoAsset, mergeBranding } from "./branding.js";
 
 function findChainData(chains, chainName){ return Array.isArray(chains) ? chains.find((item)=>String(item.name).toLowerCase()===String(chainName).toLowerCase()) : null; }
 function findStableChainData(chains, chainKey){ return Array.isArray(chains) ? chains.find((item)=>String(item.gecko_id || item.name || "").toLowerCase()===String(chainKey).toLowerCase()) : null; }
@@ -20,7 +21,11 @@ export async function buildReport(project){
   const initialSelection = getSectionSelection(project);
   const selected = (section) => isSectionSelected(initialSelection, section);
   const { results, summary:sourceReadiness } = await orchestrateReportSources([
-    { name:"market", critical:true, attempts:3, load:()=>project.coingeckoId ? fetchCoinGeckoMarket(project.coingeckoId) : null, validate:(value)=>[value?.current_price,value?.market_cap,value?.total_volume].every((item)=>Number.isFinite(Number(item)) && Number(item)>0) },
+    { name:"market", critical:true, attempts:3, load:()=>project.coingeckoId ? fetchCoinGeckoMarket(project.coingeckoId) : null, validate:(value)=>{
+      const price = Number(value?.current_price); const marketCap = Number(value?.market_cap);
+      const fdv = Number(value?.fully_diluted_valuation); const volume = Number(value?.total_volume);
+      return Number.isFinite(price) && price > 0 && ((Number.isFinite(marketCap) && marketCap > 0) || (Number.isFinite(fdv) && fdv > 0)) && Number.isFinite(volume) && volume > 0;
+    } },
     { name:"price_chart", load:()=>project.coingeckoId ? fetchCoinGeckoChart(project.coingeckoId,365) : null },
     { name:"chains", load:()=>project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaChains() : null },
     { name:"tvl_history", load:()=>project.defillamaChain && selected("tvl_and_capital") ? fetchDefiLlamaTVLHistory(project.defillamaChain) : null },
@@ -35,6 +40,7 @@ export async function buildReport(project){
   const { market:cgMarket, price_chart:cgChart, chains, tvl_history:tvlHistory, stablecoin_history:stableHistory, stablecoin_chains:stableChains, app_fees:appFees, chain_fees:chainFees, dex, technical_bias:ta, news } = results;
 
   const market = cgMarket.status==="fulfilled" ? cgMarket.value : null;
+  const marketBranding = brandingFromCoinGeckoAsset(market);
   const chart = cgChart.status==="fulfilled" ? cgChart.value : null;
   const chainRows = chains.status==="fulfilled" ? chains.value : null;
   const tvlRows = tvlHistory.status==="fulfilled" ? tvlHistory.value : null;
@@ -71,7 +77,7 @@ export async function buildReport(project){
   const dexVolumeToMarketCap = calcVolumeToMarketCap(dexVolume24h, marketCap);
 
   const report = {
-    meta:{ slug:project.slug, project_name:project.name, ticker:project.ticker, subtitle:project.subtitle, branding:project.branding || null, market_symbols:project.marketSymbols || null, categories:project.categories, project_type:project.projectType, project_profile:getProjectProfile(project), project_resolution:project.resolution || null, source_readiness:sourceReadiness, report_version:"v1.0", updated_at:new Date().toISOString(), data_status:"partial" },
+    meta:{ slug:project.slug, project_name:project.name, ticker:project.ticker, subtitle:project.subtitle, branding:mergeBranding(project.branding, marketBranding), market_symbols:project.marketSymbols || null, categories:project.categories, project_type:project.projectType, project_profile:getProjectProfile(project), project_resolution:project.resolution || null, source_readiness:sourceReadiness, report_version:"v1.0", updated_at:new Date().toISOString(), data_status:"partial" },
     hero:{ title:`${project.name} как базовая инфраструктура рынка`, subtitle:"Сильный фундаментал, зрелость актива и главный вопрос — удержание ценности внутри экосистемы.", lead:`${project.name} остается важным активом для инфраструктурного слоя крипторынка. Главная задача отчета — показать не только рыночный размер, но и качество экономики сети, капитала и пользовательской активности.`, main_strength:"Сильная инфраструктурная позиция, масштаб экосистемы и высокая ликвидность.", main_risk:"Часть ценности может уходить в смежные уровни экосистемы, а не оставаться напрямую в токене.", status_text:"Сильный фундаментал, но дальнейший тезис должен подтверждаться живой экономикой сети." },
     market:{
       price: metric(price, formatPrice(price), price!=null?STATUS.LIVE:STATUS.UNAVAILABLE, "CoinGecko"),

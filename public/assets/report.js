@@ -698,7 +698,7 @@ function setReportState(app, kind, title, message, options = {}) {
 }
 
 const REPORT_CACHE_TTL_MS = 15 * 60 * 1000;
-const REPORT_CACHE_VERSION = "canonical-resolution-v2";
+const REPORT_CACHE_VERSION = "canonical-resolution-v5-icons-runtime-stability";
 const REPORT_CACHE_PREFIX = `report:${REPORT_CACHE_VERSION}:`;
 const REPORT_RETRY_DELAYS_MS = [500, 1200, 2500];
 let reportLoadGeneration = 0;
@@ -744,12 +744,14 @@ function isUsableReport(data) {
 }
 function wait(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
-async function fetchReportAttempt(slug, timeoutMs = 25_000) {
+async function fetchReportAttempt(slug, timeoutMs = 25_000, forceRefresh = false) {
   const controller = new AbortController();
   activeReportController = controller;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`/api/report/${encodeURIComponent(slug)}?client_cache_version=${encodeURIComponent(REPORT_CACHE_VERSION)}`, { cache:"reload", signal:controller.signal });
+    const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const forceRefreshParam = forceRefresh ? "&force_refresh=1" : "";
+    const response = await fetch(`/api/report/${encodeURIComponent(slug)}?client_cache_version=${encodeURIComponent(REPORT_CACHE_VERSION)}&request_id=${encodeURIComponent(requestId)}${forceRefreshParam}`, { cache:"no-store", signal:controller.signal });
     let data = null;
     try { data = await response.json(); } catch { /* handled as a temporary invalid response */ }
     return { response, data };
@@ -768,7 +770,7 @@ async function fetchReportWithRetry(slug, onAttempt, isActive) {
       await wait(REPORT_RETRY_DELAYS_MS[attempt - 1]);
     }
     try {
-      const result = await fetchReportAttempt(slug);
+      const result = await fetchReportAttempt(slug, 25_000, attempt > 0);
       if (result.response.ok && isUsableReport(result.data)) {
         storeReport(slug, result.data);
         return { ...result, fromCache:false };

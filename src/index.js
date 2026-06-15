@@ -12,7 +12,9 @@ import { fetchBitcoinEtfFlows } from "./adapters/farside.js";
 import { formatCompactNumber, formatMoney, formatPrice } from "./lib/formatters.js";
 import { applyProfileAwareSemantics } from "./lib/profile-semantics.js";
 import { orchestrateReportSources, publishReportReadiness } from "./lib/report-readiness.js";
-import { getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, responseFromSnapshot, responseSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "./lib/report-cache.js";
+import { isHttpsUrl, mergeBranding } from "./lib/branding.js";
+export { mergeBranding } from "./lib/branding.js";
+import { getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, REPORT_CACHE_VERSION, responseFromSnapshot, responseSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "./lib/report-cache.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -55,6 +57,10 @@ async function handleTradePlanCandles(url) {
 const COINGECKO_MARKET_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 const coinGeckoMarketSnapshots = new Map();
 
+export function isBadFallbackResolution(project) {
+  return project?.resolution?.source === "fallback" && !project?.coingeckoId;
+}
+
 export function isPersistableResolution(project) {
   if (!project?.resolution) return false;
   if (project.resolution.mode === "registered") return true;
@@ -64,6 +70,15 @@ export function isPersistableResolution(project) {
 async function handleHybridReportApi(request, env, url, ctx) {
   const input = decodeURIComponent(url.pathname.replace("/api/report/", "").replace(/\/$/, "")).trim().toLowerCase();
   if (!input) return json({ error: "Missing report slug or ticker" }, 400);
+
+  const clientCacheVersion = url.searchParams.get("client_cache_version");
+  const forceRefresh = url.searchParams.get("force_refresh") === "1";
+  const cacheVersionMismatch = Boolean(clientCacheVersion && clientCacheVersion !== REPORT_CACHE_VERSION);
+
+  if (forceRefresh || cacheVersionMismatch) {
+    const snapshot = await runSingleFlight(input, () => buildAndCacheReport(request, env, url, input));
+    return responseFromSnapshot(snapshot, "forced-refresh");
+  }
 
   const cached = getCachedReport(input);
   if (cached?.cacheState === "fresh") return responseFromSnapshot(cached, "fresh");
@@ -101,7 +116,8 @@ async function buildAndCacheReport(request, env, url, input) {
 async function buildHybridReportResponse(request, env, url, input) {
   let project;
   try {
-    project = await getPersistentResolution(env, input) || await resolveProject(input);
+    const persistentResolution = await getPersistentResolution(env, input);
+    project = isBadFallbackResolution(persistentResolution) || !persistentResolution ? await resolveProject(input) : persistentResolution;
     if (isPersistableResolution(project)) await setPersistentResolution(env, input, project);
   } catch (error) {
     return json({ error:"Project resolution failed", kind:"temporary_fetch_issue", recoverable:true, input, reason:error instanceof Error ? error.message : String(error) }, 502);
@@ -648,6 +664,7 @@ async function fetchCoinGeckoMarketFallback(id) {
     circulating_supply: marketData.circulating_supply,
     total_supply: marketData.total_supply,
     max_supply: marketData.max_supply,
+    image: fallback.data?.image?.large || fallback.data?.image?.small || fallback.data?.image?.thumb || null,
   };
   if (!hasAnyCoinGeckoMarketValue(normalized)) return null;
   return normalized;
@@ -666,30 +683,6 @@ export function mergeCoinGeckoMarketData(primary, fallback) {
   return image ? { ...merged, image } : merged;
 }
 
-function isHttpsUrl(value) {
-  return typeof value === "string" && /^https:\/\//i.test(value);
-}
-
-export function mergeBranding(...sources) {
-  const merged = {};
-  const iconUrls = [];
-
-  for (const source of sources) {
-    if (!source || typeof source !== "object") continue;
-    Object.assign(merged, source);
-    if (Array.isArray(source.iconUrls)) iconUrls.push(...source.iconUrls.filter(isHttpsUrl));
-    if (isHttpsUrl(source.iconUrl)) iconUrls.push(source.iconUrl);
-  }
-
-  const uniqueUrls = [...new Set(iconUrls)];
-  if (uniqueUrls.length) {
-    merged.iconUrl = uniqueUrls[0];
-    merged.iconUrls = uniqueUrls;
-    merged.iconSource = merged.iconSource || "merged_branding";
-  }
-  return Object.keys(merged).length ? merged : null;
-}
-
 function hasCompleteCoinGeckoTokenomics(row) {
   return COINGECKO_TOKENOMICS_FIELDS.every((field) => isValidNumber(toNumber(row?.[field])));
 }
@@ -698,10 +691,9 @@ function hasAnyCoinGeckoMarketValue(row) {
   return COINGECKO_MARKET_FIELDS.some((key) => isValidNumber(toNumber(row?.[key])));
 }
 function hasCoreCoinGeckoMarketValue(row) {
-  return ["current_price", "market_cap", "total_volume"].every((key) => {
-    const value = toNumber(row?.[key]);
-    return isValidNumber(value) && value > 0;
-  });
+  const price = toNumber(row?.current_price); const marketCap = toNumber(row?.market_cap);
+  const fdv = toNumber(row?.fully_diluted_valuation); const volume = toNumber(row?.total_volume);
+  return isValidNumber(price) && price > 0 && ((isValidNumber(marketCap) && marketCap > 0) || (isValidNumber(fdv) && fdv > 0)) && isValidNumber(volume) && volume > 0;
 }
 async function fetchJsonWithTimeout(url, timeoutMs = 9000) {
   const controller = new AbortController();

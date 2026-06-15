@@ -2,12 +2,37 @@ import { getNewsFeeds } from "../config/projects.js";
 
 const BASE_URL="https://api.coingecko.com/api/v3";
 const HEADERS={accept:"application/json,text/plain,*/*","user-agent":"Mozilla/5.0 CloudflareWorker CryptoProjectReports/1.0"};
-export async function fetchCoinGeckoMarket(coingeckoId){
-  const url=`${BASE_URL}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(coingeckoId)}&price_change_percentage=7d`;
-  const res=await fetch(url,{headers:HEADERS});
-  if(!res.ok) throw new Error(`CoinGecko market error: ${res.status}`);
-  const data=await res.json(); return data?.[0]||null;
+async function fetchJsonWithTimeout(url, timeoutMs = 9000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { headers:HEADERS, signal:controller.signal });
+    return { ok:response.ok, status:response.status, data:await response.json().catch(() => null) };
+  } finally { clearTimeout(timeout); }
 }
+function normalizeCoinDetailsMarket(data) {
+  const marketData = data?.market_data;
+  if (!marketData || typeof marketData !== "object") return null;
+  return { id:data?.id, symbol:data?.symbol, name:data?.name, current_price:marketData.current_price?.usd, market_cap:marketData.market_cap?.usd, fully_diluted_valuation:marketData.fully_diluted_valuation?.usd, total_volume:marketData.total_volume?.usd, circulating_supply:marketData.circulating_supply, total_supply:marketData.total_supply, max_supply:marketData.max_supply, image:data?.image?.large || data?.image?.small || data?.image?.thumb || null };
+}
+export async function fetchCoinGeckoMarket(coingeckoId) {
+  const marketUrl = `${BASE_URL}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(coingeckoId)}&price_change_percentage=7d`;
+  const detailsUrl = `${BASE_URL}/coins/${encodeURIComponent(coingeckoId)}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`;
+  let lastError = null;
+  try {
+    const primary = await fetchJsonWithTimeout(marketUrl, 9000);
+    if (primary.ok && Array.isArray(primary.data) && primary.data[0]) return primary.data[0];
+    lastError = new Error(`CoinGecko market error: ${primary.status}`);
+  } catch (error) { lastError = error; }
+  try {
+    const fallback = await fetchJsonWithTimeout(detailsUrl, 9000);
+    if (!fallback.ok) throw new Error(`CoinGecko market fallback error: ${fallback.status}`);
+    const normalized = normalizeCoinDetailsMarket(fallback.data);
+    if (!normalized) throw new Error("CoinGecko market fallback returned incomplete data");
+    return normalized;
+  } catch (error) { throw lastError || error; }
+}
+
 export async function fetchCoinGeckoGlobal(){
   const res=await fetch(`${BASE_URL}/global`,{headers:HEADERS});
   if(!res.ok) throw new Error(`CoinGecko global error: ${res.status}`);
