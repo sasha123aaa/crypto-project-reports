@@ -1,7 +1,7 @@
 const DEFAULT_FRESH_TTL_MS = 2 * 60 * 1000;
 const DEFAULT_STALE_TTL_MS = 15 * 60 * 1000;
 const MAX_REPORT_CACHE_ENTRIES = 50;
-export const REPORT_CACHE_VERSION = "canonical-resolution-v2";
+export const REPORT_CACHE_VERSION = "canonical-resolution-v3-branding";
 
 const reportCache = new Map();
 const inFlightReports = new Map();
