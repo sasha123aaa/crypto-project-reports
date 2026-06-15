@@ -410,6 +410,44 @@ export async function fetchMarketCandles(route, timeframe) {
   return [];
 }
 
+function normalizeRoutes(routeInput) {
+  if (!routeInput) return [];
+  if (Array.isArray(routeInput)) return routeInput.filter(Boolean);
+  return [routeInput];
+}
+
+function hasEnoughCandles(candles, minCandles = 50) {
+  return Array.isArray(candles) && candles.length >= minCandles;
+}
+
+export async function fetchMarketCandlesWithFallback(routeInput, timeframe, options = {}) {
+  const routes = normalizeRoutes(routeInput);
+  const minCandles = options.minCandles || 50;
+  const errors = [];
+  for (const route of routes) {
+    try {
+      const candles = await fetchMarketCandles(route, timeframe);
+      if (hasEnoughCandles(candles, minCandles)) {
+        return { candles, route, source:route.source || `${route.exchange} spot`, exchange:route.exchange, symbol:route.symbol, status:"resolved" };
+      }
+      errors.push({ exchange:route.exchange, symbol:route.symbol, reason:`not enough candles: ${Array.isArray(candles) ? candles.length : 0}` });
+    } catch (error) {
+      errors.push({ exchange:route.exchange, symbol:route.symbol, reason:error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { candles:[], route:null, source:null, exchange:null, symbol:null, status:"unavailable", errors };
+}
+
+async function resolveWorkingRoute(routeInput) {
+  const routes = normalizeRoutes(routeInput);
+  if (!routes.length) return null;
+  for (const testTf of ["4h", "1h", "1d"]) {
+    const result = await fetchMarketCandlesWithFallback(routes, testTf, { minCandles:50 });
+    if (result.route) return result.route;
+  }
+  return null;
+}
+
 function stateFromRange(range) {
   if (!Array.isArray(range) || typeof range[4] !== "boolean") return "neutral";
   return range[4] ? "bullish" : "bearish";
@@ -634,9 +672,11 @@ function phraseForHigher(states) {
 }
 
 export async function getTechnicalBias(routeInput) {
-  const route = typeof routeInput === "string"
-    ? { exchange:"BYBIT", symbol:String(routeInput).toUpperCase(), source:"Bybit spot" }
-    : routeInput;
+  const route = Array.isArray(routeInput)
+    ? await resolveWorkingRoute(routeInput)
+    : (typeof routeInput === "string"
+      ? { exchange:"BYBIT", symbol:String(routeInput).toUpperCase(), source:"Bybit spot" }
+      : routeInput);
   const symbol = String(route?.symbol || "").toUpperCase();
   const source = route?.source || (route?.exchange ? `${route.exchange} spot` : "Market route unavailable");
   const timeframes = Object.fromEntries(TIMEFRAMES.map((tf) => [tf, "neutral"]));

@@ -2,8 +2,8 @@ import { getSectionSelection } from "./config/projects.js";
 import { resolveProject } from "./lib/project-resolution.js";
 import { buildReport } from "./lib/build-report.js";
 import { applySectionSelection, isSectionSelected } from "./lib/section-selection.js";
-import { activeRangeForCandles, fetchMarketCandles, getTechnicalBias } from "./adapters/bybit.js";
-import { marketTechnicalRoute } from "./lib/market-symbols.js";
+import { activeRangeForCandles, fetchMarketCandlesWithFallback, getTechnicalBias } from "./adapters/bybit.js";
+import { marketTechnicalRoutes } from "./lib/market-symbols.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
 import { fetchCoinGeckoGlobal, fetchProjectNews } from "./adapters/coingecko.js";
@@ -33,12 +33,18 @@ async function handleTradePlanCandles(url) {
   if (!["1m", "3m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"].includes(timeframe)) return json({ error:"Unsupported timeframe" }, 400, { cacheControl:"no-store" });
   try {
     const project = await resolveProject(input);
-    const route = marketTechnicalRoute(project?.marketSymbols);
-    if (!route) return json({ error:"Market route unavailable" }, 404, { cacheControl:"no-store" });
-    const candles = await fetchMarketCandles(route, timeframe);
+    const preferredExchange = String(url.searchParams.get("exchange") || "").toUpperCase();
+    let routes = marketTechnicalRoutes(project?.marketSymbols);
+    if (preferredExchange) routes = [...routes.filter((route) => route.exchange === preferredExchange), ...routes.filter((route) => route.exchange !== preferredExchange)];
+    if (!routes.length) return json({ error:"Market route unavailable" }, 404, { cacheControl:"no-store" });
+    const candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50 });
+    if (!candleResult.route || !candleResult.candles.length) {
+      return json({ error:"Candles unavailable on supported exchanges", timeframe, routes, attempts:candleResult.errors || [] }, 404, { cacheControl:"no-store" });
+    }
+    const candles = candleResult.candles;
     const { analysisCandles, range:rawRange } = activeRangeForCandles(candles);
     const range = rawRange ? { aTime:analysisCandles[rawRange[0]]?.time, bTime:analysisCandles[rawRange[1]]?.time, aPrice:rawRange[2], bPrice:rawRange[3], bullish:rawRange[4] } : null;
-    return json({ timeframe, source:route.source, candles, analysisCandleCount:analysisCandles.length, range, updated_at:new Date().toISOString(), last_candle_time:candles[candles.length - 1]?.time || null }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
+    return json({ timeframe, source:candleResult.source, exchange:candleResult.exchange, symbol:candleResult.symbol, routes, candles, analysisCandleCount:analysisCandles.length, range, updated_at:new Date().toISOString(), last_candle_time:candles[candles.length - 1]?.time || null }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
   } catch (error) {
     return json({ error:"Candles unavailable", reason:error instanceof Error ? error.message : String(error) }, 502, { cacheControl:"no-store" });
   }
@@ -217,7 +223,7 @@ async function fetchLiveMetrics(project) {
     { name:"tvlHistory", load:()=>project.defillamaChain && selected("tvl_and_capital") ? fetchTVLHistory(project.defillamaChain) : [] },
     { name:"stableHistory", load:()=>project.stablecoinChain && selected("stablecoins") ? fetchStablecoinHistory(project.stablecoinChain) : [] },
     { name:"users", load:()=>selected("users_and_activity") ? fetchUsersMetrics(project, { toNumber }) : null },
-    { name:"technicalBias", load:()=>getTechnicalBias(marketTechnicalRoute(project.marketSymbols)) },
+    { name:"technicalBias", load:()=>getTechnicalBias(marketTechnicalRoutes(project.marketSymbols)) },
     { name:"rwa", load:()=>project.rwaChain && selected("rwa") ? fetchDefiLlamaRwaActiveMcap(project.rwaChain) : null },
     { name:"news", load:()=>selected("narrative_and_news") ? fetchProjectNews(project) : null },
     { name:"btcValuation", load:()=>project.slug === "btc" ? fetchBitcoinValuationHistory() : null },
