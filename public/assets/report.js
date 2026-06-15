@@ -786,6 +786,77 @@ async function fetchReportWithRetry(slug, onAttempt, isActive, options = {}) {
   throw lastFailure?.error || new Error("Report request failed");
 }
 
+async function fetchReportShell(slug, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`/api/report-shell/${encodeURIComponent(slug)}?request_id=${Date.now()}`, { cache:"no-store", signal:controller.signal });
+    const data = await response.json().catch(() => null);
+    return { response, data };
+  } finally { clearTimeout(timer); }
+}
+
+function progressiveNoticeHtml(message, state = "loading") {
+  return `<div class="progressive-report-notice" data-progressive-notice data-state="${escapeHtml(state)}"><strong>${state === "loading" ? "Данные подгружаются" : "Часть данных недоступна"}</strong><span>${escapeHtml(message)}</span></div>`;
+}
+function showProgressiveNotice(message, state = "partial") {
+  const existing = document.querySelector("[data-progressive-notice]");
+  if (!existing) return;
+  existing.dataset.state = state;
+  existing.querySelector("strong").textContent = state === "loading" ? "Данные подгружаются" : "Часть данных недоступна";
+  existing.querySelector("span").textContent = message;
+}
+
+function renderReport(app, data, options = {}) {
+  const slug = getSlug();
+  if (!options.progressive) document.querySelector("[data-progressive-notice]")?.remove();
+  const tradingViewSymbol = data?.meta?.market_symbols?.tradingView || null;
+app.innerHTML = `<div class="layout report-ready-enter"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="sidebar-project-mark">${projectIconHtml(data.meta, true)}<div class="project-main">${escapeHtml(data.meta.project_name)}</div></div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
+  <section class="panel hero-overview"><div class="hero-heading">${projectIconHtml(data.meta)}<div class="hero-identity"><div class="hero-title-row"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><span class="hero-ticker">${escapeHtml(data.meta.ticker)}</span></div>${data.hero.subtitle && data.hero.subtitle !== data.meta.ticker ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}</div></div><p class="lead hero-lead">${escapeHtml(data.hero.lead)}</p>
+  <div class="hero-grid hero-kpis">${heroKpisHtml(data)}</div>
+  <div class="three-col hero-thesis top-gap"><div class="list-item"><strong>Главная сила</strong><span>${escapeHtml(data.hero.main_strength || "—")}</span></div><div class="list-item"><strong>Главный риск</strong><span>${escapeHtml(data.hero.main_risk || "—")}</span></div><div class="list-item"><strong>Что проверить</strong><span>${escapeHtml(data.hero.status_text || "—")}</span></div></div></section>
+  ${options.progressive ? progressiveNoticeHtml("Расширенные метрики загружаются в фоне.", "loading") : ""}
+      ${tradingViewCard(tradingViewSymbol)}
+  ${marketPackHtml(data)}
+  ${technicalBiasHtml(data.technical_bias, data.meta.slug || slug)}
+  ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel executive-summary"><div class="section-title">Кратко для инвестора</div><div class="section-sub">Три проверки качества инвестиционного тезиса.</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
+  ${orderedReportSectionsHtml(data)}
+</main></div>`;
+
+const tvlSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.tvl_history, "totalLiquidityUSD"), { trimLeadingZeroes:true });
+const stableSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.stablecoins_history, "totalCirculatingUSD"), { trimLeadingZeroes:true });
+const tvlSeries = sanitizeSeries(tvlSeriesRaw, { trimLeadingZeroes:true });
+const stableSeries = sanitizeSeries(stableSeriesRaw, { trimLeadingZeroes:true });
+const appFeesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.app_fees_history), { trimLeadingZeroes:true });
+const chainFeesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.chain_fees_history), { trimLeadingZeroes:true });
+const dexSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.dex_history), { trimLeadingZeroes:true });
+const volumeHistorySeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.volume_history), { trimLeadingZeroes:true });
+const marketCapHistorySeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.market_cap_history), { trimLeadingZeroes:true });
+const mvrvSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.mvrv_history));
+const realizedPriceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.realized_price_history));
+const btcMarketPriceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.btc_market_price_history));
+const issuanceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.issuance_history));
+const btcEtfFlowSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.btc_etf_flow_history));
+const btcEtfCumulativeSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.btc_etf_cumulative_history));
+
+createDashboardChart("volumeHistoryChart", volumeHistorySeries, "Объем торгов", { color:"#60a5fa" });
+createDashboardChart("marketCapHistoryChart", marketCapHistorySeries, "Рыночная капитализация", { color:"#a78bfa" });
+createDashboardChart("appFeesChart", appFeesSeries, "App Fees", { color:"#a78bfa" });
+createDashboardChart("chainFeesChart", chainFeesSeries, "Chain Fees", { color:"#f59e80" });
+createDashboardChart("dexChart", dexSeries, "DEX Volume", { color:"#60a5fa" });
+createDashboardChart("tvlChart", tvlSeries, "TVL", { color:"#65a0ff" });
+createDashboardChart("stableChart", stableSeries, "Stablecoins", { color:"#55d6a5" });
+createDashboardChart("mvrvChart", mvrvSeries, "MVRV", { color:"#f7931a", prefix:"", suffix:"x" });
+createDashboardMultiChart("realizedPriceChart", [
+  { label:"Market Price", series:btcMarketPriceSeries, color:"#f7931a" },
+  { label:"Realized Price", series:realizedPriceSeries, color:"#65a0ff" },
+]);
+createDashboardChart("btcEtfFlowChart", btcEtfFlowSeries, "Spot BTC ETF Net Flow", { color:"#55d6a5" });
+createDashboardChart("btcEtfCumulativeChart", btcEtfCumulativeSeries, "Spot BTC ETF Cumulative Flow", { color:"#65a0ff" });
+createDashboardChart("issuanceChart", issuanceSeries, "Годовой темп эмиссии", { color:"#55d6a5", prefix:"", suffix:"%" });
+if (tradingViewSymbol) initTradingView(tradingViewSymbol);
+}
+
 async function loadReport(options = {}) {
   const loadGeneration = ++reportLoadGeneration;
   activeReportController?.abort();
@@ -795,98 +866,35 @@ async function loadReport(options = {}) {
   const app = document.getElementById("app");
   const reportSearch = document.getElementById("report-project-search");
   if (reportSearch) reportSearch.value = slug.toUpperCase();
-  const loadingPhases = [
-    "Загружаем отчет…",
-    "Собираем данные по проекту…",
-    "Подтягиваем рыночные метрики…",
-    "Формируем структуру отчета…",
-    "Это занимает больше времени, чем обычно…",
-  ];
-  let phaseIndex = 0;
   app.setAttribute("aria-busy", "true");
-  setReportState(app, "loading", `Собираем отчет по ${slug.toUpperCase()}…`, loadingPhases[phaseIndex]);
-  const phaseTimer = setInterval(() => {
-    phaseIndex = Math.min(phaseIndex + 1, loadingPhases.length - 1);
-    setReportState(app, "loading", `Собираем отчет по ${slug.toUpperCase()}…`, loadingPhases[phaseIndex], { retry:phaseIndex === loadingPhases.length - 1, variant:phaseIndex === loadingPhases.length - 1 ? "extended" : "initial" });
-  }, 3500);
-
+  setReportState(app, "loading", `Открываем страницу ${slug.toUpperCase()}…`, "Сначала загружаем базовые данные.");
+  let shellRendered = false;
+  try {
+    const shellResult = await fetchReportShell(slug);
+    if (isActive() && shellResult.response.ok && shellResult.data) {
+      renderReport(app, shellResult.data, { progressive:true });
+      shellRendered = true;
+    }
+  } catch (error) { console.warn("Report shell failed", error); }
   try {
     const { response:res, data, fromCache } = await fetchReportWithRetry(slug, (attempt) => {
-      if (isActive()) setReportState(app, "loading", "Повторяем попытку загрузки…", `Отчет продолжает собираться · попытка ${attempt} из ${REPORT_RETRY_DELAYS_MS.length + 1}`, { retry:true, variant:"retrying" });
+      if (!isActive() || shellRendered) return;
+      setReportState(app, "loading", "Повторяем попытку загрузки…", `Попытка ${attempt}`, { retry:true });
     }, isActive, options);
     if (!isActive()) return;
-    if (!res.ok) {
-      if (res.status === 404) {
-        setReportState(app, "error", "Проект не найден", "Проверьте тикер или slug и попробуйте другой проект.", { retry:false });
-      } else {
-        setReportState(app, "error", "Не удалось собрать отчет", "Автоматические попытки исчерпаны. Можно повторить загрузку без обновления страницы.", { retry:true });
-      }
+    if (res.ok && isUsableReport(data)) {
+      if (fromCache) { data.meta.snapshot_of = data.meta.source_state || "partial"; data.meta.source_state = "snapshot"; }
+      renderReport(app, data, { progressive:false, fromCache });
+      app.removeAttribute("aria-busy");
       return;
     }
-    if (!isUsableReport(data)) {
-      setReportState(app, "error", "Отчет временно недоступен", "Источники не вернули критические данные после повторных попыток.", { retry:true });
-      return;
-    }
-    if (fromCache) {
-      data.meta.snapshot_of = data.meta.source_state || "partial";
-      data.meta.source_state = "snapshot";
-      data.meta.data_status = `${data.meta.data_status || "report"}-cached-fallback`;
-    }
-
-    const tradingViewSymbol = data?.meta?.market_symbols?.tradingView || null;
-    app.innerHTML = `<div class="layout report-ready-enter"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="sidebar-project-mark">${projectIconHtml(data.meta, true)}<div class="project-main">${escapeHtml(data.meta.project_name)}</div></div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
-      <section class="panel hero-overview"><div class="hero-heading">${projectIconHtml(data.meta)}<div class="hero-identity"><div class="hero-title-row"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><span class="hero-ticker">${escapeHtml(data.meta.ticker)}</span></div>${data.hero.subtitle && data.hero.subtitle !== data.meta.ticker ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}</div></div><p class="lead hero-lead">${escapeHtml(data.hero.lead)}</p>
-      <div class="hero-grid hero-kpis">${heroKpisHtml(data)}</div>
-      <div class="three-col hero-thesis top-gap"><div class="list-item"><strong>Главная сила</strong><span>${escapeHtml(data.hero.main_strength || "—")}</span></div><div class="list-item"><strong>Главный риск</strong><span>${escapeHtml(data.hero.main_risk || "—")}</span></div><div class="list-item"><strong>Что проверить</strong><span>${escapeHtml(data.hero.status_text || "—")}</span></div></div></section>
-      ${tradingViewCard(tradingViewSymbol)}
-      ${marketPackHtml(data)}
-      ${technicalBiasHtml(data.technical_bias, data.meta.slug || slug)}
-      ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel executive-summary"><div class="section-title">Кратко для инвестора</div><div class="section-sub">Три проверки качества инвестиционного тезиса.</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
-      ${orderedReportSectionsHtml(data)}
-    </main></div>`;
-
-    const tvlSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.tvl_history, "totalLiquidityUSD"), { trimLeadingZeroes:true });
-    const stableSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.stablecoins_history, "totalCirculatingUSD"), { trimLeadingZeroes:true });
-    const tvlSeries = sanitizeSeries(tvlSeriesRaw, { trimLeadingZeroes:true });
-    const stableSeries = sanitizeSeries(stableSeriesRaw, { trimLeadingZeroes:true });
-    const appFeesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.app_fees_history), { trimLeadingZeroes:true });
-    const chainFeesSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.chain_fees_history), { trimLeadingZeroes:true });
-    const dexSeries = sanitizeSeries(normalizeLlamaOverviewChart(data?.charts?.dex_history), { trimLeadingZeroes:true });
-    const volumeHistorySeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.volume_history), { trimLeadingZeroes:true });
-    const marketCapHistorySeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.market_cap_history), { trimLeadingZeroes:true });
-    const mvrvSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.mvrv_history));
-    const realizedPriceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.realized_price_history));
-    const btcMarketPriceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.btc_market_price_history));
-    const issuanceSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.issuance_history));
-    const btcEtfFlowSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.btc_etf_flow_history));
-    const btcEtfCumulativeSeries = sanitizeSeries(normalizeMarketSeries(data?.charts?.btc_etf_cumulative_history));
-
-    createDashboardChart("volumeHistoryChart", volumeHistorySeries, "Объем торгов", { color:"#60a5fa" });
-    createDashboardChart("marketCapHistoryChart", marketCapHistorySeries, "Рыночная капитализация", { color:"#a78bfa" });
-    createDashboardChart("appFeesChart", appFeesSeries, "App Fees", { color:"#a78bfa" });
-    createDashboardChart("chainFeesChart", chainFeesSeries, "Chain Fees", { color:"#f59e80" });
-    createDashboardChart("dexChart", dexSeries, "DEX Volume", { color:"#60a5fa" });
-    createDashboardChart("tvlChart", tvlSeries, "TVL", { color:"#65a0ff" });
-    createDashboardChart("stableChart", stableSeries, "Stablecoins", { color:"#55d6a5" });
-    createDashboardChart("mvrvChart", mvrvSeries, "MVRV", { color:"#f7931a", prefix:"", suffix:"x" });
-    createDashboardMultiChart("realizedPriceChart", [
-      { label:"Market Price", series:btcMarketPriceSeries, color:"#f7931a" },
-      { label:"Realized Price", series:realizedPriceSeries, color:"#65a0ff" },
-    ]);
-    createDashboardChart("btcEtfFlowChart", btcEtfFlowSeries, "Spot BTC ETF Net Flow", { color:"#55d6a5" });
-    createDashboardChart("btcEtfCumulativeChart", btcEtfCumulativeSeries, "Spot BTC ETF Cumulative Flow", { color:"#65a0ff" });
-    createDashboardChart("issuanceChart", issuanceSeries, "Годовой темп эмиссии", { color:"#55d6a5", prefix:"", suffix:"%" });
-    if (tradingViewSymbol) initTradingView(tradingViewSymbol);
+    if (!shellRendered) setReportState(app, "error", "Не удалось собрать отчет", "Источники не вернули даже базовые данные.", { retry:true });
+    else showProgressiveNotice("Расширенные метрики временно не загрузились. Базовый отчет открыт.");
   } catch (error) {
     if (!isActive()) return;
-    const message = error?.name === "AbortError"
-      ? "Источники не успели вернуть критические данные за отведенное время. Попробуйте еще раз позже."
-      : "Проверьте соединение и попробуйте еще раз.";
-    setReportState(app, "error", "Не удалось загрузить отчет", message, { retry:true });
-  } finally {
-    clearInterval(phaseTimer);
-    if (isActive()) app.removeAttribute("aria-busy");
-  }
+    if (!shellRendered) setReportState(app, "error", "Не удалось собрать отчет", "Можно повторить загрузку без обновления страницы.", { retry:true });
+    else showProgressiveNotice("Расширенные метрики временно не загрузились. Базовый отчет открыт.");
+  } finally { if (isActive()) app.removeAttribute("aria-busy"); }
 }
 
 purgeLegacyReportCache();
