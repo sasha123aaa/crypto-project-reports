@@ -11,6 +11,7 @@ import { fetchDefiLlamaChains, fetchDefiLlamaProtocols, fetchStablecoinChains, s
 import { createMarketSymbols, resolveExchangeMarketSymbols } from "./market-symbols.js";
 import { inferRuntimeLabels } from "./label-inference.js";
 import { inferTitleSubtitle } from "./title-subtitle-inference.js";
+import { brandingFromCoinGeckoAsset } from "./branding.js";
 
 const CATEGORY_PROFILES = Object.freeze({
   [PROJECT_CATEGORIES.INFRA]: ANALYSIS_PROFILES.L1_INFRA,
@@ -86,15 +87,16 @@ const KNOWN_NEWS_CONTEXT = Object.freeze({
   link: ["chainlink", "link token", "chainlink ccip", "chainlink integration", "chainlink data feeds", "chainlink staking", "oracle network"],
 });
 
-function trustedImageUrls(...coins) {
-  return [...new Set(coins.flatMap((coin) => [coin?.image?.large, coin?.image?.small, coin?.image?.thumb])
-    .filter((url) => typeof url === "string" && /^https:\/\//i.test(url)))];
-}
-
 function runtimeBranding(canonicalCoin, ticker, metadataCoin = canonicalCoin) {
-  const known = KNOWN_PROJECT_BRANDING[String(ticker || "").toLowerCase()] || KNOWN_PROJECT_BRANDING[String(canonicalCoin?.id || "").toLowerCase()];
-  const iconUrls = trustedImageUrls(canonicalCoin, metadataCoin);
-  return { ...(known || {}), ...(iconUrls.length ? { iconUrl:iconUrls[0], iconUrls, iconSource:"canonical_runtime_asset" } : {}) };
+  const known = KNOWN_PROJECT_BRANDING[String(ticker || "").toLowerCase()]
+    || KNOWN_PROJECT_BRANDING[String(canonicalCoin?.id || "").toLowerCase()];
+  return brandingFromCoinGeckoAsset({
+    ...canonicalCoin,
+    image: metadataCoin?.image || canonicalCoin?.image,
+    large: canonicalCoin?.large || metadataCoin?.large,
+    small: canonicalCoin?.small || metadataCoin?.small,
+    thumb: canonicalCoin?.thumb || metadataCoin?.thumb,
+  }, known || {});
 }
 
 function runtimeNewsRelevance(coin, ticker) {
@@ -273,6 +275,7 @@ export function buildRuntimeProjectSkeleton(input) {
   if (!slug) return null;
 
   const ticker = slug.toUpperCase();
+  const canonicalId = CANONICAL_ASSET_IDS[slug];
   const signals = inferIdentitySignals(input);
   const category = inferProjectCategory(signals);
   const profile = buildProfile(category, buildCapabilitySeed(category, signals));
@@ -284,6 +287,7 @@ export function buildRuntimeProjectSkeleton(input) {
     ticker,
     projectType: "runtime",
     categories: [],
+    ...(canonicalId ? { coingeckoId:canonicalId } : {}),
     marketSymbols,
     bybitSymbol:marketSymbols.technical,
     ...(KNOWN_PROJECT_NEWS_FEEDS[slug] ? { projectNewsFeeds:KNOWN_PROJECT_NEWS_FEEDS[slug] } : {}),
