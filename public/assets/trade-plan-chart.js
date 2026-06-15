@@ -3,7 +3,7 @@ class TradePlanChart {
     this.container=container;
     container.innerHTML='<div class="trade-plan-plot"></div>';
     this.plot=container.querySelector('.trade-plan-plot');
-    this.chart=LightweightCharts.createChart(this.plot,{layout:{background:{type:'solid',color:'#0b1020'},textColor:'#aeb8cc',fontFamily:'Inter,system-ui,sans-serif'},grid:{vertLines:{color:'rgba(255,255,255,.035)'},horzLines:{color:'rgba(255,255,255,.045)'}},leftPriceScale:{visible:false},rightPriceScale:{visible:true,borderVisible:true,borderColor:'rgba(255,255,255,.24)',minimumWidth:78,scaleMargins:{top:.12,bottom:.12}},timeScale:{borderColor:'rgba(255,255,255,.1)',timeVisible:true,secondsVisible:false,rightOffset:8,barSpacing:5,minBarSpacing:1},crosshair:{mode:LightweightCharts.CrosshairMode.Normal},localization:{priceFormatter:v=>this.formatPrice(v)}});
+    this.chart=LightweightCharts.createChart(this.plot,{layout:{background:{type:'solid',color:'#0b1020'},textColor:'#aeb8cc',fontFamily:'Inter,system-ui,sans-serif'},grid:{vertLines:{color:'rgba(255,255,255,.035)'},horzLines:{color:'rgba(255,255,255,.045)'}},leftPriceScale:{visible:false},rightPriceScale:{visible:true,borderVisible:true,borderColor:'rgba(255,255,255,.24)',minimumWidth:78,scaleMargins:{top:.12,bottom:.12}},timeScale:{borderColor:'rgba(255,255,255,.1)',timeVisible:true,secondsVisible:false,rightOffset:28,barSpacing:5,minBarSpacing:1},crosshair:{mode:LightweightCharts.CrosshairMode.Normal},localization:{priceFormatter:v=>this.formatPrice(v)}});
     this.series=this.chart.addCandlestickSeries({upColor:'#42d392',downColor:'#ff6b7a',wickUpColor:'#42d392',wickDownColor:'#ff6b7a',borderVisible:false,priceLineVisible:false});
     this.overlay=document.createElement('div');this.overlay.className='scenario-overlay';this.plot.appendChild(this.overlay);
     this.planOverlay=document.createElement('div');this.planOverlay.className='trade-plan-overlay';this.plot.appendChild(this.planOverlay);
@@ -21,6 +21,13 @@ class TradePlanChart {
     const intraday=['1m','3m','5m','15m','1h','4h'].includes(this.timeframe),monthly=['1w','1M'].includes(this.timeframe);
     return new Intl.DateTimeFormat('ru-RU',monthly?{month:'short',year:'numeric',timeZone:'UTC'}:intraday?{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'UTC'}:{day:'2-digit',month:'short',timeZone:'UTC'}).format(date).replace(',','');
   }
+  applyDefaultView(){
+    const count=this.candles?.length||0;
+    if(!count)return;
+    const lastIndex=count-1,rightPaddingBars=28,visibleBars=Math.min(180,Math.max(120,count));
+    this.chart.timeScale().setVisibleLogicalRange({from:Math.max(0,lastIndex-visibleBars),to:lastIndex+rightPaddingBars});
+    this.renderOverlay();
+  }
   setData(options,behavior={}){
     const preserveView=behavior.preserveView===true;
     const logicalRange=preserveView?this.chart.timeScale().getVisibleLogicalRange():null;
@@ -28,7 +35,7 @@ class TradePlanChart {
     const priceRange=preserveView&&priceScale?.getVisibleRange?priceScale.getVisibleRange():null;
     Object.assign(this,options);this.container.classList.toggle('without-spot-plan',!this.showPlan);this.chart.applyOptions({timeScale:{timeVisible:['1m','3m','5m','15m','1h','4h'].includes(this.timeframe),secondsVisible:false,tickMarkFormatter:time=>this.formatTime(time)}});this.series.setData(this.candles);
     if(preserveView&&logicalRange){requestAnimationFrame(()=>{this.chart.timeScale().setVisibleLogicalRange(logicalRange);if(priceRange&&priceScale?.setVisibleRange)priceScale.setVisibleRange(priceRange);this.renderOverlay()})}
-    else{this.chart.timeScale().fitContent();this.renderOverlay()}
+    else requestAnimationFrame(()=>this.applyDefaultView())
   }
   updateOverlay(){
     if(!this.candles?.length)return; const r=this.range;
