@@ -1,70 +1,40 @@
 class TradePlanChart {
-  constructor(container, options) {
-    this.container=container;
-    container.innerHTML='<div class="trade-plan-plot"></div>';
-    this.plot=container.querySelector('.trade-plan-plot');
+  constructor(container,options){
+    this.container=container;this.drawings=[];this.activeTool='cursor';this.selectedDrawingId=null;this.pendingDrawing=null;
+    container.innerHTML='<div class="trade-plan-plot"></div>';this.plot=container.querySelector('.trade-plan-plot');
     this.infoOverlay=document.createElement('div');this.infoOverlay.className='trade-chart-info';this.plot.appendChild(this.infoOverlay);
     this.chart=LightweightCharts.createChart(this.plot,{layout:{background:{type:'solid',color:'#0b1020'},textColor:'#aeb8cc',fontFamily:'Inter,system-ui,sans-serif'},grid:{vertLines:{color:'rgba(255,255,255,.035)'},horzLines:{color:'rgba(255,255,255,.045)'}},leftPriceScale:{visible:false},rightPriceScale:{visible:true,borderVisible:true,borderColor:'rgba(255,255,255,.24)',minimumWidth:78,scaleMargins:{top:.12,bottom:.12}},timeScale:{borderColor:'rgba(255,255,255,.1)',timeVisible:true,secondsVisible:false,rightOffset:28,barSpacing:5,minBarSpacing:1},crosshair:{mode:LightweightCharts.CrosshairMode.Normal},localization:{priceFormatter:v=>this.formatPrice(v)}});
     this.series=this.chart.addCandlestickSeries({upColor:'#42d392',downColor:'#ff6b7a',wickUpColor:'#42d392',wickDownColor:'#ff6b7a',borderVisible:false,priceLineVisible:false});
-    this.chart.subscribeCrosshairMove(param=>{let hoveredCandle=param?.seriesData?.get?.(this.series);if(!hoveredCandle&&param?.time)hoveredCandle=this.candles?.find(c=>c.time===param.time);this.updateInfoOverlay(hoveredCandle||this.getLastCandle())});
+    this.chart.subscribeCrosshairMove(param=>{let candle=param?.seriesData?.get?.(this.series);if(!candle&&param?.time)candle=this.candles?.find(c=>c.time===param.time);this.updateInfoOverlay(candle||this.getLastCandle())});
     this.overlay=document.createElement('div');this.overlay.className='scenario-overlay';this.plot.appendChild(this.overlay);
+    this.drawingOverlay=document.createElementNS('http://www.w3.org/2000/svg','svg');this.drawingOverlay.classList.add('trade-drawing-overlay');this.plot.appendChild(this.drawingOverlay);
     this.planOverlay=document.createElement('div');this.planOverlay.className='trade-plan-overlay';this.plot.appendChild(this.planOverlay);
-    this.renderOverlay=()=>requestAnimationFrame(()=>this.updateOverlay()); this.chart.timeScale().subscribeVisibleLogicalRangeChange(this.renderOverlay);
+    this.createDrawingToolbar();this.bindDrawingEvents();
+    this.renderOverlay=()=>requestAnimationFrame(()=>{this.updateOverlay();this.renderDrawings()});this.chart.timeScale().subscribeVisibleLogicalRangeChange(this.renderOverlay);
     this.resizeObserver=new ResizeObserver(()=>{this.chart.applyOptions({width:this.plot.clientWidth,height:this.plot.clientHeight});this.renderOverlay()});this.resizeObserver.observe(container);this.setData(options);
   }
   formatPrice(v){return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:v<1?6:2}).format(v)}
   formatPlainPrice(v){if(!Number.isFinite(Number(v)))return '—';return new Intl.NumberFormat('en-US',{minimumFractionDigits:Number(v)<1?5:2,maximumFractionDigits:Number(v)<1?6:2}).format(Number(v))}
   getLastCandle(){return this.candles?.[this.candles.length-1]||null}
-  updateInfoOverlay(candle){
-    const current=candle||this.getLastCandle();
-    if(!this.infoOverlay||!current){if(this.infoOverlay)this.infoOverlay.innerHTML='';return}
-    const ticker=this.symbol||this.ticker||'',exchange=this.exchange||'Bybit',tf=this.timeframe||'';
-    this.infoOverlay.innerHTML=`<div class="trade-chart-info-main">${this.iconHtml||''}<strong>${ticker}</strong><span>· ${tf}</span><span>· ${exchange}</span></div><div class="trade-chart-ohlc"><span>ОТКР ${this.formatPlainPrice(current.open)}</span><span>МАКС ${this.formatPlainPrice(current.high)}</span><span>МИН ${this.formatPlainPrice(current.low)}</span><span>ЗАКР ${this.formatPlainPrice(current.close)}</span></div>`;
+  drawingKey(){return `trade-plan-drawings:${this.slug}:${this.timeframe}`}
+  loadDrawings(){try{const value=JSON.parse(localStorage.getItem(this.drawingKey())||'[]');this.drawings=Array.isArray(value)?value:[]}catch{this.drawings=[]}this.selectedDrawingId=null;this.pendingDrawing=null}
+  saveDrawings(){try{localStorage.setItem(this.drawingKey(),JSON.stringify(this.drawings))}catch(error){console.warn('Could not save chart drawings',error)}}
+  createDrawingToolbar(){
+    this.drawingToolbar=document.createElement('div');this.drawingToolbar.className='trade-drawing-toolbar';
+    [['cursor','✛','Курсор'],['trendline','╱','Линия тренда'],['horizontal','━','Горизонтальная линия'],['vertical','┃','Вертикальная линия'],['rect','▭','Прямоугольник'],['fib','F','Фибо'],['delete','⌫','Удалить выбранное'],['clear','🗑','Очистить все']].forEach(([tool,icon,title])=>{const button=document.createElement('button');button.type='button';button.dataset.tool=tool;button.title=title;button.setAttribute('aria-label',title);button.textContent=icon;button.onclick=event=>{event.stopPropagation();this.handleTool(tool)};this.drawingToolbar.appendChild(button)});this.plot.appendChild(this.drawingToolbar);this.setActiveTool('cursor')
   }
-  formatTime(time){
-    let millis;
-    if(typeof time==='number')millis=Math.abs(time)>=1e12?time:time*1000;
-    else if(typeof time==='string')millis=Date.parse(time);
-    else if(time&&Number.isInteger(time.year)&&Number.isInteger(time.month)&&Number.isInteger(time.day))millis=Date.UTC(time.year,time.month-1,time.day);
-    const date=new Date(millis);
-    if(!Number.isFinite(date.getTime()))return '';
-    const intraday=['1m','3m','5m','15m','1h','4h'].includes(this.timeframe),monthly=['1w','1M'].includes(this.timeframe);
-    return new Intl.DateTimeFormat('ru-RU',monthly?{month:'short',year:'numeric',timeZone:'UTC'}:intraday?{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'UTC'}:{day:'2-digit',month:'short',timeZone:'UTC'}).format(date).replace(',','');
-  }
-  applyDefaultView(){
-    const count=this.candles?.length||0;
-    if(!count)return;
-
-    const lastIndex=count-1;
-
-    // Нужно оставить справа место под overlay уровней.
-    // При 28 барах свечи все еще залезают в подписи уровней.
-    const rightPaddingBars=50;
-
-    // Чуть меньше видимой истории, чтобы последняя свеча была левее,
-    // а справа оставалась свободная зона под уровни.
-    const visibleBars=Math.min(250,Math.max(90,count));
-
-    this.chart.timeScale().setVisibleLogicalRange({
-      from:Math.max(0,lastIndex-visibleBars),
-      to:lastIndex+rightPaddingBars
-    });
-
-    this.renderOverlay();
-  }
-  setData(options,behavior={}){
-    const preserveView=behavior.preserveView===true;
-    const logicalRange=preserveView?this.chart.timeScale().getVisibleLogicalRange():null;
-    const priceScale=this.series.priceScale?.();
-    const priceRange=preserveView&&priceScale?.getVisibleRange?priceScale.getVisibleRange():null;
-    Object.assign(this,options);this.container.classList.toggle('without-spot-plan',!this.showPlan);this.chart.applyOptions({timeScale:{timeVisible:['1m','3m','5m','15m','1h','4h'].includes(this.timeframe),secondsVisible:false,tickMarkFormatter:time=>this.formatTime(time)}});this.series.setData(this.candles);this.updateInfoOverlay(this.getLastCandle());
-    if(preserveView&&logicalRange){requestAnimationFrame(()=>{this.chart.timeScale().setVisibleLogicalRange(logicalRange);if(priceRange&&priceScale?.setVisibleRange)priceScale.setVisibleRange(priceRange);this.renderOverlay()})}
-    else requestAnimationFrame(()=>this.applyDefaultView())
-  }
-  updateOverlay(){
-    if(!this.candles?.length)return; const r=this.range;
-    if(r){const ax=this.chart.timeScale().timeToCoordinate(r.aTime),bx=this.chart.timeScale().timeToCoordinate(r.bTime),ay=this.series.priceToCoordinate(r.aPrice),by=this.series.priceToCoordinate(r.bPrice);if([ax,bx,ay,by].every(v=>v!=null)){const left=Math.min(ax,bx),top=Math.min(ay,by),width=Math.max(2,Math.abs(bx-ax)),height=Math.max(2,Math.abs(by-ay));this.overlay.innerHTML=`<div class="range-segment ${r.bullish?'bullish':'bearish'}" style="left:${left}px;top:${top}px;width:${width}px;height:${height}px"><i class="range-line range-line-a" style="top:${ay-top}px"></i><i class="range-line range-line-b" style="top:${by-top}px"></i></div><span class="range-point range-a" style="left:${ax}px;top:${ay}px"></span><span class="range-point range-b ${r.bullish?'bullish':'bearish'}" style="left:${bx}px;top:${by}px"></span>`}else this.overlay.innerHTML=''}else this.overlay.innerHTML='';
-    this.planOverlay.innerHTML=this.showPlan?Object.values(this.levels).map(l=>{const y=this.series.priceToCoordinate(l.value);return y==null?'':`<div class="trade-plan-overlay-level ${l.state}" style="top:${y}px"><span>${l.label}</span><i></i><b>${this.formatPrice(l.value)}</b></div>`}).join(''):'';
-  }
+  handleTool(tool){if(tool==='delete'){if(this.selectedDrawingId){this.drawings=this.drawings.filter(d=>d.id!==this.selectedDrawingId);this.selectedDrawingId=null;this.saveDrawings();this.renderDrawings()}return}if(tool==='clear'){if(this.drawings.length&&confirm('Очистить все рисовалки на этом таймфрейме?')){this.drawings=[];this.selectedDrawingId=null;this.pendingDrawing=null;this.saveDrawings();this.renderDrawings()}return}this.setActiveTool(tool)}
+  setActiveTool(tool){this.activeTool=tool;this.pendingDrawing=null;this.container.classList.toggle('trade-drawing-mode',tool!=='cursor');this.drawingToolbar?.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.tool===tool));this.chart.applyOptions({handleScroll:tool==='cursor',handleScale:tool==='cursor'});this.renderDrawings()}
+  bindDrawingEvents(){this.drawingOverlay.addEventListener('pointerdown',event=>{if(this.activeTool==='cursor')return;event.preventDefault();event.stopPropagation();const point=this.eventPoint(event);if(!point)return;if(['horizontal','vertical'].includes(this.activeTool)){this.addDrawing(this.activeTool,[point,point]);return}if(!this.pendingDrawing)this.pendingDrawing={type:this.activeTool,points:[point,point]};else{this.pendingDrawing.points[1]=point;this.addDrawing(this.pendingDrawing.type,this.pendingDrawing.points);this.pendingDrawing=null}this.renderDrawings()});this.drawingOverlay.addEventListener('pointermove',event=>{if(!this.pendingDrawing)return;const point=this.eventPoint(event);if(point){this.pendingDrawing.points[1]=point;this.renderDrawings()}});this.drawingOverlay.addEventListener('click',event=>{if(this.activeTool!=='cursor')return;const target=event.target.closest('[data-drawing-id]');this.selectedDrawingId=target?.dataset.drawingId||null;this.renderDrawings()})}
+  eventPoint(event){const rect=this.plot.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top,time=this.chart.timeScale().coordinateToTime(x),price=this.series.coordinateToPrice(y);return time==null||price==null?null:{time,price}}
+  addDrawing(type,points){this.drawings.push({id:`drawing_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,type,points:points.map(p=>({...p})),style:{color:'#d7deec',width:1}});this.saveDrawings();this.renderDrawings()}
+  svg(tag,attrs,parent=this.drawingOverlay){const node=document.createElementNS('http://www.w3.org/2000/svg',tag);Object.entries(attrs).forEach(([key,value])=>node.setAttribute(key,value));parent.appendChild(node);return node}
+  renderDrawings(){if(!this.drawingOverlay)return;this.drawingOverlay.replaceChildren();this.drawingOverlay.setAttribute('viewBox',`0 0 ${this.plot.clientWidth} ${this.plot.clientHeight}`);[...this.drawings,...(this.pendingDrawing?[{...this.pendingDrawing,id:'preview'}]:[])].forEach(d=>this.renderDrawing(d))}
+  renderDrawing(d){const p=d.points.map(point=>({x:this.chart.timeScale().timeToCoordinate(point.time),y:this.series.priceToCoordinate(point.price),price:point.price}));if(p.some(v=>v.x==null||v.y==null))return;const selected=d.id===this.selectedDrawingId,base={class:`drawing-line${selected?' drawing-selected':''}`,stroke:d.style?.color||'#d7deec','stroke-width':d.style?.width||1.5,'data-drawing-id':d.id};if(d.type==='trendline')this.svg('line',{...base,x1:p[0].x,y1:p[0].y,x2:p[1].x,y2:p[1].y});else if(d.type==='horizontal')this.svg('line',{...base,x1:0,y1:p[0].y,x2:this.plot.clientWidth,y2:p[0].y});else if(d.type==='vertical')this.svg('line',{...base,x1:p[0].x,y1:0,x2:p[0].x,y2:this.plot.clientHeight});else if(d.type==='rect')this.svg('rect',{...base,class:`drawing-rect${selected?' drawing-selected':''}`,x:Math.min(p[0].x,p[1].x),y:Math.min(p[0].y,p[1].y),width:Math.abs(p[1].x-p[0].x),height:Math.abs(p[1].y-p[0].y)});else if(d.type==='fib'){const left=Math.min(p[0].x,p[1].x),right=Math.max(p[0].x,p[1].x);[0,.236,.382,.5,.618,.786,1].forEach(level=>{const price=p[0].price+(p[1].price-p[0].price)*level,y=this.series.priceToCoordinate(price);if(y==null)return;this.svg('line',{...base,class:`drawing-fib-line${selected?' drawing-selected':''}`,x1:left,y1:y,x2:right,y2:y});const text=this.svg('text',{class:'drawing-fib-label',x:right+5,y:y-3,'data-drawing-id':d.id});text.textContent=`${level} · ${this.formatPrice(price)}`})}}
+  updateInfoOverlay(candle){const current=candle||this.getLastCandle();if(!this.infoOverlay||!current){if(this.infoOverlay)this.infoOverlay.innerHTML='';return}const ticker=this.symbol||this.ticker||'',exchange=this.exchange||'Bybit',tf=this.timeframe||'';this.infoOverlay.innerHTML=`<div class="trade-chart-info-main">${this.iconHtml||''}<strong>${ticker}</strong><span>· ${tf}</span><span>· ${exchange}</span></div><div class="trade-chart-ohlc"><span>ОТКР ${this.formatPlainPrice(current.open)}</span><span>МАКС ${this.formatPlainPrice(current.high)}</span><span>МИН ${this.formatPlainPrice(current.low)}</span><span>ЗАКР ${this.formatPlainPrice(current.close)}</span></div>`}
+  formatTime(time){let millis;if(typeof time==='number')millis=Math.abs(time)>=1e12?time:time*1000;else if(typeof time==='string')millis=Date.parse(time);else if(time&&Number.isInteger(time.year)&&Number.isInteger(time.month)&&Number.isInteger(time.day))millis=Date.UTC(time.year,time.month-1,time.day);const date=new Date(millis);if(!Number.isFinite(date.getTime()))return '';const intraday=['1m','3m','5m','15m','1h','4h'].includes(this.timeframe),monthly=['1w','1M'].includes(this.timeframe);return new Intl.DateTimeFormat('ru-RU',monthly?{month:'short',year:'numeric',timeZone:'UTC'}:intraday?{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'UTC'}:{day:'2-digit',month:'short',timeZone:'UTC'}).format(date).replace(',','')}
+  applyDefaultView(){const count=this.candles?.length||0;if(!count)return;this.chart.timeScale().setVisibleLogicalRange({from:Math.max(0,count-1-Math.min(250,Math.max(90,count))),to:count-1+50});this.renderOverlay()}
+  setData(options,behavior={}){const preserveView=behavior.preserveView===true,logicalRange=preserveView?this.chart.timeScale().getVisibleLogicalRange():null,priceScale=this.series.priceScale?.(),priceRange=preserveView&&priceScale?.getVisibleRange?priceScale.getVisibleRange():null,oldKey=this.slug&&this.timeframe?this.drawingKey():null;Object.assign(this,options);if(oldKey!==this.drawingKey())this.loadDrawings();this.container.classList.toggle('without-spot-plan',!this.showPlan);this.chart.applyOptions({timeScale:{timeVisible:['1m','3m','5m','15m','1h','4h'].includes(this.timeframe),secondsVisible:false,tickMarkFormatter:time=>this.formatTime(time)}});this.series.setData(this.candles);this.updateInfoOverlay(this.getLastCandle());this.renderDrawings();if(preserveView&&logicalRange)requestAnimationFrame(()=>{this.chart.timeScale().setVisibleLogicalRange(logicalRange);if(priceRange&&priceScale?.setVisibleRange)priceScale.setVisibleRange(priceRange);this.renderOverlay()});else requestAnimationFrame(()=>this.applyDefaultView())}
+  updateOverlay(){if(!this.candles?.length)return;const r=this.range;if(r){const ax=this.chart.timeScale().timeToCoordinate(r.aTime),bx=this.chart.timeScale().timeToCoordinate(r.bTime),ay=this.series.priceToCoordinate(r.aPrice),by=this.series.priceToCoordinate(r.bPrice);if([ax,bx,ay,by].every(v=>v!=null)){const left=Math.min(ax,bx),top=Math.min(ay,by),width=Math.max(2,Math.abs(bx-ax)),height=Math.max(2,Math.abs(by-ay));this.overlay.innerHTML=`<div class="range-segment ${r.bullish?'bullish':'bearish'}" style="left:${left}px;top:${top}px;width:${width}px;height:${height}px"><i class="range-line range-line-a" style="top:${ay-top}px"></i><i class="range-line range-line-b" style="top:${by-top}px"></i></div><span class="range-point range-a" style="left:${ax}px;top:${ay}px"></span><span class="range-point range-b ${r.bullish?'bullish':'bearish'}" style="left:${bx}px;top:${by}px"></span>`}else this.overlay.innerHTML=''}else this.overlay.innerHTML='';this.planOverlay.innerHTML=this.showPlan?Object.values(this.levels).map(l=>{const y=this.series.priceToCoordinate(l.value);return y==null?'':`<div class="trade-plan-overlay-level ${l.state}" style="top:${y}px"><span>${l.label}</span><i></i><b>${this.formatPrice(l.value)}</b></div>`}).join(''):''}
 }
 window.TradePlanChart=TradePlanChart;
