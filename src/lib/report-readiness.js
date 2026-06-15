@@ -76,16 +76,21 @@ export function assessReportReadiness(report, project, sourceSummary = {}) {
     market_symbol_mapping:Boolean(project?.marketSymbols?.technical || project?.marketSymbols?.tradingView || report?.meta?.market_symbols?.technical || report?.meta?.market_symbols?.tradingView),
     price:hasMetric(report, "price"),
     market_cap:hasMetric(report, "market_cap"),
+    fdv:hasMetric(report, "fdv"),
     volume_24h:hasMetric(report, "volume_24h"),
   };
-  const missing = Object.entries(checks).filter(([, ready]) => !ready).map(([name]) => name);
-  const runtime = project?.resolution?.mode === "runtime";
-  const usableRuntime = runtime && checks.project_resolution && checks.project_profile
-    && checks.market_symbol_mapping && (checks.price || checks.market_cap || checks.volume_24h);
+  const valuation = checks.market_cap || checks.fdv;
+  const usable = checks.project_resolution && checks.price && valuation && checks.volume_24h;
+  const ready = Object.entries(checks)
+    .filter(([name]) => name !== "fdv")
+    .every(([name, value]) => name === "market_cap" ? valuation : value);
+  const missing = Object.entries(checks)
+    .filter(([name, value]) => name !== "fdv" && !(name === "market_cap" ? valuation : value))
+    .map(([name]) => name);
   return {
-    state:missing.length ? (usableRuntime ? "partial" : "blocked") : "ready",
+    state:ready ? "ready" : usable ? "partial" : "blocked",
     source_state:report?.meta?.source_state || (missing.length ? "partial" : "live"),
-    usable:Boolean(!missing.length || usableRuntime || report?.meta?.source_state === "manual" || report?.meta?.source_state === "snapshot"),
+    usable,
     checks,
     missing,
     critical_sources:sourceSummary.critical || ["project_resolution", "report_structure", "market"],

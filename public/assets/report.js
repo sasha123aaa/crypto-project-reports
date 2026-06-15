@@ -738,6 +738,10 @@ function storeReport(slug, data) {
 }
 
 function isTemporaryReportStatus(status) { return status === 408 || status === 425 || status === 429 || status >= 500; }
+function isUsableReport(data) {
+  const readiness = data?.meta?.readiness;
+  return readiness?.state === "ready" || readiness?.usable === true;
+}
 function wait(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 async function fetchReportAttempt(slug, timeoutMs = 25_000) {
@@ -765,7 +769,7 @@ async function fetchReportWithRetry(slug, onAttempt, isActive) {
     }
     try {
       const result = await fetchReportAttempt(slug);
-      if (result.response.ok && result.data?.meta?.readiness?.state === "ready") {
+      if (result.response.ok && isUsableReport(result.data)) {
         storeReport(slug, result.data);
         return { ...result, fromCache:false };
       }
@@ -817,7 +821,7 @@ async function loadReport() {
       }
       return;
     }
-    if (data?.meta?.readiness?.state !== "ready") {
+    if (!isUsableReport(data)) {
       setReportState(app, "error", "Отчет временно недоступен", "Источники не вернули критические данные после повторных попыток.", { retry:true });
       return;
     }

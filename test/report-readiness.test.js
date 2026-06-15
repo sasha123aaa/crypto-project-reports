@@ -52,16 +52,24 @@ test("page-ready gate requires identity, profile, structure, symbols, and all he
   assert.deepEqual(blocked.missing, ["volume_24h"]);
 });
 
-test("runtime report with identity and one market metric is partial but usable", () => {
+test("runtime report with base market data is partial but usable without optional structure", () => {
   const project = {
     resolution:{ mode:"runtime" },
     projectProfile:{},
     marketSymbols:{ technical:"ZENUSDT" },
   };
-  const report = { meta:{ section_selection:{ sections:{} } }, market:{ price:{ value:10 } } };
+  const report = { meta:{}, market:{ price:{ value:10 }, fdv:{ value:1_000_000 }, volume_24h:{ value:50_000 } } };
   const readiness = assessReportReadiness(report, project);
   assert.equal(readiness.state, "partial");
   assert.equal(readiness.usable, true);
+});
+
+test("report is blocked when any base market requirement is unavailable", () => {
+  const project = { resolution:{ mode:"runtime" }, projectProfile:{}, marketSymbols:{ technical:"ZENUSDT" } };
+  const report = { meta:{}, market:{ price:{ value:10 }, market_cap:{ value:1_000_000 } } };
+  const readiness = assessReportReadiness(report, project);
+  assert.equal(readiness.state, "blocked");
+  assert.equal(readiness.usable, false);
 });
 
 
