@@ -29,6 +29,21 @@ const CONSUMER_CATEGORY = /gaming|metaverse|social|consumer|entertainment|fan to
 const KNOWN_MEME_IDENTITIES = new Set(["doge", "dogecoin", "pepe", "shib", "shiba-inu"]);
 const NON_CANONICAL_ASSET = /\b(binance[ -]?peg|wrapped|bridged|wormhole|portal|multichain|synthetic|mirrored|pegged|on[ -](?:bnb|binance-smart)-chain)\b/i;
 const CANONICAL_ASSET_IDS = Object.freeze({
+  ada: "cardano",
+  hbar: "hedera-hashgraph",
+  dot: "polkadot",
+  avax: "avalanche-2",
+  atom: "cosmos",
+  arb: "arbitrum",
+  op: "optimism",
+  apt: "aptos",
+  sui: "sui",
+  ton: "the-open-network",
+  near: "near",
+  inj: "injective-protocol",
+  kas: "kaspa",
+  render: "render-token",
+  fil: "filecoin",
   xrp: "ripple",
   ripple: "ripple",
   ltc: "litecoin",

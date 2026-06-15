@@ -47,6 +47,12 @@ async function handleTradePlanCandles(url) {
 const COINGECKO_MARKET_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 const coinGeckoMarketSnapshots = new Map();
 
+export function isPersistableResolution(project) {
+  if (!project?.resolution) return false;
+  if (project.resolution.mode === "registered") return true;
+  return project.resolution.source === "discovery" && Boolean(project.coingeckoId);
+}
+
 async function handleHybridReportApi(request, env, url, ctx) {
   const input = decodeURIComponent(url.pathname.replace("/api/report/", "").replace(/\/$/, "")).trim().toLowerCase();
   if (!input) return json({ error: "Missing report slug or ticker" }, 400);
@@ -88,11 +94,14 @@ async function buildHybridReportResponse(request, env, url, input) {
   let project;
   try {
     project = await getPersistentResolution(env, input) || await resolveProject(input);
-    if (project) await setPersistentResolution(env, input, project);
+    if (isPersistableResolution(project)) await setPersistentResolution(env, input, project);
   } catch (error) {
     return json({ error:"Project resolution failed", kind:"temporary_fetch_issue", recoverable:true, input, reason:error instanceof Error ? error.message : String(error) }, 502);
   }
   if (!project) return json({ error: "Unknown project slug or ticker", kind:"project_not_found", recoverable:false, input }, 404);
+  if (project.resolution?.source === "fallback" && !project.coingeckoId) {
+    return json({ error:"Project discovery temporarily unavailable", kind:"temporary_fetch_issue", recoverable:true, input }, 425, { cacheControl:"no-store" });
+  }
   if (project.resolution?.mode === "runtime") return handleRuntimeReport(project);
 
   const slug = project.slug;
@@ -118,7 +127,7 @@ async function buildHybridReportResponse(request, env, url, input) {
       ? (marketAttempts > 1 ? "retry-live" : "live")
       : "manual";
     const readiness = publishReportReadiness(report, project, live.readinessSummary);
-    if (readiness.state !== "ready") return json({ error:"Critical report data unavailable", readiness }, 503, { cacheControl:"no-store" });
+    if (!readiness.usable) return json({ error:"Critical report data unavailable", readiness }, 503, { cacheControl:"no-store" });
 
     const statuses = Object.values(live.debug || {});
     const hasFulfilled = statuses.includes("fulfilled");
@@ -145,7 +154,7 @@ async function buildHybridReportResponse(request, env, url, input) {
     applySectionSelection(report, project);
     applyBlockRenderingRules(report, project, null);
     const readiness = publishReportReadiness(report, project);
-    if (readiness.state !== "ready") return json({ error:"Critical report data unavailable", readiness }, 503, { cacheControl:"no-store" });
+    if (!readiness.usable) return json({ error:"Critical report data unavailable", readiness }, 503, { cacheControl:"no-store" });
     return json(report, 200, { cacheControl: resolveReportCacheControl(report.meta.data_status) });
   }
 }
@@ -168,7 +177,7 @@ async function handleRuntimeReport(project, { curatedFallback = false } = {}) {
     }
     report.meta.generated_at = new Date().toISOString();
     const readiness = publishReportReadiness(report, project, report.meta.source_readiness);
-    if (!curatedFallback && readiness.state === "blocked") return json({ error:"Critical runtime report data unavailable", readiness }, 503, { cacheControl:"no-store" });
+    if (!readiness.usable) return json({ error:"Critical runtime report data unavailable", readiness }, 503, { cacheControl:"no-store" });
     return json(report, 200, { cacheControl:resolveReportCacheControl(report.meta.data_status) });
   } catch (error) {
     return json({ error:"Runtime report build failed", ticker:project.ticker, reason:error instanceof Error ? error.message : String(error) }, 502);
