@@ -1099,3 +1099,21 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 .radar-row-actions{display:flex;gap:6px;align-items:center}
 .radar-row-actions button,.radar-row-actions a{padding:7px 9px;font-size:11px}
 @media(max-width:900px){.radar-settings{grid-template-columns:1fr}.radar-kpis{grid-template-columns:1fr 1fr}.radar-chart-head{align-items:flex-start;flex-direction:column}.radar-chart-shell{height:420px}.radar-avg-grid{grid-template-columns:1fr}.radar-range-inputs{grid-template-columns:1fr}}
+
+.radar-checks label.disabled{
+  opacity:.45;
+  cursor:not-allowed;
+  filter:grayscale(1);
+}
+
+.radar-checks label.disabled input{
+  cursor:not-allowed;
+}
+
+.radar-checks label small{
+  margin-left:4px;
+  color:#8d98ad;
+  font-size:10px;
+  font-weight:800;
+  text-transform:lowercase;
+}
