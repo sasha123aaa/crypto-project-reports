@@ -4,7 +4,7 @@ import { buildReport } from "./lib/build-report.js";
 import { buildReportShell } from "./lib/report-shell.js";
 import { applySectionSelection, isSectionSelected } from "./lib/section-selection.js";
 import { activeRangeForCandles, analysisCandlesForRange, detectRangesWithPreview, fetchMarketCandlesWithFallback, getTechnicalBias, RANGE_PARAMS } from "./adapters/bybit.js";
-import { marketTechnicalRoutes } from "./lib/market-symbols.js";
+import { createMarketSymbols, marketTechnicalRoutes } from "./lib/market-symbols.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
 import { fetchCoinGeckoGlobal, fetchProjectNews, fetchCoinGeckoMarket as fetchAdapterCoinGeckoMarket } from "./adapters/coingecko.js";
@@ -45,6 +45,59 @@ const RADAR_UNIVERSE = [
   "ENA", "ONDO", "RENDER", "FET", "RUNE", "STX", "IMX",
   "ETC", "XRP", "ADA", "HBAR", "KAS", "TRX", "LTC"
 ];
+
+const RADAR_META = Object.freeze({
+  BTC: { slug:"btc", ticker:"BTC", name:"Bitcoin", coingeckoId:"bitcoin" },
+  ETH: { slug:"eth", ticker:"ETH", name:"Ethereum", coingeckoId:"ethereum" },
+  BNB: { slug:"bnb", ticker:"BNB", name:"BNB", coingeckoId:"binancecoin" },
+  SOL: { slug:"sol", ticker:"SOL", name:"Solana", coingeckoId:"solana" },
+  LINK: { slug:"link", ticker:"LINK", name:"Chainlink", coingeckoId:"chainlink" },
+  DOGE: { slug:"doge", ticker:"DOGE", name:"Dogecoin", coingeckoId:"dogecoin" },
+  PEPE: { slug:"pepe", ticker:"PEPE", name:"Pepe", coingeckoId:"pepe" },
+  ALGO: { slug:"algo", ticker:"ALGO", name:"Algorand", coingeckoId:"algorand" },
+  NEO: { slug:"neo", ticker:"NEO", name:"NEO", coingeckoId:"neo" },
+  ARB: { slug:"arb", ticker:"ARB", name:"Arbitrum", coingeckoId:"arbitrum" },
+  OP: { slug:"op", ticker:"OP", name:"Optimism", coingeckoId:"optimism" },
+  APT: { slug:"apt", ticker:"APT", name:"Aptos", coingeckoId:"aptos" },
+  SUI: { slug:"sui", ticker:"SUI", name:"Sui", coingeckoId:"sui" },
+  TON: { slug:"ton", ticker:"TON", name:"Toncoin", coingeckoId:"the-open-network" },
+  NEAR: { slug:"near", ticker:"NEAR", name:"NEAR Protocol", coingeckoId:"near" },
+  INJ: { slug:"inj", ticker:"INJ", name:"Injective", coingeckoId:"injective-protocol" },
+  AVAX: { slug:"avax", ticker:"AVAX", name:"Avalanche", coingeckoId:"avalanche-2" },
+  DOT: { slug:"dot", ticker:"DOT", name:"Polkadot", coingeckoId:"polkadot" },
+  JTO: { slug:"jto", ticker:"JTO", name:"Jito", coingeckoId:"jito-governance-token" },
+  FIL: { slug:"fil", ticker:"FIL", name:"Filecoin", coingeckoId:"filecoin" },
+  ATOM: { slug:"atom", ticker:"ATOM", name:"Cosmos", coingeckoId:"cosmos" },
+  MNT: { slug:"mnt", ticker:"MNT", name:"Mantle", coingeckoId:"mantle" },
+  PENDLE: { slug:"pendle", ticker:"PENDLE", name:"Pendle", coingeckoId:"pendle" },
+  CRV: { slug:"crv", ticker:"CRV", name:"Curve DAO", coingeckoId:"curve-dao-token" },
+  LDO: { slug:"ldo", ticker:"LDO", name:"Lido DAO", coingeckoId:"lido-dao" },
+  ETHFI: { slug:"ethfi", ticker:"ETHFI", name:"ether.fi", coingeckoId:"ether-fi" },
+  ZRO: { slug:"zro", ticker:"ZRO", name:"LayerZero", coingeckoId:"layerzero" },
+  PYTH: { slug:"pyth", ticker:"PYTH", name:"Pyth Network", coingeckoId:"pyth-network" },
+  SEI: { slug:"sei", ticker:"SEI", name:"Sei", coingeckoId:"sei-network" },
+  TIA: { slug:"tia", ticker:"TIA", name:"Celestia", coingeckoId:"celestia" },
+  WLD: { slug:"wld", ticker:"WLD", name:"Worldcoin", coingeckoId:"worldcoin-wld" },
+  ICP: { slug:"icp", ticker:"ICP", name:"Internet Computer", coingeckoId:"internet-computer" },
+  GRT: { slug:"grt", ticker:"GRT", name:"The Graph", coingeckoId:"the-graph" },
+  POL: { slug:"pol", ticker:"POL", name:"Polygon Ecosystem Token", coingeckoId:"polygon-ecosystem-token" },
+  AAVE: { slug:"aave", ticker:"AAVE", name:"Aave", coingeckoId:"aave" },
+  UNI: { slug:"uni", ticker:"UNI", name:"Uniswap", coingeckoId:"uniswap" },
+  ENA: { slug:"ena", ticker:"ENA", name:"Ethena", coingeckoId:"ethena" },
+  ONDO: { slug:"ondo", ticker:"ONDO", name:"Ondo", coingeckoId:"ondo-finance" },
+  RENDER: { slug:"render", ticker:"RENDER", name:"Render", coingeckoId:"render-token" },
+  FET: { slug:"fet", ticker:"FET", name:"Artificial Superintelligence Alliance", coingeckoId:"fetch-ai" },
+  RUNE: { slug:"rune", ticker:"RUNE", name:"THORChain", coingeckoId:"thorchain" },
+  STX: { slug:"stx", ticker:"STX", name:"Stacks", coingeckoId:"blockstack" },
+  IMX: { slug:"imx", ticker:"IMX", name:"Immutable", coingeckoId:"immutable-x" },
+  ETC: { slug:"etc", ticker:"ETC", name:"Ethereum Classic", coingeckoId:"ethereum-classic" },
+  XRP: { slug:"xrp", ticker:"XRP", name:"XRP", coingeckoId:"ripple" },
+  ADA: { slug:"ada", ticker:"ADA", name:"Cardano", coingeckoId:"cardano" },
+  HBAR: { slug:"hbar", ticker:"HBAR", name:"Hedera", coingeckoId:"hedera-hashgraph" },
+  KAS: { slug:"kas", ticker:"KAS", name:"Kaspa", coingeckoId:"kaspa" },
+  TRX: { slug:"trx", ticker:"TRX", name:"TRON", coingeckoId:"tron" },
+  LTC: { slug:"ltc", ticker:"LTC", name:"Litecoin", coingeckoId:"litecoin" }
+});
 const RADAR_TIMEFRAMES = new Set(["1m", "3m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]);
 const RADAR_EXCHANGES = new Set(["BYBIT", "BINANCE", "GATEIO"]);
 
@@ -195,9 +248,13 @@ async function enrichRadarRowsWithMarket(rows, limit = 20) {
   return rows;
 }
 
+function isRadarBudgetExceeded(startedAt, maxRuntimeMs) {
+  return Date.now() - startedAt >= maxRuntimeMs;
+}
+
 async function handleBullRadarApi(url) {
   const startedAt = Date.now();
-  const maxRuntimeMs = 18000;
+  const maxRuntimeMs = 8500;
   const debug = url.searchParams.get("debug") === "1";
   const attempts = [];
   const timeframes = parseCsv(url.searchParams.get("timeframes"), ["4h"]).filter((tf) => RADAR_TIMEFRAMES.has(tf));
@@ -208,108 +265,121 @@ async function handleBullRadarApi(url) {
   const entryFib = clampNumber(url.searchParams.get("entryFib"), 0.3, 0.99, 0.5);
   const avgFibs = parseCsv(url.searchParams.get("avgFibs"), ["1", "1.5", "2"]).map(Number).filter(Number.isFinite).slice(0, 3);
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 100));
-  const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
-  const batchSize = Math.min(30, Math.max(1, Number(url.searchParams.get("batchSize")) || 15));
+  const jobOffset = Math.max(0, Number(url.searchParams.get("jobOffset")) || 0);
+  const jobLimit = Math.min(12, Math.max(1, Number(url.searchParams.get("jobLimit")) || 8));
   if (!timeframes.length || !exchanges.length) return json({ error:"Unsupported radar settings" }, 400, { cacheControl:"no-store" });
 
-  const scanUniverse = RADAR_UNIVERSE.slice(offset, offset + batchSize);
-  const nextOffset = offset + scanUniverse.length;
-  const done = nextOffset >= RADAR_UNIVERSE.length;
-  const maxScanJobs = 80;
-  const estimatedJobs = scanUniverse.length * timeframes.length;
-  if (estimatedJobs > maxScanJobs) {
-    return json({
-      error:"Too many scan jobs",
-      message:"Выбрано слишком много таймфреймов. Для MVP используйте 1–3 таймфрейма.",
-      estimatedJobs,
-      maxScanJobs,
-    }, 400, { cacheControl:"no-store" });
+  const allJobs = [];
+  for (const ticker of RADAR_UNIVERSE) {
+    for (const timeframe of timeframes) {
+      allJobs.push({ ticker, timeframe });
+    }
   }
 
+  const scanJobs = allJobs.slice(jobOffset, jobOffset + jobLimit);
+  const nextJobOffset = jobOffset + scanJobs.length;
+  const done = nextJobOffset >= allJobs.length;
+  const candleTimeoutMs = timeframes.some((tf) => ["1m", "3m", "5m"].includes(tf)) ? 2800 : 3800;
+  const scanConcurrency = timeframes.length > 1 ? 1 : 2;
+
   const rows = [];
-  await mapLimit(scanUniverse, 3, async (ticker) => {
-    if (Date.now() - startedAt >= maxRuntimeMs) {
+  await mapLimit(scanJobs, scanConcurrency, async ({ ticker, timeframe }) => {
+    const meta = RADAR_META[ticker] || {
+      slug:ticker.toLowerCase(),
+      ticker,
+      name:ticker,
+      coingeckoId:null,
+    };
+
+    if (isRadarBudgetExceeded(startedAt, maxRuntimeMs)) {
       attempts.push(radarAttempt({
         ticker,
+        timeframe,
         status:"skipped_timeout",
         reason:"Radar scan stopped by runtime budget",
       }));
       return;
     }
 
-    let project = null;
-    try {
-      project = await resolveProject(ticker.toLowerCase());
-    } catch (error) {
-      attempts.push(radarAttempt({ ticker, status:"error", reason:`Project resolution failed: ${error instanceof Error ? error.message : String(error)}` }));
-    }
-
-    const marketSymbols = project?.marketSymbols || { routes:exchanges.map((exchange) => ({ exchange, symbol:`${ticker}USDT`, source:exchange === "GATEIO" ? "Gate.io spot" : `${exchange[0]}${exchange.slice(1).toLowerCase()} spot` })) };
+    const marketSymbols = createMarketSymbols(ticker, { exchanges });
     const routes = marketTechnicalRoutes(marketSymbols).filter((route) => exchanges.includes(route.exchange));
     const routeLabels = routes.map((route) => `${route.exchange}:${route.symbol}`);
     if (!routes.length) {
-      attempts.push(radarAttempt({ ticker, status:"no_route", reason:"No market routes after exchange filter" }));
+      attempts.push(radarAttempt({ ticker, timeframe, status:"no_route", reason:"No market routes after exchange filter" }));
       return;
     }
 
+    let candleResult = null;
+    let candles = [];
+    let range = null;
+    try {
+      candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, {
+        minCandles:50,
+        timeoutMs:candleTimeoutMs,
+        deadlineMs:startedAt + maxRuntimeMs,
+      });
+      candles = candleResult.candles || [];
 
-    await mapLimit(timeframes, 1, async (timeframe) => {
-      let candleResult = null;
-      let candles = [];
-      let range = null;
-      try {
-        candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, {
-          minCandles:50,
-          timeoutMs:4500,
-        });
-        candles = candleResult.candles || [];
-        if (!candleResult.route || !candles.length) {
-          attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"no_candles", reason:"No candles from supported exchanges", errors:candleResult.errors || [] }));
-          return;
-        }
-
-        const rangeData = rangeMode === "last_bullish" ? lastBullishRangeForCandles(candles) : activePreviewRangeForCandles(candles);
-        const rawRange = rangeData.range;
-        range = rangePayload(rawRange, rangeData.analysisCandles);
-        if (!range) {
-          attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"no_range", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, reason:rangeMode === "last_bullish" ? "detectRangesWithPreview returned no bullish range" : "detectRangesWithPreview returned no previewRange", rangeSource:rangeData.source }));
-          return;
-        }
-
-        if (!range.bullish) {
-          attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"bearish_range", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, rangeBullish:range.bullish, reason:"Active range is bearish", rangeSource:rangeData.source }));
-          return;
-        }
-
-        const levels = buildRadarLevels(range, { entryFib, avgFibs });
-        if (![levels.take.value, levels.entry.value].every((v) => Number.isFinite(v) && v > 0)) {
-          attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"invalid_levels", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, rangeBullish:range.bullish, reason:"Radar levels are invalid", rangeSource:rangeData.source }));
-          return;
-        }
-
-        const last = candles[candles.length - 1];
-        const price = Number(last.close);
-        const distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100;
-        const absDistanceToEntryPct = Math.abs(distanceToEntryPct);
-        const potentialToTakePct = ((levels.take.value - price) / price) * 100;
-        const low = Math.min(range.aPrice, range.bPrice), high = Math.max(range.aPrice, range.bPrice);
-        rows.push({
-          id:`${ticker}-${timeframe}-${candleResult.exchange}`, slug:project?.slug || ticker.toLowerCase(), ticker:project?.ticker || ticker, name:project?.name || ticker,
-          coingeckoId:project?.coingeckoId || null, branding:project?.branding || null, iconUrl:project?.branding?.iconUrl || null,
-          exchange:candleResult.exchange, source:candleResult.source, symbol:candleResult.symbol, timeframe,
-          price, change24hPct:null, volume24h:null, marketCap:null,
-          range, rangeSource:rangeData.source, levels, chartLevels:planChartLevels(levels),
-          metrics:{ distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, rangePct:range.heightPct, pricePosition:(price - low) / (high - low), status:radarStatus(price, levels, absDistanceToEntryPct) },
-          candles,
-        });
-        attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"added", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, rangeBullish:range.bullish, reason:"Bullish range added", rangeSource:rangeData.source }));
-      } catch (error) {
-        attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"error", reason:error instanceof Error ? error.message : String(error), exchange:candleResult?.exchange || null, symbol:candleResult?.symbol || null, candlesCount:candles.length, rangeBullish:range?.bullish ?? null }));
+      if (isRadarBudgetExceeded(startedAt, maxRuntimeMs)) {
+        attempts.push(radarAttempt({
+          ticker,
+          timeframe,
+          routes:routeLabels,
+          status:"skipped_timeout",
+          exchange:candleResult?.exchange || null,
+          symbol:candleResult?.symbol || null,
+          candlesCount:candles.length,
+          reason:"Radar scan stopped after candle fetch",
+        }));
+        return;
       }
-    });
+
+      if (!candleResult.route || !candles.length) {
+        attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"no_candles", reason:"No candles from supported exchanges", errors:candleResult.errors || [] }));
+        return;
+      }
+
+      const rangeData = rangeMode === "last_bullish" ? lastBullishRangeForCandles(candles) : activePreviewRangeForCandles(candles);
+      const rawRange = rangeData.range;
+      range = rangePayload(rawRange, rangeData.analysisCandles);
+      if (!range) {
+        attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"no_range", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, reason:rangeMode === "last_bullish" ? "detectRangesWithPreview returned no bullish range" : "detectRangesWithPreview returned no previewRange", rangeSource:rangeData.source }));
+        return;
+      }
+
+      if (!range.bullish) {
+        attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"bearish_range", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, rangeBullish:range.bullish, reason:"Active range is bearish", rangeSource:rangeData.source }));
+        return;
+      }
+
+      const levels = buildRadarLevels(range, { entryFib, avgFibs });
+      if (![levels.take.value, levels.entry.value].every((v) => Number.isFinite(v) && v > 0)) {
+        attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"invalid_levels", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, rangeBullish:range.bullish, reason:"Radar levels are invalid", rangeSource:rangeData.source }));
+        return;
+      }
+
+      const last = candles[candles.length - 1];
+      const price = Number(last.close);
+      const distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100;
+      const absDistanceToEntryPct = Math.abs(distanceToEntryPct);
+      const potentialToTakePct = ((levels.take.value - price) / price) * 100;
+      const low = Math.min(range.aPrice, range.bPrice), high = Math.max(range.aPrice, range.bPrice);
+      rows.push({
+        id:`${ticker}-${timeframe}-${candleResult.exchange}`, slug:meta.slug, ticker:meta.ticker, name:meta.name,
+        coingeckoId:meta.coingeckoId, branding:null, iconUrl:null,
+        exchange:candleResult.exchange, source:candleResult.source, symbol:candleResult.symbol, timeframe,
+        price, change24hPct:null, volume24h:null, marketCap:null,
+        range, rangeSource:rangeData.source, levels, chartLevels:planChartLevels(levels),
+        metrics:{ distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, rangePct:range.heightPct, pricePosition:(price - low) / (high - low), status:radarStatus(price, levels, absDistanceToEntryPct) },
+        candles,
+      });
+      attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"added", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, rangeBullish:range.bullish, reason:"Bullish range added", rangeSource:rangeData.source }));
+    } catch (error) {
+      attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"error", reason:error instanceof Error ? error.message : String(error), exchange:candleResult?.exchange || null, symbol:candleResult?.symbol || null, candlesCount:candles.length, rangeBullish:range?.bullish ?? null }));
+    }
   });
   rows.sort((a, b) => a.metrics.absDistanceToEntryPct - b.metrics.absDistanceToEntryPct || (b.volume24h || 0) - (a.volume24h || 0) || b.metrics.potentialToTakePct - a.metrics.potentialToTakePct);
-  if (includeMarket && rows.length) {
+  if (includeMarket && rows.length && !isRadarBudgetExceeded(startedAt, maxRuntimeMs)) {
     await enrichRadarRowsWithMarket(rows, Math.min(limit, 20));
   }
   const runtimeMs = Date.now() - startedAt;
@@ -321,21 +391,31 @@ async function handleBullRadarApi(url) {
     count:rows.length,
     message:rows.length ? `Найдено бычьих диапазонов: ${rows.length}` : "Бычьи диапазоны по выбранным настройкам не найдены",
     summary,
-    progress:{ offset, batchSize, checkedThisBatch:scanUniverse.length, nextOffset, done, totalUniverse:RADAR_UNIVERSE.length },
-    partial:runtimeMs >= maxRuntimeMs,
+    progress:{
+      jobOffset,
+      jobLimit,
+      checkedThisBatch:scanJobs.length,
+      nextJobOffset,
+      done,
+      totalJobs:allJobs.length,
+      totalUniverse:RADAR_UNIVERSE.length,
+      requestedTimeframes:timeframes,
+    },
+    partial:runtimeMs >= maxRuntimeMs || summary.skipped_timeout > 0,
     runtimeMs,
     updated_at:new Date().toISOString(),
     results:rows.slice(0, limit),
     debug:debug ? {
-      scannedTickers:scanUniverse.length,
+      scannedJobs:scanJobs.length,
+      totalJobs:allJobs.length,
       totalUniverse:RADAR_UNIVERSE.length,
       requestedTimeframes:timeframes,
       requestedExchanges:exchanges,
       attempts,
       added:rows.length,
-      offset,
-      batchSize,
-      nextOffset,
+      jobOffset,
+      jobLimit,
+      nextJobOffset,
       done,
     } : undefined,
   }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });

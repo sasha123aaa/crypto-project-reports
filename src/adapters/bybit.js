@@ -401,7 +401,11 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
 }
 
 async function fetchWithOptionalTimeout(url, options = {}) {
-  const timeoutMs = Number(options.timeoutMs);
+  const configuredTimeoutMs = Number(options.timeoutMs);
+  const deadlineMs = Number(options.deadlineMs);
+  const remainingMs = Number.isFinite(deadlineMs) ? deadlineMs - Date.now() : Number.POSITIVE_INFINITY;
+  if (remainingMs <= 0) throw new Error("Request skipped because runtime budget is exhausted");
+  const timeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0 ? Math.min(configuredTimeoutMs, remainingMs) : remainingMs;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return fetch(url);
 
   const controller = new AbortController();
@@ -486,6 +490,10 @@ export async function fetchMarketCandlesWithFallback(routeInput, timeframe, opti
   const minCandles = options.minCandles || 50;
   const errors = [];
   for (const route of routes) {
+    if (Number.isFinite(Number(options.deadlineMs)) && Date.now() >= Number(options.deadlineMs)) {
+      errors.push({ exchange:route.exchange, symbol:route.symbol, reason:"runtime budget exhausted before route fetch" });
+      break;
+    }
     try {
       const candles = await fetchMarketCandles(route, timeframe, options);
       if (!isAscendingCandles(candles)) {

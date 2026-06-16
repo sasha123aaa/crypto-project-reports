@@ -33,6 +33,20 @@
     if (text.includes("усредн")) return "average";
     return "neutral";
   }
+
+  function jobLimitForSettings(settings) {
+    if (settings.timeframes.some((tf) => ["1m", "3m", "5m"].includes(tf))) return 6;
+    if (settings.timeframes.length >= 3) return 8;
+    if (settings.timeframes.length === 2) return 10;
+    return 12;
+  }
+  function cleanRadarErrorMessage(message) {
+    const text = String(message || "");
+    if (text.includes("Worker exceeded resource limits") || text.includes("cf-error-code") || text.includes("<!DOCTYPE html>")) {
+      return "Cloudflare остановил сканер из-за лимита ресурсов. Уже найденные результаты оставлены на экране.";
+    }
+    return text.slice(0, 260);
+  }
   function settings() { return { timeframes:[...document.querySelectorAll('[name="radar-tf"]:checked')].map((x) => x.value), exchanges:[...document.querySelectorAll('[name="radar-exchange"]:checked')].map((x) => x.value), entryFib:clamp($("entry-fib-number").value, .3, .99, .5), averageCount:Number($("average-count").value), avgFibs:[...document.querySelectorAll('[data-avg-fib]')].map((x) => Number(x.value)).filter(Number.isFinite) }; }
   function recalcRows() { const s = settings(); rows = rawRows.map((row) => { const levels = buildRadarLevels(row.range, s), price = Number(row.price), distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100, absDistanceToEntryPct = Math.abs(distanceToEntryPct), potentialToTakePct = ((levels.take.value - price) / price) * 100; return { ...row, levels, chartLevels:chartLevels(levels), metrics:{ ...row.metrics, distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, status:status(price, levels, absDistanceToEntryPct) } }; }).sort((a, b) => a.metrics.absDistanceToEntryPct - b.metrics.absDistanceToEntryPct || (b.volume24h || 0) - (a.volume24h || 0) || b.metrics.potentialToTakePct - a.metrics.potentialToTakePct); if (!selectedId && rows[0]) selectedId = rows[0].id; if (selectedId && !rows.some((r) => r.id === selectedId)) selectedId = rows[0]?.id || null; }
   function renderSettings() {
@@ -67,8 +81,8 @@
     renderKpis();
     renderTable();
 
-    let offset = 0;
-    const batchSize = 15;
+    let jobOffset = 0;
+    const jobLimit = jobLimitForSettings(s);
     const summaryTotal = {};
     let checkedTotal = 0;
 
@@ -81,10 +95,10 @@
           exchanges:s.exchanges.join(","),
           limit:"100",
           debug:"1",
-          includeMarket:"1",
+          includeMarket:"0",
           rangeMode:"active",
-          offset:String(offset),
-          batchSize:String(batchSize),
+          jobOffset:String(jobOffset),
+          jobLimit:String(jobLimit),
         });
 
         const res = await fetch(`/api/bull-radar?${params}`, { cache:"no-store" });
@@ -126,12 +140,12 @@
         renderAll();
 
         const progress = data.progress || {};
-        const checked = progress.nextOffset || rawRows.length;
+        const checked = progress.nextJobOffset || rawRows.length;
         checkedTotal = checked;
-        const total = progress.totalUniverse || "?";
+        const total = progress.totalJobs || "?";
 
         $("radar-state").textContent =
-          `Сканируем монеты: проверено ${checked} из ${total}. ` +
+          `Сканируем задачи: проверено ${checked} из ${total}. ` +
           `Найдено: ${rawRows.length}. ` +
           `Медвежьих: ${summaryTotal.bearish_range || 0}, ` +
           `нет пары/свечей: ${summaryTotal.no_candles || 0}, ` +
@@ -139,9 +153,9 @@
 
         if (progress.done) break;
 
-        offset = progress.nextOffset || (offset + batchSize);
+        jobOffset = progress.nextJobOffset || (jobOffset + jobLimit);
 
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((resolve) => setTimeout(resolve, 350));
       }
 
       isScanning = false;
@@ -166,9 +180,9 @@
       const statusText = e.status ? `HTTP ${e.status}. ` : "";
       $("radar-state").textContent = e.message?.includes("слишком много таймфреймов")
         ? "Выбрано слишком много таймфреймов. Оставьте 1–3 ТФ для быстрого сканирования."
-        : `${statusText}Не удалось загрузить радар: ${e.message || "попробуйте обновить."}`;
+        : `${statusText}Не удалось загрузить радар: ${cleanRadarErrorMessage(e.message || "попробуйте обновить.")}`;
       if (rawRows.length) {
-        $("radar-state").textContent += " Уже найденные результаты оставлены на экране.";
+        $("radar-state").textContent += " Таблица не очищена.";
         renderAll();
       } else {
         rows = [];
@@ -183,7 +197,7 @@
   $("entry-fib-number").addEventListener("input", (e) => { const v = clamp(e.target.value, .3, .99, .5); $("entry-fib-range").value = v; renderAll(); });
   $("average-count").addEventListener("change", () => { renderAvgInputs(); renderAll(); });
   document.addEventListener("input", (e) => { if (e.target.matches("[data-avg-fib]")) renderAll(); });
-  document.querySelectorAll("[data-tf-preset]").forEach((button) => button.addEventListener("click", () => { const set = new Set(button.dataset.tfPreset.split(",")); document.querySelectorAll('[name="radar-tf"]').forEach((x) => x.checked = set.has(x.value)); }));
+  document.querySelectorAll("[data-tf-preset]").forEach((button) => button.addEventListener("click", () => { const set = new Set(button.dataset.tfPreset.split(",")); document.querySelectorAll('[name="radar-tf"]').forEach((x) => x.checked = set.has(x.value)); if (button.dataset.tfPreset.includes("1m")) { $("radar-state").textContent = "Скальпинг проверяется маленькими батчами, чтобы не упереться в лимиты Cloudflare."; } }));
   $("radar-settings").addEventListener("submit", (e) => { e.preventDefault(); scan(); });
   $("refresh-radar").addEventListener("click", scan);
   $("stop-radar")?.addEventListener("click", () => {
