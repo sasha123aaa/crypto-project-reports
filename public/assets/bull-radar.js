@@ -7,6 +7,7 @@
   ];
   const defaults = { avgFibs:[1, 1.5, 2] };
   let rawRows = [], rows = [], selectedId = null, chart = null, lastUpdated = null, lastChartKey = null;
+  let sortState = { key: "distanceToEntry", dir: "asc" };
   let scanGeneration = 0;
   let isScanning = false;
   const $ = (id) => document.getElementById(id);
@@ -39,6 +40,136 @@
     return "neutral";
   }
 
+
+  const TF_ORDER = {
+    "1m": 1,
+    "3m": 2,
+    "5m": 3,
+    "15m": 4,
+    "1h": 5,
+    "4h": 6,
+    "1d": 7,
+    "1w": 8,
+    "1M": 9,
+  };
+
+  const STATUS_ORDER = {
+    "Готово к входу": 1,
+    "Ждем вход": 2,
+    "Выше входа": 3,
+    "На усреднении": 4,
+    "Далеко от входа": 5,
+  };
+
+  function sortInitialDir(key) {
+    const descFirst = new Set([
+      "price",
+      "change24hPct",
+      "rangePct",
+      "potential",
+      "volume24h",
+      "take",
+      "entry",
+      "avg1",
+      "avg2",
+      "avg3",
+    ]);
+
+    if (key === "distanceToEntry") return "asc";
+    if (key === "ticker" || key === "exchange" || key === "timeframe" || key === "status") return "asc";
+
+    return descFirst.has(key) ? "desc" : "asc";
+  }
+
+  function sortValue(row, key) {
+    switch (key) {
+      case "ticker":
+        return String(row.ticker || "").toUpperCase();
+
+      case "timeframe":
+        return TF_ORDER[row.timeframe] || 999;
+
+      case "exchange":
+        return String(row.exchange || "");
+
+      case "price":
+        return Number(row.price);
+
+      case "change24hPct":
+        return Number(row.change24hPct);
+
+      case "distanceToEntry":
+        return Number(row.metrics?.absDistanceToEntryPct);
+
+      case "rangePct":
+        return Number(row.metrics?.rangePct);
+
+      case "entry":
+        return Number(row.levels?.entry?.value);
+
+      case "avg1":
+        return Number(row.levels?.averages?.[0]?.value);
+
+      case "avg2":
+        return Number(row.levels?.averages?.[1]?.value);
+
+      case "avg3":
+        return Number(row.levels?.averages?.[2]?.value);
+
+      case "take":
+        return Number(row.levels?.take?.value);
+
+      case "potential":
+        return Number(row.metrics?.potentialToTakePct);
+
+      case "volume24h":
+        return Number(row.volume24h);
+
+      case "status":
+        return STATUS_ORDER[row.metrics?.status] || 999;
+
+      default:
+        return null;
+    }
+  }
+
+  function compareSortValues(a, b, dir = "asc") {
+    const aMissing = a === null || a === undefined || a === "" || (typeof a === "number" && !Number.isFinite(a));
+    const bMissing = b === null || b === undefined || b === "" || (typeof b === "number" && !Number.isFinite(b));
+
+    if (aMissing && bMissing) return 0;
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+
+    let result = 0;
+
+    if (typeof a === "string" || typeof b === "string") {
+      result = String(a).localeCompare(String(b), "ru", { numeric: true, sensitivity: "base" });
+    } else {
+      result = Number(a) - Number(b);
+    }
+
+    return dir === "desc" ? -result : result;
+  }
+
+  function sortRows(list) {
+    const key = sortState.key || "distanceToEntry";
+    const dir = sortState.dir || "asc";
+
+    return [...list].sort((a, b) => {
+      const primary = compareSortValues(sortValue(a, key), sortValue(b, key), dir);
+      if (primary !== 0) return primary;
+
+      // Вторичная сортировка всегда полезная:
+      // если значения равны, выше строка ближе ко входу, потом больше объем, потом выше потенциал.
+      return (
+        Number(a.metrics?.absDistanceToEntryPct || 0) - Number(b.metrics?.absDistanceToEntryPct || 0) ||
+        Number(b.volume24h || 0) - Number(a.volume24h || 0) ||
+        Number(b.metrics?.potentialToTakePct || 0) - Number(a.metrics?.potentialToTakePct || 0)
+      );
+    });
+  }
+
   function jobLimitForSettings(settings) {
     if (settings.timeframes.some((tf) => ["1m", "3m", "5m"].includes(tf))) return 6;
     if (settings.timeframes.length >= 3) return 8;
@@ -53,7 +184,7 @@
     return text.slice(0, 260);
   }
   function settings() { return { timeframes:[...document.querySelectorAll('[name="radar-tf"]:checked')].map((x) => x.value), exchanges:[...document.querySelectorAll('[name="radar-exchange"]:checked')].map((x) => x.value), entryFib:clamp($("entry-fib-number").value, .3, .99, .5), averageCount:Number($("average-count").value), avgFibs:[...document.querySelectorAll('[data-avg-fib]')].map((x) => Number(x.value)).filter(Number.isFinite), minTurnover24h:Number($("min-turnover-24h")?.value || 1000000) }; }
-  function recalcRows() { const s = settings(); rows = rawRows.map((row) => { const levels = buildRadarLevels(row.range, s), price = Number(row.price), distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100, absDistanceToEntryPct = Math.abs(distanceToEntryPct), potentialToTakePct = ((levels.take.value - price) / price) * 100; return { ...row, levels, chartLevels:chartLevels(levels), metrics:{ ...row.metrics, distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, status:status(price, levels, absDistanceToEntryPct) } }; }).sort((a, b) => a.metrics.absDistanceToEntryPct - b.metrics.absDistanceToEntryPct || (b.volume24h || 0) - (a.volume24h || 0) || b.metrics.potentialToTakePct - a.metrics.potentialToTakePct); if (!selectedId && rows[0]) selectedId = rows[0].id; if (selectedId && !rows.some((r) => r.id === selectedId)) selectedId = rows[0]?.id || null; }
+  function recalcRows() { const s = settings(); const recalculated = rawRows.map((row) => { const levels = buildRadarLevels(row.range, s), price = Number(row.price), distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100, absDistanceToEntryPct = Math.abs(distanceToEntryPct), potentialToTakePct = ((levels.take.value - price) / price) * 100; return { ...row, levels, chartLevels:chartLevels(levels), metrics:{ ...row.metrics, distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, status:status(price, levels, absDistanceToEntryPct) } }; }); rows = sortRows(recalculated); if (!selectedId && rows[0]) selectedId = rows[0].id; if (selectedId && !rows.some((r) => r.id === selectedId)) selectedId = rows[0]?.id || null; }
   function renderSettings() {
     $("timeframe-checks").innerHTML = TFS.map((tf) => `<label><input type="checkbox" name="radar-tf" value="${tf}" ${tf === "4h" ? "checked" : ""}>${tf}</label>`).join("");
     $("exchange-checks").innerHTML = EXCHANGES.map((exchange) => `
@@ -124,7 +255,22 @@
   }
   function renderTable() { if (!rows.length && rawRows.length) $("radar-state").textContent = "Бычьи диапазоны по выбранным настройкам не найдены."; $("radar-rows").innerHTML = rows.map((r) => `<tr data-row-id="${r.id}" class="${r.id === selectedId ? "active" : ""}"><td><div class="radar-coin">${radarCoinIconHtml(r)}<b>${r.ticker}</b><span>${r.name || ""}</span></div></td><td>${r.timeframe}</td><td>${r.exchange}</td><td>${money(r.price)}</td><td class="${hasNumber(r.change24hPct) ? (Number(r.change24hPct) >= 0 ? "pos" : "neg") : ""}">${pct(r.change24hPct)}</td><td>${pct(r.metrics.distanceToEntryPct)}</td><td>${pct(r.metrics.rangePct)}</td><td>${money(r.levels.entry.value)}</td><td>${money(r.levels.averages[0]?.value)}</td><td>${money(r.levels.averages[1]?.value)}</td><td>${money(r.levels.averages[2]?.value)}</td><td>${money(r.levels.take.value)}</td><td>${pct(r.metrics.potentialToTakePct)}</td><td>${compact(r.volume24h)}</td><td><span class="radar-status ${statusClass(r.metrics.status)}">${r.metrics.status}</span></td><td class="radar-row-actions"><button data-show="${r.id}">Показать график</button><a href="/trade-plan/?slug=${encodeURIComponent(r.slug)}">Торговый план</a><a href="/reports/?slug=${encodeURIComponent(r.slug)}">Отчет</a></td></tr>`).join(""); }
   function renderChart() { const row = rows.find((r) => r.id === selectedId) || rows[0]; if (!row || !window.LightweightCharts || !window.TradePlanChart) { $("selected-title").textContent = "График выбранной монеты"; $("selected-meta").textContent = "Запустите сканер и выберите найденный диапазон."; $("radar-chart").innerHTML = ""; chart = null; lastChartKey = null; return; } selectedId = row.id; $("selected-title").textContent = `${row.ticker} · ${row.timeframe}`; $("selected-meta").textContent = `${row.exchange} · ${row.symbol} · вход ${money(row.levels.entry.value)} · тейк ${money(row.levels.take.value)}`; const opts = { candles:row.candles, range:row.range, levels:row.chartLevels, timeframe:row.timeframe, symbol:row.ticker, ticker:row.ticker, exchange:row.exchange, slug:row.slug, iconHtml:row.iconUrl ? `<img src="${row.iconUrl}" alt="" style="width:18px;height:18px;border-radius:50%">` : "", showPlan:true }; const chartKey = `${row.id}:${row.timeframe}:${row.exchange}`; const preserveView = chartKey === lastChartKey; lastChartKey = chartKey; if (chart) chart.setData(opts, { preserveView }); else chart = new window.TradePlanChart($("radar-chart"), opts); }
-  function renderAll() { recalcRows(); renderKpis(); renderTable(); renderChart(); }
+  function renderSortHeaders() {
+    document.querySelectorAll(".radar-table th[data-sort]").forEach((th) => {
+      const key = th.dataset.sort;
+      const active = key === sortState.key;
+
+      th.classList.toggle("is-sortable", true);
+      th.classList.toggle("is-sorted", active);
+      th.dataset.sortDir = active ? sortState.dir : "";
+
+      const baseText = th.dataset.label || th.textContent.replace(/[▲▼]/g, "").trim();
+      th.dataset.label = baseText;
+
+      th.innerHTML = `<span>${escapeHtml(baseText)}</span><b aria-hidden="true">${active ? (sortState.dir === "asc" ? "▲" : "▼") : ""}</b>`;
+    });
+  }
+  function renderAll() { recalcRows(); renderKpis(); renderTable(); renderChart(); renderSortHeaders(); }
   async function scan() {
     const s = settings();
     if (!s.timeframes.length || !s.exchanges.length) return;
@@ -279,5 +425,23 @@
     $("radar-state").textContent = "Сканирование остановлено. Уже найденные результаты оставлены в таблице.";
   });
   $("radar-rows").addEventListener("click", (e) => { if (e.target.closest("a")) return; const tr = e.target.closest("tr[data-row-id]"); if (!tr) return; selectedId = tr.dataset.rowId; renderTable(); renderChart(); });
+  document.querySelector(".radar-table thead")?.addEventListener("click", (event) => {
+    const th = event.target.closest("th[data-sort]");
+    if (!th) return;
+
+    const key = th.dataset.sort;
+
+    if (sortState.key === key) {
+      sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+    } else {
+      sortState = {
+        key,
+        dir: sortInitialDir(key),
+      };
+    }
+
+    renderAll();
+  });
   renderKpis();
+  renderSortHeaders();
 })();

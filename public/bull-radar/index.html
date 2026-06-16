@@ -85,7 +85,26 @@
       <div class="radar-state" id="radar-state">Выберите настройки и запустите сканер.</div>
       <div class="radar-table-wrap">
         <table class="radar-table">
-          <thead><tr><th>Монета</th><th>ТФ</th><th>Биржа</th><th>Цена</th><th>24ч %</th><th>Расстояние до входа</th><th>Диапазон %</th><th>Вход</th><th>Уср. 1</th><th>Уср. 2</th><th>Уср. 3</th><th>Тейк</th><th>Потенциал</th><th>Объем 24ч</th><th>Статус</th><th>Действие</th></tr></thead>
+          <thead>
+            <tr>
+              <th data-sort="ticker">Монета</th>
+              <th data-sort="timeframe">ТФ</th>
+              <th data-sort="exchange">Биржа</th>
+              <th data-sort="price">Цена</th>
+              <th data-sort="change24hPct">24ч %</th>
+              <th data-sort="distanceToEntry">Расстояние до входа</th>
+              <th data-sort="rangePct">Диапазон %</th>
+              <th data-sort="entry">Вход</th>
+              <th data-sort="avg1">Уср. 1</th>
+              <th data-sort="avg2">Уср. 2</th>
+              <th data-sort="avg3">Уср. 3</th>
+              <th data-sort="take">Тейк</th>
+              <th data-sort="potential">Потенциал</th>
+              <th data-sort="volume24h">Объем 24ч</th>
+              <th data-sort="status">Статус</th>
+              <th>Действие</th>
+            </tr>
+          </thead>
           <tbody id="radar-rows"></tbody>
         </table>
       </div>
