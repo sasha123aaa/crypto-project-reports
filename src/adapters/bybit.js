@@ -16,7 +16,20 @@ const BYBIT_INTERVAL = {
 let bybitSpotUniverseCache = {
   storedAt: 0,
   rows: [],
+  minTurnover24h: null,
+  maxUniverse: null,
 };
+
+let bybitSpotTickersCache = {
+  storedAt: 0,
+  rows: [],
+  bySymbol: new Map(),
+};
+
+function toFiniteNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
 
 function isExcludedBybitBase(base) {
   const symbol = String(base || "").toUpperCase();
@@ -26,7 +39,11 @@ function isExcludedBybitBase(base) {
   const excludedExact = new Set([
     "USDT", "USDC", "BUSD", "FDUSD", "TUSD", "DAI",
     "USD", "EUR", "BRL", "TRY", "RUB", "UAH",
-    "USTC"
+    "UST", "USTC",
+    "USDD", "USDE", "USDS", "USDP", "PYUSD",
+    "USDY", "XUSD", "RLUSD", "USDTB", "EURC",
+    "AEUR", "EURS", "GUSD", "LUSD", "FRAX", "SUSD",
+    "AEDZ"
   ]);
 
   if (excludedExact.has(symbol)) return true;
@@ -39,14 +56,76 @@ function isExcludedBybitBase(base) {
   return excludedSuffixes.some((suffix) => symbol.endsWith(suffix));
 }
 
+export async function fetchBybitSpotTickersSnapshot(options = {}) {
+  const ttlMs = Number(options.ttlMs || 60 * 1000);
+  const now = Date.now();
+
+  if (bybitSpotTickersCache.rows.length && now - bybitSpotTickersCache.storedAt < ttlMs) {
+    return bybitSpotTickersCache;
+  }
+
+  const url = new URL("https://api.bybit.com/v5/market/tickers");
+  url.searchParams.set("category", "spot");
+
+  const response = await fetch(url.toString(), {
+    signal: AbortSignal.timeout(Number(options.timeoutMs || 7000)),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Bybit tickers HTTP ${response.status}`);
+  }
+
+  const json = await response.json();
+  const list = Array.isArray(json?.result?.list) ? json.result.list : [];
+
+  const rows = list.map((item) => {
+    const symbol = String(item?.symbol || "").toUpperCase();
+    const lastPrice = toFiniteNumber(item?.lastPrice);
+    const price24hPcntRaw = toFiniteNumber(item?.price24hPcnt);
+    const turnover24h = toFiniteNumber(item?.turnover24h);
+    const volume24hBase = toFiniteNumber(item?.volume24h);
+
+    return {
+      symbol,
+      lastPrice,
+      change24hPct: price24hPcntRaw == null ? null : price24hPcntRaw * 100,
+      turnover24h,
+      volume24hBase,
+      highPrice24h: toFiniteNumber(item?.highPrice24h),
+      lowPrice24h: toFiniteNumber(item?.lowPrice24h),
+      bid1Price: toFiniteNumber(item?.bid1Price),
+      ask1Price: toFiniteNumber(item?.ask1Price),
+    };
+  }).filter((row) => row.symbol && row.lastPrice && row.lastPrice > 0);
+
+  const bySymbol = new Map(rows.map((row) => [row.symbol, row]));
+
+  bybitSpotTickersCache = {
+    storedAt: now,
+    rows,
+    bySymbol,
+  };
+
+  return bybitSpotTickersCache;
+}
+
 export async function fetchBybitSpotUsdtUniverse(options = {}) {
+  const rawMinTurnover24h = Number(options.minTurnover24h ?? 1_000_000);
+  const minTurnover24h = Math.max(0, Number.isFinite(rawMinTurnover24h) ? rawMinTurnover24h : 1_000_000);
+  const maxUniverse = Math.min(1000, Math.max(1, Number(options.maxUniverse) || 1000));
   const ttlMs = Number(options.ttlMs || 10 * 60 * 1000);
   const now = Date.now();
 
-  if (bybitSpotUniverseCache.rows.length && now - bybitSpotUniverseCache.storedAt < ttlMs) {
+  if (
+    bybitSpotUniverseCache.rows.length &&
+    bybitSpotUniverseCache.minTurnover24h === minTurnover24h &&
+    bybitSpotUniverseCache.maxUniverse === maxUniverse &&
+    now - bybitSpotUniverseCache.storedAt < ttlMs
+  ) {
     return bybitSpotUniverseCache.rows;
   }
 
+  const tickersSnapshot = await fetchBybitSpotTickersSnapshot({ ttlMs: Math.min(ttlMs, 60 * 1000) });
   let cursor = "";
   const rows = [];
 
@@ -72,11 +151,14 @@ export async function fetchBybitSpotUsdtUniverse(options = {}) {
       const quote = String(item?.quoteCoin || "").toUpperCase();
       const symbol = String(item?.symbol || "").toUpperCase();
       const status = String(item?.status || "");
+      const tickerRow = tickersSnapshot.bySymbol.get(symbol);
+      const turnover24h = tickerRow?.turnover24h ?? null;
 
       if (quote !== "USDT") continue;
       if (status !== "Trading") continue;
       if (!symbol.endsWith("USDT")) continue;
       if (isExcludedBybitBase(base)) continue;
+      if (!(turnover24h >= minTurnover24h)) continue;
 
       rows.push({
         ticker: base,
@@ -84,6 +166,11 @@ export async function fetchBybitSpotUsdtUniverse(options = {}) {
         name: base,
         symbol,
         exchange: "BYBIT",
+        lastPrice: tickerRow?.lastPrice || null,
+        change24hPct: tickerRow?.change24hPct ?? null,
+        volume24h: tickerRow?.turnover24h ?? null,
+        turnover24h: tickerRow?.turnover24h ?? null,
+        volume24hBase: tickerRow?.volume24hBase ?? null,
       });
     }
 
@@ -99,15 +186,18 @@ export async function fetchBybitSpotUsdtUniverse(options = {}) {
     unique.push(row);
   }
 
-  unique.sort((a, b) => a.ticker.localeCompare(b.ticker));
+  unique.sort((a, b) => (b.turnover24h || 0) - (a.turnover24h || 0));
 
   bybitSpotUniverseCache = {
     storedAt: now,
-    rows: unique,
+    rows: unique.slice(0, maxUniverse),
+    minTurnover24h,
+    maxUniverse,
   };
 
-  return unique;
+  return bybitSpotUniverseCache.rows;
 }
+
 
 export const RANGE_PARAMS = {
   correctionPct: 0.3,

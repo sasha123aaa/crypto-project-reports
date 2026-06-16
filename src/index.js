@@ -265,6 +265,8 @@ async function handleBullRadarApi(url) {
   const entryFib = clampNumber(url.searchParams.get("entryFib"), 0.3, 0.99, 0.5);
   const avgFibs = parseCsv(url.searchParams.get("avgFibs"), ["1", "1.5", "2"]).map(Number).filter(Number.isFinite).slice(0, 3);
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 100));
+  const rawMinTurnover24h = Number(url.searchParams.get("minTurnover24h") ?? 1_000_000);
+  const minTurnover24h = Math.max(0, Number.isFinite(rawMinTurnover24h) ? rawMinTurnover24h : 1_000_000);
   const universeMode = String(url.searchParams.get("universe") || "bybit").toLowerCase();
   const maxUniverse = Math.min(1000, Math.max(1, Number(url.searchParams.get("maxUniverse")) || 1000));
   const jobOffset = Math.max(0, Number(url.searchParams.get("jobOffset")) || 0);
@@ -281,9 +283,16 @@ async function handleBullRadarApi(url) {
       coingeckoId: RADAR_META[ticker]?.coingeckoId || null,
       symbol: `${ticker}USDT`,
       exchange: "BYBIT",
+      change24hPct: null,
+      volume24h: null,
+      turnover24h: null,
+      marketCap: null,
     }));
   } else {
-    scanUniverse = await fetchBybitSpotUsdtUniverse();
+    scanUniverse = await fetchBybitSpotUsdtUniverse({
+      minTurnover24h,
+      maxUniverse,
+    });
   }
 
   scanUniverse = scanUniverse.slice(0, maxUniverse);
@@ -398,7 +407,12 @@ async function handleBullRadarApi(url) {
         id:`${ticker}-${timeframe}-${candleResult.exchange}`, slug:meta.slug, ticker:meta.ticker, name:meta.name,
         coingeckoId:meta.coingeckoId, branding:null, iconUrl:null,
         exchange:candleResult.exchange, source:candleResult.source, symbol:candleResult.symbol, timeframe,
-        price, change24hPct:null, volume24h:null, marketCap:null,
+        price,
+        change24hPct: asset?.change24hPct ?? null,
+        volume24h: asset?.volume24h ?? asset?.turnover24h ?? null,
+        turnover24h: asset?.turnover24h ?? null,
+        volume24hBase: asset?.volume24hBase ?? null,
+        marketCap: null,
         range, rangeSource:rangeData.source, levels, chartLevels:planChartLevels(levels),
         metrics:{ distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, rangePct:range.heightPct, pricePosition:(price - low) / (high - low), status:radarStatus(price, levels, absDistanceToEntryPct) },
         candles,
@@ -416,8 +430,10 @@ async function handleBullRadarApi(url) {
   const summary = summarizeRadarAttempts(attempts);
   summary.market_enriched = rows.filter((row) => row.volume24h || row.marketCap || row.change24hPct !== null).length;
   summary.market_missing = rows.length - summary.market_enriched;
+  summary.universe_after_liquidity_filter = scanUniverse.length;
+  summary.min_turnover_24h = minTurnover24h;
   return json({
-    settings:{ timeframes, entryFib, avgFibs, exchanges, limit, rangeMode, universeMode, maxUniverse },
+    settings:{ timeframes, entryFib, avgFibs, exchanges, limit, rangeMode, universeMode, maxUniverse, minTurnover24h },
     count:rows.length,
     message:rows.length ? `Найдено бычьих диапазонов: ${rows.length}` : "Бычьи диапазоны по выбранным настройкам не найдены",
     summary,
@@ -429,6 +445,7 @@ async function handleBullRadarApi(url) {
       done,
       totalJobs:allJobs.length,
       totalUniverse:scanUniverse.length,
+      minTurnover24h,
       requestedTimeframes:timeframes,
       universeMode,
     },
@@ -443,6 +460,7 @@ async function handleBullRadarApi(url) {
       requestedTimeframes:timeframes,
       requestedExchanges:exchanges,
       universeMode,
+      minTurnover24h,
       attempts,
       added:rows.length,
       jobOffset,

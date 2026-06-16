@@ -51,7 +51,7 @@
     }
     return text.slice(0, 260);
   }
-  function settings() { return { timeframes:[...document.querySelectorAll('[name="radar-tf"]:checked')].map((x) => x.value), exchanges:[...document.querySelectorAll('[name="radar-exchange"]:checked')].map((x) => x.value), entryFib:clamp($("entry-fib-number").value, .3, .99, .5), averageCount:Number($("average-count").value), avgFibs:[...document.querySelectorAll('[data-avg-fib]')].map((x) => Number(x.value)).filter(Number.isFinite) }; }
+  function settings() { return { timeframes:[...document.querySelectorAll('[name="radar-tf"]:checked')].map((x) => x.value), exchanges:[...document.querySelectorAll('[name="radar-exchange"]:checked')].map((x) => x.value), entryFib:clamp($("entry-fib-number").value, .3, .99, .5), averageCount:Number($("average-count").value), avgFibs:[...document.querySelectorAll('[data-avg-fib]')].map((x) => Number(x.value)).filter(Number.isFinite), minTurnover24h:Number($("min-turnover-24h")?.value || 1000000) }; }
   function recalcRows() { const s = settings(); rows = rawRows.map((row) => { const levels = buildRadarLevels(row.range, s), price = Number(row.price), distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100, absDistanceToEntryPct = Math.abs(distanceToEntryPct), potentialToTakePct = ((levels.take.value - price) / price) * 100; return { ...row, levels, chartLevels:chartLevels(levels), metrics:{ ...row.metrics, distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, status:status(price, levels, absDistanceToEntryPct) } }; }).sort((a, b) => a.metrics.absDistanceToEntryPct - b.metrics.absDistanceToEntryPct || (b.volume24h || 0) - (a.volume24h || 0) || b.metrics.potentialToTakePct - a.metrics.potentialToTakePct); if (!selectedId && rows[0]) selectedId = rows[0].id; if (selectedId && !rows.some((r) => r.id === selectedId)) selectedId = rows[0]?.id || null; }
   function renderSettings() {
     $("timeframe-checks").innerHTML = TFS.map((tf) => `<label><input type="checkbox" name="radar-tf" value="${tf}" ${tf === "4h" ? "checked" : ""}>${tf}</label>`).join("");
@@ -115,6 +115,7 @@
           rangeMode:"active",
           universe:"bybit",
           maxUniverse:"1000",
+          minTurnover24h:String(s.minTurnover24h),
           jobOffset:String(jobOffset),
           jobLimit:String(jobLimit),
         });
@@ -164,6 +165,7 @@
 
         $("radar-state").textContent =
           `Сканируем Bybit: проверено ${checked} из ${total} задач. ` +
+          `Фильтр объема: ${compact(s.minTurnover24h)}+. ` +
           `Найдено: ${rawRows.length}. ` +
           `Медвежьих: ${summaryTotal.bearish_range || 0}, ` +
           `нет пары/свечей: ${summaryTotal.no_candles || 0}, ` +
@@ -183,12 +185,15 @@
       if (!rawRows.length) {
         $("radar-state").textContent =
           `Бычьи диапазоны не найдены. Проверено: ${checkedTotal}. ` +
+          `Фильтр объема: ${compact(s.minTurnover24h)}+. ` +
           `Медвежьих: ${summaryTotal.bearish_range || 0}, ` +
           `нет пары/свечей: ${summaryTotal.no_candles || 0}, ` +
           `ошибок: ${summaryTotal.error || 0}.`;
       } else {
         $("radar-state").textContent =
-          `Сканер завершен. Bybit проверен. Найдено бычьих диапазонов: ${rawRows.length}.`;
+          `Сканер завершен. Bybit проверен. ` +
+          `Фильтр объема: ${compact(s.minTurnover24h)}+. ` +
+          `Найдено бычьих диапазонов: ${rawRows.length}.`;
       }
 
       renderAll();
