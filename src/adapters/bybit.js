@@ -43,17 +43,43 @@ function isExcludedBybitBase(base) {
     "USDD", "USDE", "USDS", "USDP", "PYUSD",
     "USDY", "XUSD", "RLUSD", "USDTB", "EURC",
     "AEUR", "EURS", "GUSD", "LUSD", "FRAX", "SUSD",
-    "AEDZ"
+    "USD1", "USDL", "USDM", "USDR", "USDX",
+    "AEDZ", "USDEB", "USDF", "USN", "EUSD", "DOLA"
   ]);
 
   if (excludedExact.has(symbol)) return true;
+
+  // Убираем все baseCoin, которые явно являются USD/stable-like.
+  // Это нужно, чтобы в радар не попадали USD1, USDY, XUSD, USDE и похожие пары.
+  if (symbol.includes("USD")) return true;
 
   const excludedSuffixes = [
     "UP", "DOWN", "3L", "3S", "2L", "2S", "5L", "5S",
     "BULL", "BEAR"
   ];
 
-  return excludedSuffixes.some((suffix) => symbol.endsWith(suffix));
+  if (excludedSuffixes.some((suffix) => symbol.endsWith(suffix))) return true;
+
+  return false;
+}
+
+function isStableLikeTicker(base, tickerRow) {
+  const symbol = String(base || "").toUpperCase();
+  const price = Number(tickerRow?.lastPrice);
+  const high = Number(tickerRow?.highPrice24h);
+  const low = Number(tickerRow?.lowPrice24h);
+
+  if (symbol.includes("USD")) return true;
+
+  if (!Number.isFinite(price) || !Number.isFinite(high) || !Number.isFinite(low) || price <= 0) {
+    return false;
+  }
+
+  const nearOneDollar = price >= 0.97 && price <= 1.03;
+  const dayRangePct = ((high - low) / price) * 100;
+
+  // Если актив торгуется около $1 и почти не двигается — вероятно это стейбл/служебная пара.
+  return nearOneDollar && dayRangePct <= 3;
 }
 
 export async function fetchBybitSpotTickersSnapshot(options = {}) {
@@ -158,6 +184,7 @@ export async function fetchBybitSpotUsdtUniverse(options = {}) {
       if (status !== "Trading") continue;
       if (!symbol.endsWith("USDT")) continue;
       if (isExcludedBybitBase(base)) continue;
+      if (isStableLikeTicker(base, tickerRow)) continue;
       if (!(turnover24h >= minTurnover24h)) continue;
 
       rows.push({
