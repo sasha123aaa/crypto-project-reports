@@ -3,7 +3,7 @@ import { resolveProject } from "./lib/project-resolution.js";
 import { buildReport } from "./lib/build-report.js";
 import { buildReportShell } from "./lib/report-shell.js";
 import { applySectionSelection, isSectionSelected } from "./lib/section-selection.js";
-import { activeRangeForCandles, analysisCandlesForRange, detectRangesWithPreview, fetchMarketCandlesWithFallback, getTechnicalBias, RANGE_PARAMS } from "./adapters/bybit.js";
+import { activeRangeForCandles, analysisCandlesForRange, detectRangesWithPreview, fetchMarketCandlesWithFallback, fetchBybitSpotUsdtUniverse, getTechnicalBias, RANGE_PARAMS } from "./adapters/bybit.js";
 import { createMarketSymbols, marketTechnicalRoutes } from "./lib/market-symbols.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
@@ -265,14 +265,33 @@ async function handleBullRadarApi(url) {
   const entryFib = clampNumber(url.searchParams.get("entryFib"), 0.3, 0.99, 0.5);
   const avgFibs = parseCsv(url.searchParams.get("avgFibs"), ["1", "1.5", "2"]).map(Number).filter(Number.isFinite).slice(0, 3);
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 100));
+  const universeMode = String(url.searchParams.get("universe") || "bybit").toLowerCase();
+  const maxUniverse = Math.min(1000, Math.max(1, Number(url.searchParams.get("maxUniverse")) || 1000));
   const jobOffset = Math.max(0, Number(url.searchParams.get("jobOffset")) || 0);
   const jobLimit = Math.min(12, Math.max(1, Number(url.searchParams.get("jobLimit")) || 8));
   if (!timeframes.length || !exchanges.length) return json({ error:"Unsupported radar settings" }, 400, { cacheControl:"no-store" });
 
+  let scanUniverse = [];
+
+  if (universeMode === "manual") {
+    scanUniverse = RADAR_UNIVERSE.map((ticker) => ({
+      ticker,
+      slug: ticker.toLowerCase(),
+      name: RADAR_META[ticker]?.name || ticker,
+      coingeckoId: RADAR_META[ticker]?.coingeckoId || null,
+      symbol: `${ticker}USDT`,
+      exchange: "BYBIT",
+    }));
+  } else {
+    scanUniverse = await fetchBybitSpotUsdtUniverse();
+  }
+
+  scanUniverse = scanUniverse.slice(0, maxUniverse);
+
   const allJobs = [];
-  for (const ticker of RADAR_UNIVERSE) {
+  for (const asset of scanUniverse) {
     for (const timeframe of timeframes) {
-      allJobs.push({ ticker, timeframe });
+      allJobs.push({ asset, ticker: asset.ticker, timeframe });
     }
   }
 
@@ -283,12 +302,13 @@ async function handleBullRadarApi(url) {
   const scanConcurrency = timeframes.length > 1 ? 1 : 2;
 
   const rows = [];
-  await mapLimit(scanJobs, scanConcurrency, async ({ ticker, timeframe }) => {
-    const meta = RADAR_META[ticker] || {
-      slug:ticker.toLowerCase(),
-      ticker,
-      name:ticker,
-      coingeckoId:null,
+  await mapLimit(scanJobs, scanConcurrency, async ({ asset, ticker, timeframe }) => {
+    const fallbackMeta = RADAR_META[ticker] || {};
+    const meta = {
+      slug: asset?.slug || fallbackMeta.slug || ticker.toLowerCase(),
+      ticker: asset?.ticker || fallbackMeta.ticker || ticker,
+      name: fallbackMeta.name || asset?.name || ticker,
+      coingeckoId: fallbackMeta.coingeckoId || asset?.coingeckoId || null,
     };
 
     if (isRadarBudgetExceeded(startedAt, maxRuntimeMs)) {
@@ -301,8 +321,18 @@ async function handleBullRadarApi(url) {
       return;
     }
 
-    const marketSymbols = createMarketSymbols(ticker, { exchanges });
-    const routes = marketTechnicalRoutes(marketSymbols).filter((route) => exchanges.includes(route.exchange));
+    let routes = [];
+
+    if (exchanges.length === 1 && exchanges[0] === "BYBIT" && asset?.symbol) {
+      routes = [{
+        exchange: "BYBIT",
+        symbol: asset.symbol,
+        source: "Bybit spot",
+      }];
+    } else {
+      const marketSymbols = createMarketSymbols(ticker, { exchanges });
+      routes = marketTechnicalRoutes(marketSymbols).filter((route) => exchanges.includes(route.exchange));
+    }
     const routeLabels = routes.map((route) => `${route.exchange}:${route.symbol}`);
     if (!routes.length) {
       attempts.push(radarAttempt({ ticker, timeframe, status:"no_route", reason:"No market routes after exchange filter" }));
@@ -387,7 +417,7 @@ async function handleBullRadarApi(url) {
   summary.market_enriched = rows.filter((row) => row.volume24h || row.marketCap || row.change24hPct !== null).length;
   summary.market_missing = rows.length - summary.market_enriched;
   return json({
-    settings:{ timeframes, entryFib, avgFibs, exchanges, limit, rangeMode },
+    settings:{ timeframes, entryFib, avgFibs, exchanges, limit, rangeMode, universeMode, maxUniverse },
     count:rows.length,
     message:rows.length ? `Найдено бычьих диапазонов: ${rows.length}` : "Бычьи диапазоны по выбранным настройкам не найдены",
     summary,
@@ -398,8 +428,9 @@ async function handleBullRadarApi(url) {
       nextJobOffset,
       done,
       totalJobs:allJobs.length,
-      totalUniverse:RADAR_UNIVERSE.length,
+      totalUniverse:scanUniverse.length,
       requestedTimeframes:timeframes,
+      universeMode,
     },
     partial:runtimeMs >= maxRuntimeMs || summary.skipped_timeout > 0,
     runtimeMs,
@@ -408,9 +439,10 @@ async function handleBullRadarApi(url) {
     debug:debug ? {
       scannedJobs:scanJobs.length,
       totalJobs:allJobs.length,
-      totalUniverse:RADAR_UNIVERSE.length,
+      totalUniverse:scanUniverse.length,
       requestedTimeframes:timeframes,
       requestedExchanges:exchanges,
+      universeMode,
       attempts,
       added:rows.length,
       jobOffset,

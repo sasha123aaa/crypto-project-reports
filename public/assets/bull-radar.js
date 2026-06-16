@@ -1,6 +1,10 @@
 (function () {
   const TFS = ["1m", "3m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"];
-  const EXCHANGES = [["BYBIT", "Bybit"], ["BINANCE", "Binance"], ["GATEIO", "Gate.io"]];
+  const EXCHANGES = [
+    { id:"BYBIT", label:"Bybit", enabled:true, checked:true },
+    { id:"BINANCE", label:"Binance", enabled:false, checked:false, note:"в разработке" },
+    { id:"GATEIO", label:"Gate.io", enabled:false, checked:false, note:"в разработке" },
+  ];
   const defaults = { avgFibs:[1, 1.5, 2] };
   let rawRows = [], rows = [], selectedId = null, chart = null, lastUpdated = null, lastChartKey = null;
   let scanGeneration = 0;
@@ -51,7 +55,19 @@
   function recalcRows() { const s = settings(); rows = rawRows.map((row) => { const levels = buildRadarLevels(row.range, s), price = Number(row.price), distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100, absDistanceToEntryPct = Math.abs(distanceToEntryPct), potentialToTakePct = ((levels.take.value - price) / price) * 100; return { ...row, levels, chartLevels:chartLevels(levels), metrics:{ ...row.metrics, distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, status:status(price, levels, absDistanceToEntryPct) } }; }).sort((a, b) => a.metrics.absDistanceToEntryPct - b.metrics.absDistanceToEntryPct || (b.volume24h || 0) - (a.volume24h || 0) || b.metrics.potentialToTakePct - a.metrics.potentialToTakePct); if (!selectedId && rows[0]) selectedId = rows[0].id; if (selectedId && !rows.some((r) => r.id === selectedId)) selectedId = rows[0]?.id || null; }
   function renderSettings() {
     $("timeframe-checks").innerHTML = TFS.map((tf) => `<label><input type="checkbox" name="radar-tf" value="${tf}" ${tf === "4h" ? "checked" : ""}>${tf}</label>`).join("");
-    $("exchange-checks").innerHTML = EXCHANGES.map(([id, label]) => `<label><input type="checkbox" name="radar-exchange" value="${id}" checked>${label}</label>`).join("");
+    $("exchange-checks").innerHTML = EXCHANGES.map((exchange) => `
+      <label class="${exchange.enabled ? "" : "disabled"}" title="${exchange.enabled ? "" : "Биржа будет подключена позже"}">
+        <input
+          type="checkbox"
+          name="radar-exchange"
+          value="${exchange.id}"
+          ${exchange.checked ? "checked" : ""}
+          ${exchange.enabled ? "" : "disabled"}
+        >
+        <span>${exchange.label}</span>
+        ${exchange.note ? `<small>${exchange.note}</small>` : ""}
+      </label>
+    `).join("");
     renderAvgInputs();
   }
   function renderAvgInputs() { const count = Number($("average-count")?.value || 3); $("average-fibs").innerHTML = defaults.avgFibs.map((fib, i) => `<label class="${i >= count ? "muted" : ""}">Уср. ${i + 1}<input data-avg-fib type="number" step="0.1" min="0.1" max="5" value="${fib}" ${i >= count ? "disabled" : ""}></label>`).join(""); }
@@ -97,6 +113,8 @@
           debug:"1",
           includeMarket:"0",
           rangeMode:"active",
+          universe:"bybit",
+          maxUniverse:"1000",
           jobOffset:String(jobOffset),
           jobLimit:String(jobLimit),
         });
@@ -145,7 +163,7 @@
         const total = progress.totalJobs || "?";
 
         $("radar-state").textContent =
-          `Сканируем задачи: проверено ${checked} из ${total}. ` +
+          `Сканируем Bybit: проверено ${checked} из ${total} задач. ` +
           `Найдено: ${rawRows.length}. ` +
           `Медвежьих: ${summaryTotal.bearish_range || 0}, ` +
           `нет пары/свечей: ${summaryTotal.no_candles || 0}, ` +
@@ -170,7 +188,7 @@
           `ошибок: ${summaryTotal.error || 0}.`;
       } else {
         $("radar-state").textContent =
-          `Сканер завершен. Найдено бычьих диапазонов: ${rawRows.length}.`;
+          `Сканер завершен. Bybit проверен. Найдено бычьих диапазонов: ${rawRows.length}.`;
       }
 
       renderAll();

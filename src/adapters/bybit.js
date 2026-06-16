@@ -12,6 +12,103 @@ const BYBIT_INTERVAL = {
   "1M": "M",
 };
 
+
+let bybitSpotUniverseCache = {
+  storedAt: 0,
+  rows: [],
+};
+
+function isExcludedBybitBase(base) {
+  const symbol = String(base || "").toUpperCase();
+
+  if (!symbol) return true;
+
+  const excludedExact = new Set([
+    "USDT", "USDC", "BUSD", "FDUSD", "TUSD", "DAI",
+    "USD", "EUR", "BRL", "TRY", "RUB", "UAH",
+    "USTC"
+  ]);
+
+  if (excludedExact.has(symbol)) return true;
+
+  const excludedSuffixes = [
+    "UP", "DOWN", "3L", "3S", "2L", "2S", "5L", "5S",
+    "BULL", "BEAR"
+  ];
+
+  return excludedSuffixes.some((suffix) => symbol.endsWith(suffix));
+}
+
+export async function fetchBybitSpotUsdtUniverse(options = {}) {
+  const ttlMs = Number(options.ttlMs || 10 * 60 * 1000);
+  const now = Date.now();
+
+  if (bybitSpotUniverseCache.rows.length && now - bybitSpotUniverseCache.storedAt < ttlMs) {
+    return bybitSpotUniverseCache.rows;
+  }
+
+  let cursor = "";
+  const rows = [];
+
+  do {
+    const url = new URL("https://api.bybit.com/v5/market/instruments-info");
+    url.searchParams.set("category", "spot");
+    url.searchParams.set("limit", "1000");
+    if (cursor) url.searchParams.set("cursor", cursor);
+
+    const response = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(7000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Bybit instruments HTTP ${response.status}`);
+    }
+
+    const json = await response.json();
+    const list = Array.isArray(json?.result?.list) ? json.result.list : [];
+
+    for (const item of list) {
+      const base = String(item?.baseCoin || "").toUpperCase();
+      const quote = String(item?.quoteCoin || "").toUpperCase();
+      const symbol = String(item?.symbol || "").toUpperCase();
+      const status = String(item?.status || "");
+
+      if (quote !== "USDT") continue;
+      if (status !== "Trading") continue;
+      if (!symbol.endsWith("USDT")) continue;
+      if (isExcludedBybitBase(base)) continue;
+
+      rows.push({
+        ticker: base,
+        slug: base.toLowerCase(),
+        name: base,
+        symbol,
+        exchange: "BYBIT",
+      });
+    }
+
+    cursor = json?.result?.nextPageCursor || "";
+  } while (cursor);
+
+  const unique = [];
+  const seen = new Set();
+
+  for (const row of rows) {
+    if (seen.has(row.ticker)) continue;
+    seen.add(row.ticker);
+    unique.push(row);
+  }
+
+  unique.sort((a, b) => a.ticker.localeCompare(b.ticker));
+
+  bybitSpotUniverseCache = {
+    storedAt: now,
+    rows: unique,
+  };
+
+  return unique;
+}
+
 export const RANGE_PARAMS = {
   correctionPct: 0.3,
   maxRects: 20,
