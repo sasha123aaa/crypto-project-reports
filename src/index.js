@@ -3,11 +3,11 @@ import { resolveProject } from "./lib/project-resolution.js";
 import { buildReport } from "./lib/build-report.js";
 import { buildReportShell } from "./lib/report-shell.js";
 import { applySectionSelection, isSectionSelected } from "./lib/section-selection.js";
-import { activeRangeForCandles, fetchMarketCandlesWithFallback, getTechnicalBias } from "./adapters/bybit.js";
+import { activeRangeForCandles, analysisCandlesForRange, detectRangesWithPreview, fetchMarketCandlesWithFallback, getTechnicalBias, RANGE_PARAMS } from "./adapters/bybit.js";
 import { marketTechnicalRoutes } from "./lib/market-symbols.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
-import { fetchCoinGeckoGlobal, fetchProjectNews } from "./adapters/coingecko.js";
+import { fetchCoinGeckoGlobal, fetchProjectNews, fetchCoinGeckoMarket as fetchAdapterCoinGeckoMarket } from "./adapters/coingecko.js";
 import { fetchBitcoinValuationHistory } from "./adapters/coinmetrics.js";
 import { fetchBitcoinEtfFlows } from "./adapters/farside.js";
 import { formatCompactNumber, formatMoney, formatPrice } from "./lib/formatters.js";
@@ -36,7 +36,7 @@ export default {
   },
 };
 
-const RADAR_UNIVERSE = ["BTC", "ETH", "BNB", "SOL", "LINK", "HYPE", "DOGE", "PEPE", "ALGO", "NEO", "ARB", "OP", "APT", "SUI", "TON", "NEAR", "INJ", "KAS", "RENDER", "FIL", "ATOM", "AVAX", "DOT", "MNT", "PENDLE", "CRV", "JTO"];
+const RADAR_UNIVERSE = ["BTC", "ETH", "BNB", "SOL", "LINK", "DOGE", "PEPE", "ALGO", "NEO", "ARB", "OP", "APT", "SUI", "TON", "NEAR", "INJ", "AVAX", "DOT", "JTO"];
 const RADAR_TIMEFRAMES = new Set(["1m", "3m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]);
 const RADAR_EXCHANGES = new Set(["BYBIT", "BINANCE", "GATEIO"]);
 
@@ -95,32 +95,112 @@ function rangePayload(rawRange, analysisCandles) {
   return { aTime:analysisCandles[aIndex]?.time, bTime:analysisCandles[bIndex]?.time, aPrice, bPrice, bullish:Boolean(rawRange[4]), heightPct:Math.abs((bPrice - aPrice) / aPrice) * 100, ageBars:Math.max(0, analysisCandles.length - 1 - bIndex) };
 }
 
+function lastBullishRangeForCandles(candles) {
+  const analysisCandles = analysisCandlesForRange(candles);
+  const result = detectRangesWithPreview(analysisCandles, RANGE_PARAMS.correctionPct, RANGE_PARAMS.maxRects, RANGE_PARAMS.minBars);
+  const lastBullish = [...(result.ranges || [])].reverse().find((range) => Boolean(range[4]));
+  return {
+    analysisCandles,
+    range:result.previewRange?.[4] ? result.previewRange : lastBullish || null,
+    source:result.previewRange?.[4] ? "preview" : "last_bullish",
+  };
+}
+
+function radarAttempt(base = {}) {
+  return {
+    ticker:base.ticker || null,
+    timeframe:base.timeframe ?? null,
+    routes:base.routes || [],
+    status:base.status || "error",
+    reason:base.reason || null,
+    exchange:base.exchange || null,
+    symbol:base.symbol || null,
+    candlesCount:base.candlesCount || 0,
+    rangeBullish:base.rangeBullish ?? null,
+    ...(base.errors ? { errors:base.errors } : {}),
+    ...(base.rangeSource ? { rangeSource:base.rangeSource } : {}),
+  };
+}
+
 async function handleBullRadarApi(url) {
+  const debug = url.searchParams.get("debug") === "1";
+  const attempts = [];
   const timeframes = parseCsv(url.searchParams.get("timeframes"), ["4h"]).filter((tf) => RADAR_TIMEFRAMES.has(tf));
   const exchanges = parseCsv(url.searchParams.get("exchanges"), ["BYBIT", "BINANCE", "GATEIO"]).map((x) => x.toUpperCase()).filter((x) => RADAR_EXCHANGES.has(x));
+  const rangeMode = url.searchParams.get("rangeMode") === "last_bullish" ? "last_bullish" : "active";
   const entryFib = clampNumber(url.searchParams.get("entryFib"), 0.3, 0.99, 0.5);
   const avgFibs = parseCsv(url.searchParams.get("avgFibs"), ["1", "1.5", "2"]).map(Number).filter(Number.isFinite).slice(0, 3);
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 100));
   if (!timeframes.length || !exchanges.length) return json({ error:"Unsupported radar settings" }, 400, { cacheControl:"no-store" });
+
+  const maxScanJobs = 80;
+  const estimatedJobs = RADAR_UNIVERSE.length * timeframes.length;
+  if (estimatedJobs > maxScanJobs) {
+    return json({
+      error:"Too many scan jobs",
+      message:"Выбрано слишком много таймфреймов. Для MVP используйте 1–3 таймфрейма.",
+      estimatedJobs,
+      maxScanJobs,
+    }, 400, { cacheControl:"no-store" });
+  }
+
   const rows = [];
   await Promise.all(RADAR_UNIVERSE.map(async (ticker) => {
     let project = null;
-    try { project = await resolveProject(ticker.toLowerCase()); } catch {}
+    try {
+      project = await resolveProject(ticker.toLowerCase());
+    } catch (error) {
+      attempts.push(radarAttempt({ ticker, status:"error", reason:`Project resolution failed: ${error instanceof Error ? error.message : String(error)}` }));
+    }
+
     const marketSymbols = project?.marketSymbols || { routes:exchanges.map((exchange) => ({ exchange, symbol:`${ticker}USDT`, source:exchange === "GATEIO" ? "Gate.io spot" : `${exchange[0]}${exchange.slice(1).toLowerCase()} spot` })) };
     const routes = marketTechnicalRoutes(marketSymbols).filter((route) => exchanges.includes(route.exchange));
-    if (!routes.length) return;
+    const routeLabels = routes.map((route) => `${route.exchange}:${route.symbol}`);
+    if (!routes.length) {
+      attempts.push(radarAttempt({ ticker, status:"no_route", reason:"No market routes after exchange filter" }));
+      return;
+    }
+
     let market = null;
-    if (project?.coingeckoId) { try { market = await fetchCoinGeckoMarket(project.coingeckoId); } catch {} }
-    await Promise.all(timeframes.map(async (timeframe) => {
+    if (project?.coingeckoId) {
       try {
-        const candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50 });
-        if (!candleResult.route) return;
-        const candles = candleResult.candles;
-        const { analysisCandles, range:rawRange } = activeRangeForCandles(candles);
-        const range = rangePayload(rawRange, analysisCandles);
-        if (!range?.bullish) return;
+        market = await fetchAdapterCoinGeckoMarket(project.coingeckoId);
+      } catch (error) {
+        attempts.push(radarAttempt({ ticker, routes:routeLabels, status:"error", reason:`CoinGecko market failed: ${error instanceof Error ? error.message : String(error)}` }));
+      }
+    }
+
+    await Promise.all(timeframes.map(async (timeframe) => {
+      let candleResult = null;
+      let candles = [];
+      let range = null;
+      try {
+        candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50 });
+        candles = candleResult.candles || [];
+        if (!candleResult.route || !candles.length) {
+          attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"no_candles", reason:"No candles from supported exchanges", errors:candleResult.errors || [] }));
+          return;
+        }
+
+        const rangeData = rangeMode === "last_bullish" ? lastBullishRangeForCandles(candles) : { ...activeRangeForCandles(candles), source:"preview" };
+        const rawRange = rangeData.range;
+        range = rangePayload(rawRange, rangeData.analysisCandles);
+        if (!range) {
+          attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"no_range", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, reason:rangeMode === "last_bullish" ? "detectRangesWithPreview returned no bullish range" : "detectRangesWithPreview returned no previewRange", rangeSource:rangeData.source }));
+          return;
+        }
+
+        if (!range.bullish) {
+          attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"bearish_range", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, rangeBullish:range.bullish, reason:"Active range is bearish", rangeSource:rangeData.source }));
+          return;
+        }
+
         const levels = buildRadarLevels(range, { entryFib, avgFibs });
-        if (![levels.take.value, levels.entry.value].every((v) => Number.isFinite(v) && v > 0)) return;
+        if (![levels.take.value, levels.entry.value].every((v) => Number.isFinite(v) && v > 0)) {
+          attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"invalid_levels", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, rangeBullish:range.bullish, reason:"Radar levels are invalid", rangeSource:rangeData.source }));
+          return;
+        }
+
         const last = candles[candles.length - 1];
         const price = Number(last.close);
         const distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100;
@@ -131,15 +211,18 @@ async function handleBullRadarApi(url) {
           id:`${ticker}-${timeframe}-${candleResult.exchange}`, slug:project?.slug || ticker.toLowerCase(), ticker:project?.ticker || ticker, name:project?.name || ticker, iconUrl:market?.image || project?.branding?.iconUrl || null,
           exchange:candleResult.exchange, source:candleResult.source, symbol:candleResult.symbol, timeframe,
           price, change24hPct:toNumber(market?.price_change_percentage_24h), volume24h:toNumber(market?.total_volume), marketCap:toNumber(market?.market_cap),
-          range, levels, chartLevels:planChartLevels(levels),
+          range, rangeSource:rangeData.source, levels, chartLevels:planChartLevels(levels),
           metrics:{ distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, rangePct:range.heightPct, pricePosition:(price - low) / (high - low), status:radarStatus(price, levels, absDistanceToEntryPct) },
           candles,
         });
-      } catch {}
+        attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"added", exchange:candleResult.exchange, symbol:candleResult.symbol, candlesCount:candles.length, rangeBullish:range.bullish, reason:"Bullish range added", rangeSource:rangeData.source }));
+      } catch (error) {
+        attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"error", reason:error instanceof Error ? error.message : String(error), exchange:candleResult?.exchange || null, symbol:candleResult?.symbol || null, candlesCount:candles.length, rangeBullish:range?.bullish ?? null }));
+      }
     }));
   }));
   rows.sort((a, b) => a.metrics.absDistanceToEntryPct - b.metrics.absDistanceToEntryPct || (b.volume24h || 0) - (a.volume24h || 0) || b.metrics.potentialToTakePct - a.metrics.potentialToTakePct);
-  return json({ settings:{ timeframes, entryFib, avgFibs, exchanges, limit }, count:rows.length, updated_at:new Date().toISOString(), results:rows.slice(0, limit) }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
+  return json({ settings:{ timeframes, entryFib, avgFibs, exchanges, limit, rangeMode }, count:rows.length, updated_at:new Date().toISOString(), results:rows.slice(0, limit), debug:debug ? { scannedTickers:RADAR_UNIVERSE.length, requestedTimeframes:timeframes, requestedExchanges:exchanges, attempts, added:rows.length } : undefined }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
 }
 
 async function handleReportShellApi(request, env, url) {

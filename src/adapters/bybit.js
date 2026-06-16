@@ -12,7 +12,7 @@ const BYBIT_INTERVAL = {
   "1M": "M",
 };
 
-const RANGE_PARAMS = {
+export const RANGE_PARAMS = {
   correctionPct: 0.3,
   maxRects: 20,
   minBars: 7,
