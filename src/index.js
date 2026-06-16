@@ -36,7 +36,15 @@ export default {
   },
 };
 
-const RADAR_UNIVERSE = ["BTC", "ETH", "BNB", "SOL", "LINK", "DOGE", "PEPE", "ALGO", "NEO", "ARB", "OP", "APT", "SUI", "TON", "NEAR", "INJ", "AVAX", "DOT", "JTO"];
+const RADAR_UNIVERSE = [
+  "BTC", "ETH", "BNB", "SOL", "LINK", "DOGE", "PEPE",
+  "ALGO", "NEO", "ARB", "OP", "APT", "SUI", "TON", "NEAR",
+  "INJ", "AVAX", "DOT", "JTO", "FIL", "ATOM", "MNT",
+  "PENDLE", "CRV", "LDO", "ETHFI", "ZRO", "PYTH", "SEI",
+  "TIA", "WLD", "ICP", "GRT", "POL", "AAVE", "UNI",
+  "ENA", "ONDO", "RENDER", "FET", "RUNE", "STX", "IMX",
+  "ETC", "XRP", "ADA", "HBAR", "KAS", "TRX", "LTC"
+];
 const RADAR_TIMEFRAMES = new Set(["1m", "3m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]);
 const RADAR_EXCHANGES = new Set(["BYBIT", "BINANCE", "GATEIO"]);
 
@@ -196,14 +204,17 @@ async function handleBullRadarApi(url) {
   const exchanges = parseCsv(url.searchParams.get("exchanges"), ["BYBIT", "BINANCE", "GATEIO"]).map((x) => x.toUpperCase()).filter((x) => RADAR_EXCHANGES.has(x));
   const rangeModeParam = String(url.searchParams.get("rangeMode") || "active");
   const rangeMode = rangeModeParam === "last_bullish" ? "last_bullish" : "active";
-  const lightMode = url.searchParams.get("light") !== "0";
   const includeMarket = url.searchParams.get("includeMarket") === "1";
   const entryFib = clampNumber(url.searchParams.get("entryFib"), 0.3, 0.99, 0.5);
   const avgFibs = parseCsv(url.searchParams.get("avgFibs"), ["1", "1.5", "2"]).map(Number).filter(Number.isFinite).slice(0, 3);
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 100));
+  const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+  const batchSize = Math.min(30, Math.max(1, Number(url.searchParams.get("batchSize")) || 15));
   if (!timeframes.length || !exchanges.length) return json({ error:"Unsupported radar settings" }, 400, { cacheControl:"no-store" });
 
-  const scanUniverse = lightMode ? RADAR_UNIVERSE.slice(0, 15) : RADAR_UNIVERSE;
+  const scanUniverse = RADAR_UNIVERSE.slice(offset, offset + batchSize);
+  const nextOffset = offset + scanUniverse.length;
+  const done = nextOffset >= RADAR_UNIVERSE.length;
   const maxScanJobs = 80;
   const estimatedJobs = scanUniverse.length * timeframes.length;
   if (estimatedJobs > maxScanJobs) {
@@ -247,7 +258,10 @@ async function handleBullRadarApi(url) {
       let candles = [];
       let range = null;
       try {
-        candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50, timeoutMs:2000 });
+        candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, {
+          minCandles:50,
+          timeoutMs:4500,
+        });
         candles = candleResult.candles || [];
         if (!candleResult.route || !candles.length) {
           attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"no_candles", reason:"No candles from supported exchanges", errors:candleResult.errors || [] }));
@@ -300,11 +314,14 @@ async function handleBullRadarApi(url) {
   }
   const runtimeMs = Date.now() - startedAt;
   const summary = summarizeRadarAttempts(attempts);
+  summary.market_enriched = rows.filter((row) => row.volume24h || row.marketCap || row.change24hPct !== null).length;
+  summary.market_missing = rows.length - summary.market_enriched;
   return json({
     settings:{ timeframes, entryFib, avgFibs, exchanges, limit, rangeMode },
     count:rows.length,
     message:rows.length ? `Найдено бычьих диапазонов: ${rows.length}` : "Бычьи диапазоны по выбранным настройкам не найдены",
     summary,
+    progress:{ offset, batchSize, checkedThisBatch:scanUniverse.length, nextOffset, done, totalUniverse:RADAR_UNIVERSE.length },
     partial:runtimeMs >= maxRuntimeMs,
     runtimeMs,
     updated_at:new Date().toISOString(),
@@ -316,7 +333,10 @@ async function handleBullRadarApi(url) {
       requestedExchanges:exchanges,
       attempts,
       added:rows.length,
-      lightMode,
+      offset,
+      batchSize,
+      nextOffset,
+      done,
     } : undefined,
   }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
 }
