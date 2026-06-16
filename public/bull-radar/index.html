@@ -66,6 +66,23 @@
           <small>Фильтр убирает слабые и низколиквидные пары.</small>
         </div>
 
+        <label class="radar-field">
+          <span class="radar-label">Автообновление</span>
+          <select id="radar-auto-refresh">
+            <option value="off" selected>Выкл</option>
+            <option value="60">1 минута</option>
+            <option value="180">3 минуты</option>
+            <option value="300">5 минут</option>
+          </select>
+          <small>Новый скан запускается только после завершения предыдущего.</small>
+        </label>
+
+        <div class="radar-field wide">
+          <span class="radar-label">Скрытые монеты</span>
+          <div class="radar-blacklist" id="radar-blacklist"></div>
+          <small>Скрытые монеты не отображаются в таблице, но сканер продолжает работать.</small>
+        </div>
+
         <div class="radar-actions">
           <button class="primary" type="submit">Запустить сканер</button>
           <button type="button" id="refresh-radar">Обновить сканер</button>
@@ -82,7 +99,13 @@
     <section class="radar-kpis" id="radar-kpis"></section>
 
     <section class="radar-table-card">
-      <div class="radar-state" id="radar-state">Выберите настройки и запустите сканер.</div>
+      <div class="radar-table-toolbar">
+        <div class="radar-state" id="radar-state">Выберите настройки и запустите сканер.</div>
+        <button id="reset-radar-sort" type="button">Ближе ко входу</button>
+      </div>
+      <div class="radar-progress" id="radar-progress" hidden>
+        <span></span>
+      </div>
       <div class="radar-table-wrap">
         <table class="radar-table">
           <thead>

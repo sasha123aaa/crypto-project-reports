@@ -1077,9 +1077,23 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 .radar-kpis span{color:var(--muted);font-size:12px}
 .radar-kpis strong{color:#fff;font-size:18px}
 .radar-state{color:#ffe4a3;font-weight:900;margin-bottom:12px}
-.radar-table-wrap{overflow:auto}
+.radar-table-wrap{overflow:auto;max-height:720px;position:relative}
 .radar-table{width:100%;border-collapse:separate;border-spacing:0 8px;min-width:1460px}
 .radar-table th{color:#8f9bb2;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:0 10px}
+
+.radar-table thead th{position:sticky;top:0;z-index:5;background:#0b1020;box-shadow:0 1px 0 rgba(255,255,255,.08),0 8px 18px rgba(0,0,0,.28);padding-top:10px;padding-bottom:10px}
+.radar-table thead th:first-child{border-radius:12px 0 0 12px}
+.radar-table thead th:last-child{border-radius:0 12px 12px 0}
+.radar-progress{height:10px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.08);overflow:hidden;margin:10px 0 12px}
+.radar-progress span{display:block;width:0%;height:100%;border-radius:999px;background:linear-gradient(90deg,#4f7cff,#42d392);transition:width .25s ease}
+.radar-blacklist{display:flex;gap:8px;flex-wrap:wrap;align-items:center;min-height:36px}
+.radar-blacklist button{border:1px solid rgba(255,157,177,.28);border-radius:999px;background:rgba(255,157,177,.1);color:#ffd5dd;padding:8px 10px;font-weight:900;cursor:pointer}
+.radar-blacklist button span{margin-left:4px}
+.radar-blacklist-empty{color:#8d98ad;font-size:12px;font-weight:800}
+.radar-table-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+.radar-table-toolbar .radar-state{margin-bottom:0}
+.radar-table-toolbar button{border:1px solid rgba(245,196,81,.35);border-radius:12px;background:rgba(245,196,81,.12);color:#ffe4a3;padding:10px 12px;font-weight:900;cursor:pointer;white-space:nowrap}
+@media(max-width:760px){.radar-table-toolbar{flex-direction:column;align-items:stretch}.radar-table-toolbar button{width:100%}}
 .radar-table td{background:rgba(255,255,255,.04);border-top:1px solid rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.06);padding:10px;color:#dce7ff;font-size:13px;vertical-align:middle}
 .radar-table tr.active td,.radar-table tbody tr:hover td{background:rgba(79,124,255,.12)}
 .radar-table td:first-child{border-left:1px solid rgba(255,255,255,.06);border-radius:14px 0 0 14px}
