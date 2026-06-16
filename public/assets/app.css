@@ -752,3 +752,170 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
     margin-bottom:14px;
   }
 }
+
+.home-sticky-nav{
+  position:sticky;
+  top:0;
+  z-index:100;
+  padding:14px 24px;
+  background:linear-gradient(180deg, rgba(24,29,38,.96), rgba(24,29,38,.78));
+  backdrop-filter:blur(14px);
+  border-bottom:1px solid rgba(105,132,190,.18);
+}
+
+.home-sticky-inner{
+  max-width:1400px;
+  margin:0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+}
+
+.home-brand{
+  color:#fff;
+  text-decoration:none;
+  font-weight:900;
+  letter-spacing:.08em;
+  font-size:13px;
+}
+
+.home-nav-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.home-quick-search{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:6px;
+  border:1px solid rgba(105,132,190,.35);
+  border-radius:18px;
+  background:rgba(11,16,32,.55);
+}
+
+.home-quick-search input{
+  width:180px;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:#fff;
+  padding:10px 12px;
+  font-weight:800;
+  text-transform:uppercase;
+}
+
+.home-quick-search button,
+.home-radar-button,
+.search-secondary-link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:38px;
+  padding:10px 14px;
+  border:0;
+  border-radius:12px;
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  text-decoration:none;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.home-quick-search button[data-target="report"]{
+  background:#4f7cff;
+}
+
+.home-quick-search button[data-target="trade-plan"]{
+  background:rgba(45,212,191,.16);
+  color:#bffdf4;
+  border:1px solid rgba(45,212,191,.28);
+}
+
+.home-radar-button{
+  background:linear-gradient(135deg, rgba(245,196,81,.22), rgba(255,255,255,.08));
+  border:1px solid rgba(245,196,81,.35);
+  color:#ffe4a3;
+}
+
+.search-control{
+  flex-wrap:wrap;
+}
+
+.search-secondary-link{
+  background:rgba(245,196,81,.12);
+  border:1px solid rgba(245,196,81,.28);
+  color:#ffe4a3;
+}
+
+.radar-hero{
+  margin-top:28px;
+}
+
+.radar-controls{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:24px;
+}
+
+.radar-controls button{
+  border:1px solid rgba(105,132,190,.35);
+  border-radius:12px;
+  background:rgba(255,255,255,.08);
+  color:#dce7ff;
+  padding:10px 14px;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.radar-controls button.active{
+  background:#4f7cff;
+  color:#fff;
+}
+
+.radar-placeholder{
+  margin-top:18px;
+  display:grid;
+  gap:6px;
+  padding:18px;
+  border-radius:18px;
+  border:1px solid rgba(245,196,81,.35);
+  background:rgba(245,196,81,.08);
+}
+
+.radar-placeholder strong{
+  color:#ffe4a3;
+  font-weight:900;
+}
+
+.radar-placeholder span{
+  color:#aeb9cc;
+}
+
+@media(max-width:860px){
+  .home-sticky-inner{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .home-nav-actions{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .home-quick-search{
+    width:100%;
+  }
+
+  .home-quick-search input{
+    width:100%;
+  }
+
+  .home-quick-search button,
+  .home-radar-button{
+    width:100%;
+  }
+}

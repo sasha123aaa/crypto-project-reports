@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Бычий радар</title>
+  <link rel="stylesheet" href="/assets/app.css" />
+</head>
+<body>
+  <header class="home-sticky-nav">
+    <div class="home-sticky-inner">
+      <a class="home-brand" href="/">CRYPTO PROJECT REPORTS</a>
+      <div class="home-nav-actions">
+        <a class="home-radar-button" href="/">Главная</a>
+        <a class="home-radar-button" href="/reports/">Отчеты</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero-card radar-hero">
+      <div class="eyebrow">Market scanner</div>
+      <h1>Бычий радар</h1>
+      <p class="lead">Поиск монет с бычьим диапазоном по Bybit, Binance и Gate.io. По умолчанию используется таймфрейм 4h.</p>
+
+      <div class="radar-controls">
+        <button class="active" type="button" data-radar-tf="4h">4h</button>
+        <button type="button" data-radar-tf="1h">1h</button>
+        <button type="button" data-radar-tf="1d">1d</button>
+      </div>
+
+      <div class="radar-placeholder">
+        <strong>Сканер готовится</strong>
+        <span>Следующим шагом здесь появится список монет, где найден бычий диапазон.</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="/assets/bull-radar.js"></script>
+</body>
+</html>
