@@ -106,6 +106,22 @@ function lastBullishRangeForCandles(candles) {
   };
 }
 
+function activePreviewRangeForCandles(candles) {
+  const analysisCandles = analysisCandlesForRange(candles);
+  const result = detectRangesWithPreview(
+    analysisCandles,
+    RANGE_PARAMS.correctionPct,
+    RANGE_PARAMS.maxRects,
+    RANGE_PARAMS.minBars
+  );
+
+  return {
+    analysisCandles,
+    range:result.previewRange || null,
+    source:"active_preview",
+  };
+}
+
 function radarAttempt(base = {}) {
   return {
     ticker:base.ticker || null,
@@ -150,6 +166,27 @@ function summarizeRadarAttempts(attempts) {
   }, {});
 }
 
+async function enrichRadarRowsWithMarket(rows, limit = 20) {
+  const targets = rows
+    .filter((row) => row.coingeckoId)
+    .slice(0, limit);
+
+  await mapLimit(targets, 2, async (row) => {
+    try {
+      const market = await fetchAdapterCoinGeckoMarket(row.coingeckoId);
+
+      row.iconUrl = market?.image || row.branding?.iconUrl || row.iconUrl || null;
+      row.change24hPct = toNumber(market?.price_change_percentage_24h);
+      row.volume24h = toNumber(market?.total_volume);
+      row.marketCap = toNumber(market?.market_cap);
+    } catch (error) {
+      row.marketError = error instanceof Error ? error.message : String(error);
+    }
+  });
+
+  return rows;
+}
+
 async function handleBullRadarApi(url) {
   const startedAt = Date.now();
   const maxRuntimeMs = 18000;
@@ -157,7 +194,8 @@ async function handleBullRadarApi(url) {
   const attempts = [];
   const timeframes = parseCsv(url.searchParams.get("timeframes"), ["4h"]).filter((tf) => RADAR_TIMEFRAMES.has(tf));
   const exchanges = parseCsv(url.searchParams.get("exchanges"), ["BYBIT", "BINANCE", "GATEIO"]).map((x) => x.toUpperCase()).filter((x) => RADAR_EXCHANGES.has(x));
-  const rangeMode = url.searchParams.get("rangeMode") === "last_bullish" ? "last_bullish" : "active";
+  const rangeModeParam = String(url.searchParams.get("rangeMode") || "active");
+  const rangeMode = rangeModeParam === "last_bullish" ? "last_bullish" : "active";
   const lightMode = url.searchParams.get("light") !== "0";
   const includeMarket = url.searchParams.get("includeMarket") === "1";
   const entryFib = clampNumber(url.searchParams.get("entryFib"), 0.3, 0.99, 0.5);
@@ -203,14 +241,6 @@ async function handleBullRadarApi(url) {
       return;
     }
 
-    let market = null;
-    if (includeMarket && project?.coingeckoId) {
-      try {
-        market = await fetchAdapterCoinGeckoMarket(project.coingeckoId);
-      } catch (error) {
-        attempts.push(radarAttempt({ ticker, routes:routeLabels, status:"error", reason:`CoinGecko market failed: ${error instanceof Error ? error.message : String(error)}` }));
-      }
-    }
 
     await mapLimit(timeframes, 1, async (timeframe) => {
       let candleResult = null;
@@ -224,7 +254,7 @@ async function handleBullRadarApi(url) {
           return;
         }
 
-        const rangeData = rangeMode === "last_bullish" ? lastBullishRangeForCandles(candles) : { ...activeRangeForCandles(candles), source:"preview" };
+        const rangeData = rangeMode === "last_bullish" ? lastBullishRangeForCandles(candles) : activePreviewRangeForCandles(candles);
         const rawRange = rangeData.range;
         range = rangePayload(rawRange, rangeData.analysisCandles);
         if (!range) {
@@ -250,9 +280,10 @@ async function handleBullRadarApi(url) {
         const potentialToTakePct = ((levels.take.value - price) / price) * 100;
         const low = Math.min(range.aPrice, range.bPrice), high = Math.max(range.aPrice, range.bPrice);
         rows.push({
-          id:`${ticker}-${timeframe}-${candleResult.exchange}`, slug:project?.slug || ticker.toLowerCase(), ticker:project?.ticker || ticker, name:project?.name || ticker, iconUrl:market?.image || project?.branding?.iconUrl || null,
+          id:`${ticker}-${timeframe}-${candleResult.exchange}`, slug:project?.slug || ticker.toLowerCase(), ticker:project?.ticker || ticker, name:project?.name || ticker,
+          coingeckoId:project?.coingeckoId || null, branding:project?.branding || null, iconUrl:project?.branding?.iconUrl || null,
           exchange:candleResult.exchange, source:candleResult.source, symbol:candleResult.symbol, timeframe,
-          price, change24hPct:toNumber(market?.price_change_percentage_24h), volume24h:toNumber(market?.total_volume), marketCap:toNumber(market?.market_cap),
+          price, change24hPct:null, volume24h:null, marketCap:null,
           range, rangeSource:rangeData.source, levels, chartLevels:planChartLevels(levels),
           metrics:{ distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, rangePct:range.heightPct, pricePosition:(price - low) / (high - low), status:radarStatus(price, levels, absDistanceToEntryPct) },
           candles,
@@ -264,6 +295,9 @@ async function handleBullRadarApi(url) {
     });
   });
   rows.sort((a, b) => a.metrics.absDistanceToEntryPct - b.metrics.absDistanceToEntryPct || (b.volume24h || 0) - (a.volume24h || 0) || b.metrics.potentialToTakePct - a.metrics.potentialToTakePct);
+  if (includeMarket && rows.length) {
+    await enrichRadarRowsWithMarket(rows, Math.min(limit, 20));
+  }
   const runtimeMs = Date.now() - startedAt;
   const summary = summarizeRadarAttempts(attempts);
   return json({
