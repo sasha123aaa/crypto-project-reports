@@ -7,7 +7,7 @@
   ];
   const defaults = { avgFibs:[1, 1.5, 2] };
   let rawRows = [], rows = [], selectedId = null, chart = null, lastUpdated = null, lastChartKey = null;
-  let sortState = { key: "distanceToEntry", dir: "asc" };
+  let sortState = { key: "distanceToEntryAbs", dir: "asc" };
   let scanGeneration = 0;
   let isScanning = false;
   const $ = (id) => document.getElementById(id);
@@ -75,6 +75,7 @@
       "avg3",
     ]);
 
+    if (key === "distanceToEntryAbs") return "asc";
     if (key === "distanceToEntry") return "asc";
     if (key === "ticker" || key === "exchange" || key === "timeframe" || key === "status") return "asc";
 
@@ -98,8 +99,11 @@
       case "change24hPct":
         return Number(row.change24hPct);
 
-      case "distanceToEntry":
+      case "distanceToEntryAbs":
         return Number(row.metrics?.absDistanceToEntryPct);
+
+      case "distanceToEntry":
+        return Number(row.metrics?.distanceToEntryPct);
 
       case "rangePct":
         return Number(row.metrics?.rangePct);
@@ -153,7 +157,7 @@
   }
 
   function sortRows(list) {
-    const key = sortState.key || "distanceToEntry";
+    const key = sortState.key || "distanceToEntryAbs";
     const dir = sortState.dir || "asc";
 
     return [...list].sort((a, b) => {
