@@ -797,14 +797,42 @@ async function fetchReportShell(slug, timeoutMs = 8000) {
 }
 
 function progressiveNoticeHtml(message, state = "loading") {
-  return `<div class="progressive-report-notice" data-progressive-notice data-state="${escapeHtml(state)}"><strong>${state === "loading" ? "Данные подгружаются" : "Часть данных недоступна"}</strong><span>${escapeHtml(message)}</span></div>`;
+  const isLoading = state === "loading";
+
+  return `<div class="progressive-report-notice" data-progressive-notice data-state="${escapeHtml(state)}">
+    <div class="progressive-notice-head">
+      ${isLoading ? `<span class="progressive-spinner" aria-hidden="true"></span>` : `<span class="progressive-warning" aria-hidden="true">!</span>`}
+      <strong>${isLoading ? "Метрики подгружаются" : "Часть метрик недоступна"}</strong>
+    </div>
+    <span>${escapeHtml(message)}</span>
+    ${isLoading ? "" : `<button class="progressive-retry" type="button" data-progressive-retry>Попробовать еще раз</button>`}
+  </div>`;
 }
+
 function showProgressiveNotice(message, state = "partial") {
   const existing = document.querySelector("[data-progressive-notice]");
   if (!existing) return;
-  existing.dataset.state = state;
-  existing.querySelector("strong").textContent = state === "loading" ? "Данные подгружаются" : "Часть данных недоступна";
-  existing.querySelector("span").textContent = message;
+
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = progressiveNoticeHtml(message, state).trim();
+
+  existing.replaceWith(wrapper.firstElementChild);
+  bindProgressiveNoticeControls();
+}
+
+function bindProgressiveNoticeControls() {
+  document.querySelector("[data-progressive-retry]")?.addEventListener("click", () => {
+    const notice = document.querySelector("[data-progressive-notice]");
+    if (notice) {
+      notice.replaceWith(
+        document.createRange().createContextualFragment(
+          progressiveNoticeHtml("Повторно запрашиваем расширенные метрики.", "loading")
+        )
+      );
+    }
+
+    loadReport({ forceRefresh:true });
+  });
 }
 
 function renderReport(app, data, options = {}) {
@@ -812,16 +840,17 @@ function renderReport(app, data, options = {}) {
   if (!options.progressive) document.querySelector("[data-progressive-notice]")?.remove();
   const tradingViewSymbol = data?.meta?.market_symbols?.tradingView || null;
 app.innerHTML = `<div class="layout report-ready-enter"><aside class="sidebar-card project-sidebar"><div class="sidebar-identity"><div class="sidebar-project-mark">${projectIconHtml(data.meta, true)}<div class="project-main">${escapeHtml(data.meta.project_name)}</div></div><span class="project-ticker">${escapeHtml(data.meta.ticker)}</span></div><div class="tag-row">${(data.meta.categories || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("")}</div><div class="sidebar-meta"><span>Обновлено</span><strong>${new Date(data.meta.updated_at).toLocaleDateString("ru-RU", { day:"2-digit", month:"long", year:"numeric" })}</strong></div></aside><main class="content">
-  <section class="panel hero-overview"><div class="hero-heading">${projectIconHtml(data.meta)}<div class="hero-identity"><div class="hero-title-row"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><span class="hero-ticker">${escapeHtml(data.meta.ticker)}</span></div>${data.hero.subtitle && data.hero.subtitle !== data.meta.ticker ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}</div></div><p class="lead hero-lead">${escapeHtml(data.hero.lead)}</p>
+  <section class="panel hero-overview ${options.progressive ? "is-progressive" : ""}"><div class="hero-heading">${projectIconHtml(data.meta)}<div class="hero-identity"><div class="hero-title-row"><h1>${escapeHtml(data.meta.project_name || data.hero.title)}</h1><span class="hero-ticker">${escapeHtml(data.meta.ticker)}</span></div>${data.hero.subtitle && data.hero.subtitle !== data.meta.ticker ? `<div class="subtitle">${escapeHtml(data.hero.subtitle)}</div>` : ""}</div></div>${options.progressive ? progressiveNoticeHtml("Расширенные метрики подгружаются в фоне.", "loading") : ""}<p class="lead hero-lead">${escapeHtml(data.hero.lead)}</p>
   <div class="hero-grid hero-kpis">${heroKpisHtml(data)}</div>
   <div class="three-col hero-thesis top-gap"><div class="list-item"><strong>Главная сила</strong><span>${escapeHtml(data.hero.main_strength || "—")}</span></div><div class="list-item"><strong>Главный риск</strong><span>${escapeHtml(data.hero.main_risk || "—")}</span></div><div class="list-item"><strong>Что проверить</strong><span>${escapeHtml(data.hero.status_text || "—")}</span></div></div></section>
-  ${options.progressive ? progressiveNoticeHtml("Расширенные метрики загружаются в фоне.", "loading") : ""}
       ${tradingViewCard(tradingViewSymbol)}
   ${marketPackHtml(data)}
   ${technicalBiasHtml(data.technical_bias, data.meta.slug || slug)}
   ${data.meta?.features?.hideExecutiveSummary ? "" : `<section class="panel executive-summary"><div class="section-title">Кратко для инвестора</div><div class="section-sub">Три проверки качества инвестиционного тезиса.</div><div class="list-wrap">${listHtml(data.executive_summary?.items)}</div></section>`}
   ${orderedReportSectionsHtml(data)}
 </main></div>`;
+
+bindProgressiveNoticeControls();
 
 const tvlSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.tvl_history, "totalLiquidityUSD"), { trimLeadingZeroes:true });
 const stableSeriesRaw = sanitizeSeries(normalizeLlamaSeries(data?.charts?.stablecoins_history, "totalCirculatingUSD"), { trimLeadingZeroes:true });
