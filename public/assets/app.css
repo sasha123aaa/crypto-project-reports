@@ -1090,7 +1090,12 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 .radar-coin span{grid-area:name;color:var(--muted);font-size:11px}
 .radar-table .pos{color:#42d392}
 .radar-table .neg{color:#ff7d91}
-.radar-status{display:inline-flex;padding:5px 8px;border-radius:999px;background:rgba(66,211,146,.12);border:1px solid rgba(66,211,146,.25);color:#b9ffd4;font-weight:900;font-size:11px}
+.radar-status{display:inline-flex;align-items:center;justify-content:center;min-width:96px;max-width:120px;min-height:38px;padding:8px 10px;border-radius:12px;font-weight:900;font-size:11px;line-height:1.15;text-align:center;white-space:normal}
+.radar-status.ready{background:rgba(66,211,146,.14);border:1px solid rgba(66,211,146,.34);color:#b9ffd4}
+.radar-status.above{background:rgba(86,145,255,.13);border:1px solid rgba(86,145,255,.34);color:#cfe0ff}
+.radar-status.waiting{background:rgba(245,196,81,.13);border:1px solid rgba(245,196,81,.34);color:#ffe4a3}
+.radar-status.average{background:rgba(255,157,177,.13);border:1px solid rgba(255,157,177,.34);color:#ffd5dd}
+.radar-status.neutral{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#dce7ff}
 .radar-row-actions{display:flex;gap:6px;align-items:center}
 .radar-row-actions button,.radar-row-actions a{padding:7px 9px;font-size:11px}
 @media(max-width:900px){.radar-settings{grid-template-columns:1fr}.radar-kpis{grid-template-columns:1fr 1fr}.radar-chart-head{align-items:flex-start;flex-direction:column}.radar-chart-shell{height:420px}.radar-avg-grid{grid-template-columns:1fr}.radar-range-inputs{grid-template-columns:1fr}}
