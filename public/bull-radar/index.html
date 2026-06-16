@@ -7,26 +7,80 @@
   <link rel="stylesheet" href="/assets/app.css" />
 </head>
 <body>
-  <main class="wrap">
+  <main class="wrap bull-radar-page">
     <section class="hero-card radar-hero">
       <div class="eyebrow">Market scanner</div>
       <h1>Бычий радар</h1>
-      <p class="lead">Поиск монет с бычьим диапазоном по Bybit, Binance и Gate.io. По умолчанию используется таймфрейм 4h.</p>
+      <p class="lead">Сканер ищет активные бычьи диапазоны A-B по выбранным таймфреймам и биржам, затем сортирует монеты по близости текущей цены к точке входа.</p>
 
-      <div class="radar-controls">
-        <button class="active" type="button" data-radar-tf="4h">4h</button>
-        <button type="button" data-radar-tf="1h">1h</button>
-        <button type="button" data-radar-tf="1d">1d</button>
-      </div>
+      <form class="radar-settings" id="radar-settings">
+        <div class="radar-field wide">
+          <span class="radar-label">Таймфреймы</span>
+          <div class="radar-presets">
+            <button type="button" data-tf-preset="1m,3m,5m">Скальпинг</button>
+            <button type="button" data-tf-preset="15m,1h,4h">Интрадей</button>
+            <button type="button" data-tf-preset="1d,1w">Среднесрок</button>
+            <button type="button" data-tf-preset="1m,3m,5m,15m,1h,4h,1d,1w,1M">Все ТФ</button>
+          </div>
+          <div class="radar-checks" id="timeframe-checks"></div>
+        </div>
 
-      <div class="radar-placeholder">
-        <strong>Сканер готовится</strong>
-        <span>Следующим шагом здесь появится список монет, где найден бычий диапазон.</span>
+        <label class="radar-field">
+          <span class="radar-label">Вход по Фибо</span>
+          <div class="radar-range-inputs">
+            <input id="entry-fib-range" type="range" min="0.30" max="0.99" step="0.01" value="0.50" />
+            <input id="entry-fib-number" type="number" min="0.30" max="0.99" step="0.01" value="0.50" />
+          </div>
+        </label>
+
+        <label class="radar-field">
+          <span class="radar-label">Количество усреднений</span>
+          <select id="average-count">
+            <option value="0">0</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+          </select>
+        </label>
+
+        <div class="radar-field wide">
+          <span class="radar-label">Уровни усреднений по Фибо</span>
+          <div class="radar-avg-grid" id="average-fibs"></div>
+        </div>
+
+        <div class="radar-field wide">
+          <span class="radar-label">Биржи</span>
+          <div class="radar-checks" id="exchange-checks"></div>
+        </div>
+
+        <div class="radar-actions">
+          <button class="primary" type="submit">Запустить сканер</button>
+          <button type="button" id="refresh-radar">Обновить сканер</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="radar-chart-card">
+      <div class="radar-chart-head"><strong id="selected-title">График выбранной монеты</strong><span id="selected-meta">Выберите настройки и запустите сканер.</span></div>
+      <div id="radar-chart" class="trade-plan-chart-shell radar-chart-shell"></div>
+    </section>
+
+    <section class="radar-kpis" id="radar-kpis"></section>
+
+    <section class="radar-table-card">
+      <div class="radar-state" id="radar-state">Выберите настройки и запустите сканер.</div>
+      <div class="radar-table-wrap">
+        <table class="radar-table">
+          <thead><tr><th>Монета</th><th>ТФ</th><th>Биржа</th><th>Цена</th><th>24ч %</th><th>Расстояние до входа</th><th>Диапазон %</th><th>Вход</th><th>Уср. 1</th><th>Уср. 2</th><th>Уср. 3</th><th>Тейк</th><th>Потенциал</th><th>Объем 24ч</th><th>Капитализация</th><th>Статус</th><th>Действие</th></tr></thead>
+          <tbody id="radar-rows"></tbody>
+        </table>
       </div>
     </section>
   </main>
 
   <script src="/assets/site-nav.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="/assets/trade-plan-chart.js"></script>
   <script src="/assets/bull-radar.js"></script>
 </body>
 </html>

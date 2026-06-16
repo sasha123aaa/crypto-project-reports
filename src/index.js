@@ -20,6 +20,9 @@ import { getCachedReport, getFallbackReport, getPersistentReport, getPersistentR
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/bull-radar") {
+      return handleBullRadarApi(url);
+    }
     if (url.pathname.startsWith("/api/trade-plan-candles/")) {
       return handleTradePlanCandles(url);
     }
@@ -32,6 +35,112 @@ export default {
     return env.ASSETS.fetch(request);
   },
 };
+
+const RADAR_UNIVERSE = ["BTC", "ETH", "BNB", "SOL", "LINK", "HYPE", "DOGE", "PEPE", "ALGO", "NEO", "ARB", "OP", "APT", "SUI", "TON", "NEAR", "INJ", "KAS", "RENDER", "FIL", "ATOM", "AVAX", "DOT", "MNT", "PENDLE", "CRV", "JTO"];
+const RADAR_TIMEFRAMES = new Set(["1m", "3m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]);
+const RADAR_EXCHANGES = new Set(["BYBIT", "BINANCE", "GATEIO"]);
+
+function clampNumber(value, min, max, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
+}
+
+function parseCsv(value, fallback) {
+  const items = String(value || "").split(",").map((x) => x.trim()).filter(Boolean);
+  return items.length ? items : fallback;
+}
+
+function radarFibPrice(range, fib, logBased = false) {
+  const top = Math.max(Number(range?.aPrice), Number(range?.bPrice));
+  const bottom = Math.min(Number(range?.aPrice), Number(range?.bPrice));
+  if (!(top > 0 && bottom > 0)) return NaN;
+  if (logBased) {
+    const logSize = Math.log(top) - Math.log(bottom);
+    return Math.exp(range.bullish ? Math.log(top) - Number(fib) * logSize : Math.log(bottom) + Number(fib) * logSize);
+  }
+  const size = top - bottom;
+  return range.bullish ? top - Number(fib) * size : bottom + Number(fib) * size;
+}
+
+export function buildRadarLevels(range, settings = {}) {
+  const entryFib = clampNumber(settings.entryFib, 0.3, 0.99, 0.5);
+  const avgFibs = (Array.isArray(settings.avgFibs) ? settings.avgFibs : [1, 1.5, 2]).map(Number).filter(Number.isFinite).slice(0, 3);
+  const specs = [{ key:"take", label:"Тейк", fib:0 }, { key:"entry", label:"Вход", fib:entryFib }, ...avgFibs.map((fib, index) => ({ key:`average${index + 1}`, label:`Уср. ${index + 1}`, fib }))];
+  const logBased = specs.some((spec) => radarFibPrice(range, spec.fib) <= 0);
+  const take = { label:"Тейк", fib:0, value:radarFibPrice(range, 0, logBased), state:"take" };
+  const entry = { label:"Вход", fib:entryFib, value:radarFibPrice(range, entryFib, logBased), state:"waiting" };
+  const averages = avgFibs.map((fib, index) => ({ label:`Уср. ${index + 1}`, fib, value:radarFibPrice(range, fib, logBased), state:"waiting" }));
+  return { take, entry, averages, logBased };
+}
+
+function radarStatus(price, levels, absDistanceToEntryPct) {
+  const avg1 = levels.averages?.[0]?.value;
+  if (absDistanceToEntryPct <= 1) return "Готово к входу";
+  if (price > levels.entry.value) return "Выше входа";
+  if (Number.isFinite(avg1) && price <= avg1) return "На усреднении";
+  if (price < levels.entry.value && (!Number.isFinite(avg1) || price > avg1)) return "Ждем вход";
+  return "Далеко от входа";
+}
+
+function planChartLevels(levels) {
+  const result = { take:levels.take, entry:levels.entry };
+  levels.averages.forEach((item, index) => { result[`average${index + 1}`] = item; });
+  return result;
+}
+
+function rangePayload(rawRange, analysisCandles) {
+  if (!rawRange) return null;
+  const aIndex = rawRange[0], bIndex = rawRange[1], aPrice = Number(rawRange[2]), bPrice = Number(rawRange[3]);
+  return { aTime:analysisCandles[aIndex]?.time, bTime:analysisCandles[bIndex]?.time, aPrice, bPrice, bullish:Boolean(rawRange[4]), heightPct:Math.abs((bPrice - aPrice) / aPrice) * 100, ageBars:Math.max(0, analysisCandles.length - 1 - bIndex) };
+}
+
+async function handleBullRadarApi(url) {
+  const timeframes = parseCsv(url.searchParams.get("timeframes"), ["4h"]).filter((tf) => RADAR_TIMEFRAMES.has(tf));
+  const exchanges = parseCsv(url.searchParams.get("exchanges"), ["BYBIT", "BINANCE", "GATEIO"]).map((x) => x.toUpperCase()).filter((x) => RADAR_EXCHANGES.has(x));
+  const entryFib = clampNumber(url.searchParams.get("entryFib"), 0.3, 0.99, 0.5);
+  const avgFibs = parseCsv(url.searchParams.get("avgFibs"), ["1", "1.5", "2"]).map(Number).filter(Number.isFinite).slice(0, 3);
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 100));
+  if (!timeframes.length || !exchanges.length) return json({ error:"Unsupported radar settings" }, 400, { cacheControl:"no-store" });
+  const rows = [];
+  await Promise.all(RADAR_UNIVERSE.map(async (ticker) => {
+    let project = null;
+    try { project = await resolveProject(ticker.toLowerCase()); } catch {}
+    const marketSymbols = project?.marketSymbols || { routes:exchanges.map((exchange) => ({ exchange, symbol:`${ticker}USDT`, source:exchange === "GATEIO" ? "Gate.io spot" : `${exchange[0]}${exchange.slice(1).toLowerCase()} spot` })) };
+    const routes = marketTechnicalRoutes(marketSymbols).filter((route) => exchanges.includes(route.exchange));
+    if (!routes.length) return;
+    let market = null;
+    if (project?.coingeckoId) { try { market = await fetchCoinGeckoMarket(project.coingeckoId); } catch {} }
+    await Promise.all(timeframes.map(async (timeframe) => {
+      try {
+        const candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50 });
+        if (!candleResult.route) return;
+        const candles = candleResult.candles;
+        const { analysisCandles, range:rawRange } = activeRangeForCandles(candles);
+        const range = rangePayload(rawRange, analysisCandles);
+        if (!range?.bullish) return;
+        const levels = buildRadarLevels(range, { entryFib, avgFibs });
+        if (![levels.take.value, levels.entry.value].every((v) => Number.isFinite(v) && v > 0)) return;
+        const last = candles[candles.length - 1];
+        const price = Number(last.close);
+        const distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100;
+        const absDistanceToEntryPct = Math.abs(distanceToEntryPct);
+        const potentialToTakePct = ((levels.take.value - price) / price) * 100;
+        const low = Math.min(range.aPrice, range.bPrice), high = Math.max(range.aPrice, range.bPrice);
+        rows.push({
+          id:`${ticker}-${timeframe}-${candleResult.exchange}`, slug:project?.slug || ticker.toLowerCase(), ticker:project?.ticker || ticker, name:project?.name || ticker, iconUrl:market?.image || project?.branding?.iconUrl || null,
+          exchange:candleResult.exchange, source:candleResult.source, symbol:candleResult.symbol, timeframe,
+          price, change24hPct:toNumber(market?.price_change_percentage_24h), volume24h:toNumber(market?.total_volume), marketCap:toNumber(market?.market_cap),
+          range, levels, chartLevels:planChartLevels(levels),
+          metrics:{ distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, rangePct:range.heightPct, pricePosition:(price - low) / (high - low), status:radarStatus(price, levels, absDistanceToEntryPct) },
+          candles,
+        });
+      } catch {}
+    }));
+  }));
+  rows.sort((a, b) => a.metrics.absDistanceToEntryPct - b.metrics.absDistanceToEntryPct || (b.volume24h || 0) - (a.volume24h || 0) || b.metrics.potentialToTakePct - a.metrics.potentialToTakePct);
+  return json({ settings:{ timeframes, entryFib, avgFibs, exchanges, limit }, count:rows.length, updated_at:new Date().toISOString(), results:rows.slice(0, limit) }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
+}
 
 async function handleReportShellApi(request, env, url) {
   const input = decodeURIComponent(url.pathname.replace("/api/report-shell/", "").replace(/\/$/, "")).trim().toLowerCase();
