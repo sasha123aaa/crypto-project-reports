@@ -400,11 +400,27 @@ export function detectRangesWithPreview(candles, correctionPct = 0.3, maxRects =
   return { ranges, previewRange };
 }
 
-async function fetchBybitCandles(symbol, timeframe) {
+async function fetchWithOptionalTimeout(url, options = {}) {
+  const timeoutMs = Number(options.timeoutMs);
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return fetch(url);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal:controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error(`Request timeout after ${timeoutMs}ms`);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchBybitCandles(symbol, timeframe, options = {}) {
   const interval = BYBIT_INTERVAL[timeframe];
   if (!interval) return [];
   const url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=1000`;
-  const res = await fetch(url);
+  const res = await fetchWithOptionalTimeout(url, options);
   if (!res.ok) throw new Error(`Bybit kline HTTP ${res.status}`);
   const json = await res.json();
   const list = Array.isArray(json?.result?.list) ? json.result.list : [];
@@ -427,27 +443,27 @@ function parseGateKlineRow(row) {
   ]);
 }
 
-async function fetchBinanceCandles(symbol, timeframe) {
-  const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(timeframe)}&limit=1000`);
+async function fetchBinanceCandles(symbol, timeframe, options = {}) {
+  const response = await fetchWithOptionalTimeout(`https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(timeframe)}&limit=1000`, options);
   if (!response.ok) throw new Error(`Binance kline HTTP ${response.status}`);
   const json = await response.json();
   return normalizeCandles(json, parseBinanceKlineRow);
 }
 
-async function fetchGateCandles(symbol, timeframe) {
+async function fetchGateCandles(symbol, timeframe, options = {}) {
   const interval = { "1m":"1m", "3m":"5m", "5m":"5m", "15m":"15m", "1h":"1h", "4h":"4h", "1d":"1d", "1w":"7d", "1M":"30d" }[timeframe];
   if (!interval) return [];
   const pair = `${symbol.slice(0, -4)}_${symbol.slice(-4)}`;
-  const response = await fetch(`https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=${encodeURIComponent(pair)}&interval=${encodeURIComponent(interval)}&limit=1000`);
+  const response = await fetchWithOptionalTimeout(`https://api.gateio.ws/api/v4/spot/candlesticks?currency_pair=${encodeURIComponent(pair)}&interval=${encodeURIComponent(interval)}&limit=1000`, options);
   if (!response.ok) throw new Error(`Gate.io kline HTTP ${response.status}`);
   const json = await response.json();
   return normalizeCandles(json, parseGateKlineRow);
 }
 
-export async function fetchMarketCandles(route, timeframe) {
-  if (route.exchange === "BYBIT") return fetchBybitCandles(route.symbol, timeframe);
-  if (route.exchange === "BINANCE") return fetchBinanceCandles(route.symbol, timeframe);
-  if (route.exchange === "GATEIO") return fetchGateCandles(route.symbol, timeframe);
+export async function fetchMarketCandles(route, timeframe, options = {}) {
+  if (route.exchange === "BYBIT") return fetchBybitCandles(route.symbol, timeframe, options);
+  if (route.exchange === "BINANCE") return fetchBinanceCandles(route.symbol, timeframe, options);
+  if (route.exchange === "GATEIO") return fetchGateCandles(route.symbol, timeframe, options);
   return [];
 }
 
@@ -471,7 +487,7 @@ export async function fetchMarketCandlesWithFallback(routeInput, timeframe, opti
   const errors = [];
   for (const route of routes) {
     try {
-      const candles = await fetchMarketCandles(route, timeframe);
+      const candles = await fetchMarketCandles(route, timeframe, options);
       if (!isAscendingCandles(candles)) {
         errors.push({
           exchange: route.exchange,

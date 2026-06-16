@@ -43,31 +43,53 @@
     }
     $("radar-state").textContent = "Сканируем бычьи диапазоны...";
     $("radar-rows").innerHTML = "";
-    const params = new URLSearchParams({ timeframes:s.timeframes.join(","), entryFib:s.entryFib, avgFibs:s.avgFibs.slice(0, s.averageCount).join(","), exchanges:s.exchanges.join(","), limit:"100", debug:"1" });
+    const params = new URLSearchParams({ timeframes:s.timeframes.join(","), entryFib:s.entryFib, avgFibs:s.avgFibs.slice(0, s.averageCount).join(","), exchanges:s.exchanges.join(","), limit:"100", debug:"1", light:"1", includeMarket:"0", rangeMode:"last_bullish" });
     try {
-      const res = await fetch(`/api/bull-radar?${params}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+      const res = await fetch(`/api/bull-radar?${params}`, { cache:"no-store" });
+      const text = await res.text();
+      let data = {};
+
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { raw:text };
+      }
+
+      if (!res.ok) {
+        const detail = data.message || data.error || data.raw || `HTTP ${res.status}`;
+        const error = new Error(detail);
+        error.status = res.status;
+        error.payload = data;
+        throw error;
+      }
       rawRows = data.results || [];
       selectedId = rawRows[0]?.id || null;
       lastUpdated = data.updated_at || new Date().toISOString();
       if (!rawRows.length) {
+        const summary = data.summary || {};
         const attempts = data.debug?.attempts || [];
-        console.table(attempts);
-        const bearish = attempts.filter((x) => x.status === "bearish_range").length;
-        const noRange = attempts.filter((x) => x.status === "no_range").length;
-        const noCandles = attempts.filter((x) => x.status === "no_candles").length;
-        const errors = attempts.filter((x) => x.status === "error").length;
-        $("radar-state").textContent = `Бычьи диапазоны не найдены. Проверено: ${attempts.length}. Медвежьих: ${bearish}, без диапазона: ${noRange}, без свечей: ${noCandles}, ошибок: ${errors}.`;
+        if (attempts.length) console.table(attempts);
+        $("radar-state").textContent =
+          `Бычьи диапазоны не найдены. Проверено: ${attempts.length || Object.values(summary).reduce((a, b) => a + b, 0)}. ` +
+          `Медвежьих: ${summary.bearish_range || 0}, ` +
+          `без диапазона: ${summary.no_range || 0}, ` +
+          `без свечей: ${summary.no_candles || 0}, ` +
+          `ошибок: ${summary.error || 0}.`;
       }
       renderAll();
     } catch (e) {
       console.error(e);
-      rawRows = [];
-      rows = [];
-      $("radar-state").textContent = e.message?.includes("слишком много таймфреймов") ? "Выбрано слишком много таймфреймов. Оставьте 1–3 ТФ для быстрого сканирования." : "Не удалось загрузить радар. Попробуйте обновить.";
-      renderKpis();
-      renderTable();
+      const status = e.status ? `HTTP ${e.status}. ` : "";
+      $("radar-state").textContent = e.message?.includes("слишком много таймфреймов")
+        ? "Выбрано слишком много таймфреймов. Оставьте 1–3 ТФ для быстрого сканирования."
+        : `${status}Не удалось загрузить радар: ${e.message || "попробуйте обновить."}`;
+      if (rawRows.length) {
+        $("radar-state").textContent += " Предыдущие результаты оставлены на экране.";
+      } else {
+        rows = [];
+        renderKpis();
+        renderTable();
+      }
     }
   }
   renderSettings();

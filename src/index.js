@@ -122,19 +122,52 @@ function radarAttempt(base = {}) {
   };
 }
 
+async function mapLimit(items, limit, worker) {
+  const results = [];
+  const executing = new Set();
+
+  for (const item of items) {
+    const promise = Promise.resolve()
+      .then(() => worker(item))
+      .finally(() => executing.delete(promise));
+
+    results.push(promise);
+    executing.add(promise);
+
+    if (executing.size >= limit) {
+      await Promise.race(executing);
+    }
+  }
+
+  return Promise.allSettled(results);
+}
+
+function summarizeRadarAttempts(attempts) {
+  return attempts.reduce((acc, attempt) => {
+    const key = attempt.status || "unknown";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
 async function handleBullRadarApi(url) {
+  const startedAt = Date.now();
+  const maxRuntimeMs = 18000;
   const debug = url.searchParams.get("debug") === "1";
   const attempts = [];
   const timeframes = parseCsv(url.searchParams.get("timeframes"), ["4h"]).filter((tf) => RADAR_TIMEFRAMES.has(tf));
   const exchanges = parseCsv(url.searchParams.get("exchanges"), ["BYBIT", "BINANCE", "GATEIO"]).map((x) => x.toUpperCase()).filter((x) => RADAR_EXCHANGES.has(x));
   const rangeMode = url.searchParams.get("rangeMode") === "last_bullish" ? "last_bullish" : "active";
+  const lightMode = url.searchParams.get("light") !== "0";
+  const includeMarket = url.searchParams.get("includeMarket") === "1";
   const entryFib = clampNumber(url.searchParams.get("entryFib"), 0.3, 0.99, 0.5);
   const avgFibs = parseCsv(url.searchParams.get("avgFibs"), ["1", "1.5", "2"]).map(Number).filter(Number.isFinite).slice(0, 3);
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 100));
   if (!timeframes.length || !exchanges.length) return json({ error:"Unsupported radar settings" }, 400, { cacheControl:"no-store" });
 
+  const scanUniverse = lightMode ? RADAR_UNIVERSE.slice(0, 15) : RADAR_UNIVERSE;
   const maxScanJobs = 80;
-  const estimatedJobs = RADAR_UNIVERSE.length * timeframes.length;
+  const estimatedJobs = scanUniverse.length * timeframes.length;
   if (estimatedJobs > maxScanJobs) {
     return json({
       error:"Too many scan jobs",
@@ -145,7 +178,16 @@ async function handleBullRadarApi(url) {
   }
 
   const rows = [];
-  await Promise.all(RADAR_UNIVERSE.map(async (ticker) => {
+  await mapLimit(scanUniverse, 3, async (ticker) => {
+    if (Date.now() - startedAt >= maxRuntimeMs) {
+      attempts.push(radarAttempt({
+        ticker,
+        status:"skipped_timeout",
+        reason:"Radar scan stopped by runtime budget",
+      }));
+      return;
+    }
+
     let project = null;
     try {
       project = await resolveProject(ticker.toLowerCase());
@@ -162,7 +204,7 @@ async function handleBullRadarApi(url) {
     }
 
     let market = null;
-    if (project?.coingeckoId) {
+    if (includeMarket && project?.coingeckoId) {
       try {
         market = await fetchAdapterCoinGeckoMarket(project.coingeckoId);
       } catch (error) {
@@ -170,12 +212,12 @@ async function handleBullRadarApi(url) {
       }
     }
 
-    await Promise.all(timeframes.map(async (timeframe) => {
+    await mapLimit(timeframes, 1, async (timeframe) => {
       let candleResult = null;
       let candles = [];
       let range = null;
       try {
-        candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50 });
+        candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50, timeoutMs:2000 });
         candles = candleResult.candles || [];
         if (!candleResult.route || !candles.length) {
           attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"no_candles", reason:"No candles from supported exchanges", errors:candleResult.errors || [] }));
@@ -219,10 +261,30 @@ async function handleBullRadarApi(url) {
       } catch (error) {
         attempts.push(radarAttempt({ ticker, timeframe, routes:routeLabels, status:"error", reason:error instanceof Error ? error.message : String(error), exchange:candleResult?.exchange || null, symbol:candleResult?.symbol || null, candlesCount:candles.length, rangeBullish:range?.bullish ?? null }));
       }
-    }));
-  }));
+    });
+  });
   rows.sort((a, b) => a.metrics.absDistanceToEntryPct - b.metrics.absDistanceToEntryPct || (b.volume24h || 0) - (a.volume24h || 0) || b.metrics.potentialToTakePct - a.metrics.potentialToTakePct);
-  return json({ settings:{ timeframes, entryFib, avgFibs, exchanges, limit, rangeMode }, count:rows.length, updated_at:new Date().toISOString(), results:rows.slice(0, limit), debug:debug ? { scannedTickers:RADAR_UNIVERSE.length, requestedTimeframes:timeframes, requestedExchanges:exchanges, attempts, added:rows.length } : undefined }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
+  const runtimeMs = Date.now() - startedAt;
+  const summary = summarizeRadarAttempts(attempts);
+  return json({
+    settings:{ timeframes, entryFib, avgFibs, exchanges, limit, rangeMode },
+    count:rows.length,
+    message:rows.length ? `Найдено бычьих диапазонов: ${rows.length}` : "Бычьи диапазоны по выбранным настройкам не найдены",
+    summary,
+    partial:runtimeMs >= maxRuntimeMs,
+    runtimeMs,
+    updated_at:new Date().toISOString(),
+    results:rows.slice(0, limit),
+    debug:debug ? {
+      scannedTickers:scanUniverse.length,
+      totalUniverse:RADAR_UNIVERSE.length,
+      requestedTimeframes:timeframes,
+      requestedExchanges:exchanges,
+      attempts,
+      added:rows.length,
+      lightMode,
+    } : undefined,
+  }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
 }
 
 async function handleReportShellApi(request, env, url) {
