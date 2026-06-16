@@ -919,3 +919,136 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
     width:100%;
   }
 }
+
+.site-nav{
+  position:sticky;
+  top:0;
+  z-index:200;
+  padding:14px 24px;
+  background:linear-gradient(180deg, rgba(24,29,38,.97), rgba(24,29,38,.82));
+  border-bottom:1px solid rgba(105,132,190,.18);
+  backdrop-filter:blur(16px);
+}
+
+.site-nav-inner{
+  max-width:1400px;
+  margin:0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+}
+
+.site-nav-brand{
+  color:#fff;
+  text-decoration:none;
+  font-weight:900;
+  letter-spacing:.08em;
+  font-size:13px;
+  white-space:nowrap;
+}
+
+.site-nav-search{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:6px;
+  border:1px solid rgba(105,132,190,.35);
+  border-radius:18px;
+  background:rgba(11,16,32,.58);
+}
+
+.site-nav-search input{
+  width:190px;
+  min-width:0;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:#fff;
+  padding:11px 12px;
+  font-weight:900;
+  text-transform:uppercase;
+}
+
+.site-nav-search input::placeholder{
+  color:rgba(174,185,204,.68);
+  text-transform:none;
+}
+
+.site-nav-search input.is-invalid{
+  box-shadow:0 0 0 2px rgba(255,107,122,.55);
+  border-radius:10px;
+}
+
+.site-nav-search button{
+  border:0;
+  border-radius:12px;
+  padding:11px 14px;
+  color:#fff;
+  background:rgba(255,255,255,.08);
+  font-weight:900;
+  cursor:pointer;
+  white-space:nowrap;
+}
+
+.site-nav-search button:hover{
+  filter:brightness(1.08);
+}
+
+.site-nav-search button.active,
+.site-nav-search button[data-target="report"]{
+  background:#4f7cff;
+}
+
+.site-nav-search button[data-target="trade-plan"]{
+  background:rgba(45,212,191,.16);
+  color:#bffdf4;
+  border:1px solid rgba(45,212,191,.28);
+}
+
+.site-nav-search button.radar{
+  background:linear-gradient(135deg, rgba(245,196,81,.22), rgba(255,255,255,.08));
+  border:1px solid rgba(245,196,81,.35);
+  color:#ffe4a3;
+}
+
+.site-nav-search button.ghost{
+  background:rgba(255,255,255,.06);
+  color:#dce7ff;
+  border:1px solid rgba(255,255,255,.12);
+}
+
+@media(max-width:860px){
+  .site-nav{
+    padding:14px 16px;
+  }
+
+  .site-nav-inner{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .site-nav-search{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    width:100%;
+  }
+
+  .site-nav-search input{
+    grid-column:1 / -1;
+    width:100%;
+    font-size:16px;
+    padding:13px 14px;
+  }
+
+  .site-nav-search button{
+    width:100%;
+    min-height:46px;
+    font-size:14px;
+  }
+
+  .site-nav-search button.radar{
+    grid-column:1 / -1;
+  }
+}
