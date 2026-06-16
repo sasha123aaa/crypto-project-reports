@@ -1052,3 +1052,45 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
     grid-column:1 / -1;
   }
 }
+
+.bull-radar-page{max-width:1540px}
+.radar-settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:24px}
+.radar-field{display:grid;gap:10px;padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.035)}
+.radar-field.wide{grid-column:1/-1}
+.radar-label{color:#dce7ff;font-weight:900;font-size:13px}
+.radar-presets,.radar-checks,.radar-actions{display:flex;gap:8px;flex-wrap:wrap}
+.radar-presets button,.radar-actions button,.radar-row-actions button,.radar-row-actions a{border:1px solid rgba(105,132,190,.35);border-radius:11px;background:rgba(255,255,255,.07);color:#dce7ff;padding:9px 12px;font-weight:850;cursor:pointer;text-decoration:none;white-space:nowrap}
+.radar-actions .primary{background:#4f7cff;color:#fff;border-color:#6f93ff}
+.radar-checks label{display:flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid rgba(105,132,190,.25);border-radius:10px;color:#cfd9ef;font-weight:800}
+.radar-range-inputs{display:grid;grid-template-columns:1fr 92px;gap:10px;align-items:center}
+.radar-field input[type="number"],.radar-field select{width:100%;border:1px solid rgba(105,132,190,.35);border-radius:10px;background:rgba(11,16,32,.82);color:#fff;padding:10px}
+.radar-avg-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.radar-avg-grid label{display:grid;gap:6px;color:#aeb9cc;font-size:12px;font-weight:800}
+.radar-avg-grid label.muted{opacity:.45}
+.radar-chart-card,.radar-table-card{margin-top:18px;padding:18px;border:1px solid var(--line);border-radius:22px;background:rgba(10,15,28,.78);box-shadow:0 18px 50px rgba(0,0,0,.22)}
+.radar-chart-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
+.radar-chart-head strong{color:#fff;font-size:18px}
+.radar-chart-head span{color:var(--muted);font-size:13px}
+.radar-chart-shell{height:520px;border:1px solid rgba(255,255,255,.08);border-radius:18px;overflow:hidden}
+.radar-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:18px}
+.radar-kpis article{padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.035);display:grid;gap:6px}
+.radar-kpis span{color:var(--muted);font-size:12px}
+.radar-kpis strong{color:#fff;font-size:18px}
+.radar-state{color:#ffe4a3;font-weight:900;margin-bottom:12px}
+.radar-table-wrap{overflow:auto}
+.radar-table{width:100%;border-collapse:separate;border-spacing:0 8px;min-width:1580px}
+.radar-table th{color:#8f9bb2;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:0 10px}
+.radar-table td{background:rgba(255,255,255,.04);border-top:1px solid rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.06);padding:10px;color:#dce7ff;font-size:13px;vertical-align:middle}
+.radar-table tr.active td,.radar-table tbody tr:hover td{background:rgba(79,124,255,.12)}
+.radar-table td:first-child{border-left:1px solid rgba(255,255,255,.06);border-radius:14px 0 0 14px}
+.radar-table td:last-child{border-right:1px solid rgba(255,255,255,.06);border-radius:0 14px 14px 0}
+.radar-coin{display:grid;grid-template-columns:24px auto;grid-template-areas:"img ticker" "img name";column-gap:8px;align-items:center}
+.radar-coin img{grid-area:img;width:24px;height:24px;border-radius:50%}
+.radar-coin b{grid-area:ticker}
+.radar-coin span{grid-area:name;color:var(--muted);font-size:11px}
+.radar-table .pos{color:#42d392}
+.radar-table .neg{color:#ff7d91}
+.radar-status{display:inline-flex;padding:5px 8px;border-radius:999px;background:rgba(66,211,146,.12);border:1px solid rgba(66,211,146,.25);color:#b9ffd4;font-weight:900;font-size:11px}
+.radar-row-actions{display:flex;gap:6px;align-items:center}
+.radar-row-actions button,.radar-row-actions a{padding:7px 9px;font-size:11px}
+@media(max-width:900px){.radar-settings{grid-template-columns:1fr}.radar-kpis{grid-template-columns:1fr 1fr}.radar-chart-head{align-items:flex-start;flex-direction:column}.radar-chart-shell{height:420px}.radar-avg-grid{grid-template-columns:1fr}.radar-range-inputs{grid-template-columns:1fr}}
