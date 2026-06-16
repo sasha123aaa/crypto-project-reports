@@ -1078,16 +1078,21 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 .radar-kpis strong{color:#fff;font-size:18px}
 .radar-state{color:#ffe4a3;font-weight:900;margin-bottom:12px}
 .radar-table-wrap{overflow:auto}
-.radar-table{width:100%;border-collapse:separate;border-spacing:0 8px;min-width:1580px}
+.radar-table{width:100%;border-collapse:separate;border-spacing:0 8px;min-width:1460px}
 .radar-table th{color:#8f9bb2;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:0 10px}
 .radar-table td{background:rgba(255,255,255,.04);border-top:1px solid rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.06);padding:10px;color:#dce7ff;font-size:13px;vertical-align:middle}
 .radar-table tr.active td,.radar-table tbody tr:hover td{background:rgba(79,124,255,.12)}
 .radar-table td:first-child{border-left:1px solid rgba(255,255,255,.06);border-radius:14px 0 0 14px}
 .radar-table td:last-child{border-right:1px solid rgba(255,255,255,.06);border-radius:0 14px 14px 0}
-.radar-coin{display:grid;grid-template-columns:24px auto;grid-template-areas:"img ticker" "img name";column-gap:8px;align-items:center}
-.radar-coin img{grid-area:img;width:24px;height:24px;border-radius:50%}
+.radar-coin{display:grid;grid-template-columns:30px auto;grid-template-areas:"img ticker" "img name";column-gap:9px;align-items:center}
+.radar-coin-icon{grid-area:img;position:relative;width:28px;height:28px;display:grid;place-items:center;border-radius:10px;background:radial-gradient(circle at 30% 20%, rgba(255,255,255,.18), rgba(79,124,255,.12));border:1px solid rgba(255,255,255,.12);overflow:hidden}
+.radar-coin-icon svg{width:18px;height:18px}
+.radar-coin-icon img{position:absolute;inset:4px;width:calc(100% - 8px);height:calc(100% - 8px);object-fit:contain;border-radius:50%;background:#fff}
+.radar-coin-icon .brand-letter{font-size:20px}
+.radar-coin-icon .brand-word{font-size:9px;letter-spacing:.02em}
+.radar-coin-fallback{font-size:10px;font-weight:900;color:#dce7ff;letter-spacing:-.02em}
 .radar-coin b{grid-area:ticker}
-.radar-coin span{grid-area:name;color:var(--muted);font-size:11px}
+.radar-coin span:not(.radar-coin-icon):not(.radar-coin-fallback):not(.brand-letter):not(.brand-word){grid-area:name;color:var(--muted);font-size:11px}
 .radar-table .pos{color:#42d392}
 .radar-table .neg{color:#ff7d91}
 .radar-status{display:inline-flex;align-items:center;justify-content:center;min-width:96px;max-width:120px;min-height:38px;padding:8px 10px;border-radius:12px;font-weight:900;font-size:11px;line-height:1.15;text-align:center;white-space:normal}

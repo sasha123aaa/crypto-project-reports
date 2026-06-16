@@ -15,6 +15,7 @@
   const pct = (v) => hasNumber(v) ? `${Number(v) >= 0 ? "+" : ""}${Number(v).toFixed(2)}%` : "—";
   const compact = (v) => hasNumber(v) ? new Intl.NumberFormat("ru-RU", { notation:"compact", maximumFractionDigits:1 }).format(Number(v)) : "—";
   const clamp = (v, min, max, fallback) => Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Number(v))) : fallback;
+  const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 
   function fibPrice(range, fib, logBased = false) {
     const top = Math.max(Number(range.aPrice), Number(range.bPrice)), bottom = Math.min(Number(range.aPrice), Number(range.bPrice));
@@ -72,7 +73,56 @@
   }
   function renderAvgInputs() { const count = Number($("average-count")?.value || 3); $("average-fibs").innerHTML = defaults.avgFibs.map((fib, i) => `<label class="${i >= count ? "muted" : ""}">Уср. ${i + 1}<input data-avg-fib type="number" step="0.1" min="0.1" max="5" value="${fib}" ${i >= count ? "disabled" : ""}></label>`).join(""); }
   function renderKpis() { const nearest = rows[0], avg = rows.length ? rows.reduce((s, r) => s + r.metrics.absDistanceToEntryPct, 0) / rows.length : NaN, best = rows.reduce((b, r) => !b || r.metrics.potentialToTakePct > b.metrics.potentialToTakePct ? r : b, null); $("radar-kpis").innerHTML = [["Найдено диапазонов", rows.length], ["Ближайший вход", nearest ? `${nearest.ticker} ${nearest.timeframe}` : "—"], ["Среднее расстояние", pct(avg)], ["Лучший потенциал", best ? pct(best.metrics.potentialToTakePct) : "—"], ["Последнее обновление", lastUpdated ? new Date(lastUpdated).toLocaleTimeString("ru-RU", { hour:"2-digit", minute:"2-digit" }) : "—"]].map(([k, v]) => `<article><span>${k}</span><strong>${v}</strong></article>`).join(""); }
-  function renderTable() { if (!rows.length && rawRows.length) $("radar-state").textContent = "Бычьи диапазоны по выбранным настройкам не найдены."; $("radar-rows").innerHTML = rows.map((r) => `<tr data-row-id="${r.id}" class="${r.id === selectedId ? "active" : ""}"><td><div class="radar-coin">${r.iconUrl ? `<img src="${r.iconUrl}" alt="">` : ""}<b>${r.ticker}</b><span>${r.name || ""}</span></div></td><td>${r.timeframe}</td><td>${r.exchange}</td><td>${money(r.price)}</td><td class="${hasNumber(r.change24hPct) ? (Number(r.change24hPct) >= 0 ? "pos" : "neg") : ""}">${pct(r.change24hPct)}</td><td>${pct(r.metrics.distanceToEntryPct)}</td><td>${pct(r.metrics.rangePct)}</td><td>${money(r.levels.entry.value)}</td><td>${money(r.levels.averages[0]?.value)}</td><td>${money(r.levels.averages[1]?.value)}</td><td>${money(r.levels.averages[2]?.value)}</td><td>${money(r.levels.take.value)}</td><td>${pct(r.metrics.potentialToTakePct)}</td><td>${compact(r.volume24h)}</td><td>${compact(r.marketCap)}</td><td><span class="radar-status ${statusClass(r.metrics.status)}">${r.metrics.status}</span></td><td class="radar-row-actions"><button data-show="${r.id}">Показать график</button><a href="/trade-plan/?slug=${encodeURIComponent(r.slug)}">Торговый план</a><a href="/reports/?slug=${encodeURIComponent(r.slug)}">Отчет</a></td></tr>`).join(""); }
+
+  function radarIconKey(ticker) {
+    const key = String(ticker || "").toUpperCase();
+
+    const map = {
+      BTC:"bitcoin",
+      ETH:"ethereum",
+      BNB:"bnb",
+      SOL:"solana",
+      LINK:"chainlink",
+      DOGE:"dogecoin",
+      PEPE:"pepe",
+      MNT:"mantle",
+      NEAR:"near",
+      HYPE:"hyperliquid",
+      PENDLE:"pendle",
+      CRV:"curve"
+    };
+
+    return map[key] || key.toLowerCase();
+  }
+
+  function radarCoinIconHtml(row) {
+    const ticker = String(row?.ticker || "").toUpperCase();
+    const key = radarIconKey(ticker);
+
+    const localIcons = {
+      bitcoin:`<span class="brand-letter bitcoin-letter">₿</span>`,
+      ethereum:`<svg viewBox="0 0 256 417" aria-hidden="true"><path class="eth-top-left" d="M127.9 0L125.1 9.5v274.2l2.8 2.8 127.9-75.6z"/><path class="eth-top-right" d="M127.9 0L0 210.9l127.9 75.6V154.1z"/><path class="eth-bottom-left" d="M127.9 310.7l-1.6 1.9v98.2l1.6 4.7 128-180.3z"/><path class="eth-bottom-right" d="M127.9 415.5V310.7L0 235.2z"/><path class="eth-center-left" d="M127.9 286.5l127.9-75.6-127.9-56.8z"/><path class="eth-center-right" d="M0 210.9l127.9 75.6V154.1z"/></svg>`,
+      solana:`<svg viewBox="0 0 128 104" aria-hidden="true"><defs><linearGradient id="radar-sol-g" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#9945ff"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs><path fill="url(#radar-sol-g)" d="M25 0h91l-13 17H12zM12 43h91l13 17H25zM25 86h91l-13 17H12z"/></svg>`,
+      dogecoin:`<span class="brand-letter dogecoin-letter">Ð</span>`,
+      pepe:`<span class="brand-word pepe-word">PEPE</span>`,
+      bnb:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="#f3ba2f" d="M50 5 65 20 50 35 35 20zm-30 30 15 15-15 15L5 50zm60 0 15 15-15 15-15-15zM50 65l15 15-15 15-15-15zm0-30 15 15-15 15-15-15z"/></svg>`,
+      chainlink:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#5578ff" stroke-width="15" d="M50 8 86 29v42L50 92 14 71V29z"/></svg>`,
+      hyperliquid:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#97fce4" stroke-width="12" stroke-linecap="round" d="M12 58c9-25 20-25 29 0s20 25 29 0 14-24 18-16"/></svg>`,
+      pendle:`<span class="brand-word">P</span>`,
+      curve:`<span class="brand-word">CRV</span>`,
+      mantle:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#d7ff3f" stroke-width="10" stroke-linejoin="round" d="M12 76V24l19 26 19-26 19 26 19-26v52"/></svg>`,
+      near:`<svg viewBox="0 0 100 100" aria-hidden="true"><path fill="none" stroke="#7cf7c4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" d="M18 78V22l64 56V22L18 78"/></svg>`,
+    };
+
+    const remote = row?.iconUrl
+      ? `<img src="${escapeHtml(row.iconUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">`
+      : "";
+
+    const fallback = `<span class="radar-coin-fallback">${escapeHtml(ticker.slice(0, 3) || "•")}</span>`;
+
+    return `<span class="radar-coin-icon">${localIcons[key] || fallback}${remote}</span>`;
+  }
+  function renderTable() { if (!rows.length && rawRows.length) $("radar-state").textContent = "Бычьи диапазоны по выбранным настройкам не найдены."; $("radar-rows").innerHTML = rows.map((r) => `<tr data-row-id="${r.id}" class="${r.id === selectedId ? "active" : ""}"><td><div class="radar-coin">${radarCoinIconHtml(r)}<b>${r.ticker}</b><span>${r.name || ""}</span></div></td><td>${r.timeframe}</td><td>${r.exchange}</td><td>${money(r.price)}</td><td class="${hasNumber(r.change24hPct) ? (Number(r.change24hPct) >= 0 ? "pos" : "neg") : ""}">${pct(r.change24hPct)}</td><td>${pct(r.metrics.distanceToEntryPct)}</td><td>${pct(r.metrics.rangePct)}</td><td>${money(r.levels.entry.value)}</td><td>${money(r.levels.averages[0]?.value)}</td><td>${money(r.levels.averages[1]?.value)}</td><td>${money(r.levels.averages[2]?.value)}</td><td>${money(r.levels.take.value)}</td><td>${pct(r.metrics.potentialToTakePct)}</td><td>${compact(r.volume24h)}</td><td><span class="radar-status ${statusClass(r.metrics.status)}">${r.metrics.status}</span></td><td class="radar-row-actions"><button data-show="${r.id}">Показать график</button><a href="/trade-plan/?slug=${encodeURIComponent(r.slug)}">Торговый план</a><a href="/reports/?slug=${encodeURIComponent(r.slug)}">Отчет</a></td></tr>`).join(""); }
   function renderChart() { const row = rows.find((r) => r.id === selectedId) || rows[0]; if (!row || !window.LightweightCharts || !window.TradePlanChart) { $("selected-title").textContent = "График выбранной монеты"; $("selected-meta").textContent = "Запустите сканер и выберите найденный диапазон."; $("radar-chart").innerHTML = ""; chart = null; lastChartKey = null; return; } selectedId = row.id; $("selected-title").textContent = `${row.ticker} · ${row.timeframe}`; $("selected-meta").textContent = `${row.exchange} · ${row.symbol} · вход ${money(row.levels.entry.value)} · тейк ${money(row.levels.take.value)}`; const opts = { candles:row.candles, range:row.range, levels:row.chartLevels, timeframe:row.timeframe, symbol:row.ticker, ticker:row.ticker, exchange:row.exchange, slug:row.slug, iconHtml:row.iconUrl ? `<img src="${row.iconUrl}" alt="" style="width:18px;height:18px;border-radius:50%">` : "", showPlan:true }; const chartKey = `${row.id}:${row.timeframe}:${row.exchange}`; const preserveView = chartKey === lastChartKey; lastChartKey = chartKey; if (chart) chart.setData(opts, { preserveView }); else chart = new window.TradePlanChart($("radar-chart"), opts); }
   function renderAll() { recalcRows(); renderKpis(); renderTable(); renderChart(); }
   async function scan() {
