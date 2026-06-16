@@ -53,6 +53,19 @@
           <div class="radar-checks" id="exchange-checks"></div>
         </div>
 
+        <div class="radar-field">
+          <label for="min-turnover-24h">Мин. объем 24ч</label>
+          <select id="min-turnover-24h">
+            <option value="0">Без фильтра</option>
+            <option value="100000">$100K+</option>
+            <option value="500000">$500K+</option>
+            <option value="1000000" selected>$1M+</option>
+            <option value="5000000">$5M+</option>
+            <option value="10000000">$10M+</option>
+          </select>
+          <small>Фильтр убирает слабые и низколиквидные пары.</small>
+        </div>
+
         <div class="radar-actions">
           <button class="primary" type="submit">Запустить сканер</button>
           <button type="button" id="refresh-radar">Обновить сканер</button>

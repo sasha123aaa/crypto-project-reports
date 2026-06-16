@@ -1117,3 +1117,25 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
   font-weight:800;
   text-transform:lowercase;
 }
+
+.radar-field label{
+  font-size:12px;
+  font-weight:900;
+  color:#cfe0ff;
+}
+
+.radar-field select{
+  width:100%;
+  border:1px solid rgba(105,132,190,.35);
+  border-radius:12px;
+  background:rgba(11,16,32,.65);
+  color:#fff;
+  padding:11px 12px;
+  font-weight:900;
+}
+
+.radar-field small{
+  color:#8d98ad;
+  font-size:11px;
+  line-height:1.35;
+}
