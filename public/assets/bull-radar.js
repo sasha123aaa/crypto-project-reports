@@ -34,7 +34,42 @@
   function renderTable() { $("radar-state").textContent = rows.length ? "" : (rawRows.length ? "Бычьи диапазоны по выбранным настройкам не найдены." : $("radar-state").textContent); $("radar-rows").innerHTML = rows.map((r) => `<tr data-row-id="${r.id}" class="${r.id === selectedId ? "active" : ""}"><td><div class="radar-coin">${r.iconUrl ? `<img src="${r.iconUrl}" alt="">` : ""}<b>${r.ticker}</b><span>${r.name || ""}</span></div></td><td>${r.timeframe}</td><td>${r.exchange}</td><td>${money(r.price)}</td><td class="${Number(r.change24hPct) >= 0 ? "pos" : "neg"}">${pct(r.change24hPct)}</td><td>${pct(r.metrics.distanceToEntryPct)}</td><td>${pct(r.metrics.rangePct)}</td><td>${money(r.levels.entry.value)}</td><td>${money(r.levels.averages[0]?.value)}</td><td>${money(r.levels.averages[1]?.value)}</td><td>${money(r.levels.averages[2]?.value)}</td><td>${money(r.levels.take.value)}</td><td>${pct(r.metrics.potentialToTakePct)}</td><td>${compact(r.volume24h)}</td><td>${compact(r.marketCap)}</td><td><span class="radar-status">${r.metrics.status}</span></td><td class="radar-row-actions"><button data-show="${r.id}">Показать график</button><a href="/trade-plan/?slug=${encodeURIComponent(r.slug)}">Торговый план</a><a href="/reports/?slug=${encodeURIComponent(r.slug)}">Отчет</a></td></tr>`).join(""); }
   function renderChart() { const row = rows.find((r) => r.id === selectedId) || rows[0]; if (!row || !window.LightweightCharts || !window.TradePlanChart) { $("selected-title").textContent = "График выбранной монеты"; return; } selectedId = row.id; $("selected-title").textContent = `${row.ticker} · ${row.timeframe}`; $("selected-meta").textContent = `${row.exchange} · ${row.symbol} · вход ${money(row.levels.entry.value)} · тейк ${money(row.levels.take.value)}`; const opts = { candles:row.candles, range:row.range, levels:row.chartLevels, timeframe:row.timeframe, symbol:row.ticker, ticker:row.ticker, exchange:row.exchange, slug:row.slug, iconHtml:row.iconUrl ? `<img src="${row.iconUrl}" alt="" style="width:18px;height:18px;border-radius:50%">` : "", showPlan:true }; if (chart) chart.setData(opts, { preserveView:true }); else chart = new window.TradePlanChart($("radar-chart"), opts); }
   function renderAll() { recalcRows(); renderKpis(); renderTable(); renderChart(); }
-  async function scan() { const s = settings(); if (!s.timeframes.length || !s.exchanges.length) return; $("radar-state").textContent = "Сканируем бычьи диапазоны..."; $("radar-rows").innerHTML = ""; const params = new URLSearchParams({ timeframes:s.timeframes.join(","), entryFib:s.entryFib, avgFibs:s.avgFibs.slice(0, s.averageCount).join(","), exchanges:s.exchanges.join(","), limit:"100" }); try { const res = await fetch(`/api/bull-radar?${params}`); if (!res.ok) throw new Error(`HTTP ${res.status}`); const data = await res.json(); rawRows = data.results || []; selectedId = rawRows[0]?.id || null; lastUpdated = data.updated_at || new Date().toISOString(); if (!rawRows.length) $("radar-state").textContent = "Бычьи диапазоны по выбранным настройкам не найдены."; renderAll(); } catch (e) { console.error(e); rawRows = []; rows = []; $("radar-state").textContent = "Не удалось загрузить радар. Попробуйте обновить."; renderKpis(); renderTable(); } }
+  async function scan() {
+    const s = settings();
+    if (!s.timeframes.length || !s.exchanges.length) return;
+    if (s.timeframes.length > 3) {
+      $("radar-state").textContent = "Выбрано слишком много таймфреймов. Оставьте 1–3 ТФ для быстрого сканирования.";
+      return;
+    }
+    $("radar-state").textContent = "Сканируем бычьи диапазоны...";
+    $("radar-rows").innerHTML = "";
+    const params = new URLSearchParams({ timeframes:s.timeframes.join(","), entryFib:s.entryFib, avgFibs:s.avgFibs.slice(0, s.averageCount).join(","), exchanges:s.exchanges.join(","), limit:"100", debug:"1" });
+    try {
+      const res = await fetch(`/api/bull-radar?${params}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+      rawRows = data.results || [];
+      selectedId = rawRows[0]?.id || null;
+      lastUpdated = data.updated_at || new Date().toISOString();
+      if (!rawRows.length) {
+        const attempts = data.debug?.attempts || [];
+        console.table(attempts);
+        const bearish = attempts.filter((x) => x.status === "bearish_range").length;
+        const noRange = attempts.filter((x) => x.status === "no_range").length;
+        const noCandles = attempts.filter((x) => x.status === "no_candles").length;
+        const errors = attempts.filter((x) => x.status === "error").length;
+        $("radar-state").textContent = `Бычьи диапазоны не найдены. Проверено: ${attempts.length}. Медвежьих: ${bearish}, без диапазона: ${noRange}, без свечей: ${noCandles}, ошибок: ${errors}.`;
+      }
+      renderAll();
+    } catch (e) {
+      console.error(e);
+      rawRows = [];
+      rows = [];
+      $("radar-state").textContent = e.message?.includes("слишком много таймфреймов") ? "Выбрано слишком много таймфреймов. Оставьте 1–3 ТФ для быстрого сканирования." : "Не удалось загрузить радар. Попробуйте обновить.";
+      renderKpis();
+      renderTable();
+    }
+  }
   renderSettings();
   $("entry-fib-range").addEventListener("input", (e) => { $("entry-fib-number").value = Number(e.target.value).toFixed(2); renderAll(); });
   $("entry-fib-number").addEventListener("input", (e) => { const v = clamp(e.target.value, .3, .99, .5); $("entry-fib-range").value = v; renderAll(); });
