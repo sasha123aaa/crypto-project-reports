@@ -6,7 +6,7 @@ const backReport=document.getElementById('back-report');
 if(backReport){backReport.href=`/reports/?slug=${encodeURIComponent(slug)}`;backReport.title=`Открыть полный отчет по ${slug.toUpperCase()}`}
 const tfLabel={bullish:'Бычий',bearish:'Медвежий',neutral:'Нейтральный'},money=value=>Number.isFinite(value)?new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:value<1?6:2}).format(value):'—';
 const allocations={entry:10,average1:10,average2:20,average3:60};
-function projectIconHtml(meta = {}) {
+function projectIconHtml(meta = {}, extraClass = "") {
   const ticker = String(meta.ticker || "").toUpperCase();
   const branding = meta.branding || {};
   const key = String(branding.iconKey || ticker).toLowerCase();
@@ -33,9 +33,10 @@ function projectIconHtml(meta = {}) {
   const remote = remoteUrls.slice().reverse().map((url) =>
     `<img src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.closest('.project-icon')?.classList.add('has-remote-icon')" onerror="this.remove()">`
   ).join("");
-  return `<span class="project-icon plan-coin" aria-label="${label}" style="--project-accent:${accent}">${local}${remote}</span>`;
+  const className = `project-icon${extraClass ? ` ${extraClass}` : ""}`;
+  return `<span class="${className}" aria-label="${label}" style="--project-accent:${accent}">${local}${remote}</span>`;
 }
-function chartIconHtml(meta){return projectIconHtml(meta).replace('project-icon plan-coin','project-icon trade-chart-token-icon')}
+function chartIconHtml(meta){return projectIconHtml(meta, "trade-chart-token-icon")}
 
 function prewarmReport(slug){
   const requestId=`${Date.now()}-${Math.random().toString(16).slice(2)}`;
