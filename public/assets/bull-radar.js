@@ -6,10 +6,15 @@
     { id:"GATEIO", label:"Gate.io", enabled:false, checked:false, note:"в разработке" },
   ];
   const defaults = { avgFibs:[1, 1.5, 2] };
+  const RADAR_PREFS_KEY = "bullRadar:prefs:v1";
+  const RADAR_BLACKLIST_KEY = "bullRadar:blacklist:v1";
   let rawRows = [], rows = [], selectedId = null, chart = null, lastUpdated = null, lastChartKey = null;
   let sortState = { key: "distanceToEntryAbs", dir: "asc" };
   let scanGeneration = 0;
   let isScanning = false;
+  let autoRefreshTimer = null;
+  let nextAutoRefreshAt = null;
+  let radarBlacklist = new Set();
   const $ = (id) => document.getElementById(id);
   const hasNumber = (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v));
   const money = (v) => hasNumber(v) ? new Intl.NumberFormat("en-US", { style:"currency", currency:"USD", maximumFractionDigits:Number(v) < 1 ? 6 : 2 }).format(Number(v)) : "—";
@@ -17,6 +22,25 @@
   const compact = (v) => hasNumber(v) ? new Intl.NumberFormat("ru-RU", { notation:"compact", maximumFractionDigits:1 }).format(Number(v)) : "—";
   const clamp = (v, min, max, fallback) => Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Number(v))) : fallback;
   const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+
+  function readJsonStorage(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeJsonStorage(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // storage best-effort
+    }
+  }
+
+  radarBlacklist = new Set(readJsonStorage(RADAR_BLACKLIST_KEY, []));
 
   function fibPrice(range, fib, logBased = false) {
     const top = Math.max(Number(range.aPrice), Number(range.bPrice)), bottom = Math.min(Number(range.aPrice), Number(range.bPrice));
@@ -188,7 +212,14 @@
     return text.slice(0, 260);
   }
   function settings() { return { timeframes:[...document.querySelectorAll('[name="radar-tf"]:checked')].map((x) => x.value), exchanges:[...document.querySelectorAll('[name="radar-exchange"]:checked')].map((x) => x.value), entryFib:clamp($("entry-fib-number").value, .3, .99, .5), averageCount:Number($("average-count").value), avgFibs:[...document.querySelectorAll('[data-avg-fib]')].map((x) => Number(x.value)).filter(Number.isFinite), minTurnover24h:Number($("min-turnover-24h")?.value || 1000000) }; }
-  function recalcRows() { const s = settings(); const recalculated = rawRows.map((row) => { const levels = buildRadarLevels(row.range, s), price = Number(row.price), distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100, absDistanceToEntryPct = Math.abs(distanceToEntryPct), potentialToTakePct = ((levels.take.value - price) / price) * 100; return { ...row, levels, chartLevels:chartLevels(levels), metrics:{ ...row.metrics, distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, status:status(price, levels, absDistanceToEntryPct) } }; }); rows = sortRows(recalculated); if (!selectedId && rows[0]) selectedId = rows[0].id; if (selectedId && !rows.some((r) => r.id === selectedId)) selectedId = rows[0]?.id || null; }
+  function currentRadarPreferences() { const s = settings(); return { timeframes:s.timeframes, entryFib:s.entryFib, averageCount:s.averageCount, avgFibs:s.avgFibs, minTurnover24h:s.minTurnover24h, sortState, autoRefresh:$("radar-auto-refresh")?.value || "off" }; }
+  function saveRadarPreferences() { writeJsonStorage(RADAR_PREFS_KEY, currentRadarPreferences()); }
+  function applyRadarPreferences() { const prefs = readJsonStorage(RADAR_PREFS_KEY, null); if (!prefs) return; if (Array.isArray(prefs.timeframes) && prefs.timeframes.length) { const set = new Set(prefs.timeframes); document.querySelectorAll('[name="radar-tf"]').forEach((input) => { input.checked = set.has(input.value); }); } if (Number.isFinite(Number(prefs.entryFib))) { const value = clamp(prefs.entryFib, .3, .99, .5); $("entry-fib-range").value = value; $("entry-fib-number").value = Number(value).toFixed(2); } if ([0, 1, 2, 3].includes(Number(prefs.averageCount))) { $("average-count").value = String(prefs.averageCount); renderAvgInputs(); } if (Array.isArray(prefs.avgFibs)) { document.querySelectorAll("[data-avg-fib]").forEach((input, index) => { if (Number.isFinite(Number(prefs.avgFibs[index]))) input.value = prefs.avgFibs[index]; }); } if (Number.isFinite(Number(prefs.minTurnover24h)) && $("min-turnover-24h")) $("min-turnover-24h").value = String(prefs.minTurnover24h); if (prefs.sortState?.key) sortState = { key:prefs.sortState.key, dir:prefs.sortState.dir === "desc" ? "desc" : "asc" }; if ($("radar-auto-refresh") && prefs.autoRefresh) $("radar-auto-refresh").value = prefs.autoRefresh; }
+  function saveRadarBlacklist() { writeJsonStorage(RADAR_BLACKLIST_KEY, [...radarBlacklist]); }
+  function renderRadarBlacklist() { const el = $("radar-blacklist"); if (!el) return; if (!radarBlacklist.size) { el.innerHTML = `<span class="radar-blacklist-empty">Скрытых монет нет</span>`; return; } el.innerHTML = [...radarBlacklist].sort().map((ticker) => `<button type="button" data-unhide="${escapeHtml(ticker)}">${escapeHtml(ticker)} <span>×</span></button>`).join(""); }
+  function hideTicker(ticker) { const value = String(ticker || "").toUpperCase(); if (!value) return; radarBlacklist.add(value); saveRadarBlacklist(); rawRows = rawRows.filter((row) => String(row.ticker || "").toUpperCase() !== value); if (selectedId && !rawRows.some((row) => row.id === selectedId)) selectedId = null; renderRadarBlacklist(); renderAll(); }
+  function unhideTicker(ticker) { const value = String(ticker || "").toUpperCase(); radarBlacklist.delete(value); saveRadarBlacklist(); renderRadarBlacklist(); renderAll(); }
+  function recalcRows() { const s = settings(); const visibleRows = rawRows.filter((row) => !radarBlacklist.has(String(row.ticker || "").toUpperCase())); const recalculated = visibleRows.map((row) => { const levels = buildRadarLevels(row.range, s), price = Number(row.price), distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100, absDistanceToEntryPct = Math.abs(distanceToEntryPct), potentialToTakePct = ((levels.take.value - price) / price) * 100; return { ...row, levels, chartLevels:chartLevels(levels), metrics:{ ...row.metrics, distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, status:status(price, levels, absDistanceToEntryPct) } }; }); rows = sortRows(recalculated); if (!selectedId && rows[0]) selectedId = rows[0].id; if (selectedId && !rows.some((r) => r.id === selectedId)) selectedId = rows[0]?.id || null; }
   function renderSettings() {
     $("timeframe-checks").innerHTML = TFS.map((tf) => `<label><input type="checkbox" name="radar-tf" value="${tf}" ${tf === "4h" ? "checked" : ""}>${tf}</label>`).join("");
     $("exchange-checks").innerHTML = EXCHANGES.map((exchange) => `
@@ -257,7 +288,8 @@
 
     return `<span class="radar-coin-icon">${localIcons[key] || fallback}${remote}</span>`;
   }
-  function renderTable() { if (!rows.length && rawRows.length) $("radar-state").textContent = "Бычьи диапазоны по выбранным настройкам не найдены."; $("radar-rows").innerHTML = rows.map((r) => `<tr data-row-id="${r.id}" class="${r.id === selectedId ? "active" : ""}"><td><div class="radar-coin">${radarCoinIconHtml(r)}<b>${r.ticker}</b><span>${r.name || ""}</span></div></td><td>${r.timeframe}</td><td>${r.exchange}</td><td>${money(r.price)}</td><td class="${hasNumber(r.change24hPct) ? (Number(r.change24hPct) >= 0 ? "pos" : "neg") : ""}">${pct(r.change24hPct)}</td><td>${pct(r.metrics.distanceToEntryPct)}</td><td>${pct(r.metrics.rangePct)}</td><td>${money(r.levels.entry.value)}</td><td>${money(r.levels.averages[0]?.value)}</td><td>${money(r.levels.averages[1]?.value)}</td><td>${money(r.levels.averages[2]?.value)}</td><td>${money(r.levels.take.value)}</td><td>${pct(r.metrics.potentialToTakePct)}</td><td>${compact(r.volume24h)}</td><td><span class="radar-status ${statusClass(r.metrics.status)}">${r.metrics.status}</span></td><td class="radar-row-actions"><button data-show="${r.id}">Показать график</button><a href="/trade-plan/?slug=${encodeURIComponent(r.slug)}">Торговый план</a><a href="/reports/?slug=${encodeURIComponent(r.slug)}">Отчет</a></td></tr>`).join(""); }
+  function tradePlanUrl(row) { const s = settings(); const params = new URLSearchParams({ slug:row.slug, timeframe:row.timeframe, entryFib:String(s.entryFib), avgFibs:s.avgFibs.slice(0, s.averageCount).join(",") }); return `/trade-plan/?${params.toString()}`; }
+  function renderTable() { if (!rows.length && rawRows.length) $("radar-state").textContent = "Бычьи диапазоны по выбранным настройкам не найдены."; $("radar-rows").innerHTML = rows.map((r) => `<tr data-row-id="${r.id}" class="${r.id === selectedId ? "active" : ""}"><td><div class="radar-coin">${radarCoinIconHtml(r)}<b>${r.ticker}</b><span>${r.name || ""}</span></div></td><td>${r.timeframe}</td><td>${r.exchange}</td><td>${money(r.price)}</td><td class="${hasNumber(r.change24hPct) ? (Number(r.change24hPct) >= 0 ? "pos" : "neg") : ""}">${pct(r.change24hPct)}</td><td>${pct(r.metrics.distanceToEntryPct)}</td><td>${pct(r.metrics.rangePct)}</td><td>${money(r.levels.entry.value)}</td><td>${money(r.levels.averages[0]?.value)}</td><td>${money(r.levels.averages[1]?.value)}</td><td>${money(r.levels.averages[2]?.value)}</td><td>${money(r.levels.take.value)}</td><td>${pct(r.metrics.potentialToTakePct)}</td><td>${compact(r.volume24h)}</td><td><span class="radar-status ${statusClass(r.metrics.status)}">${r.metrics.status}</span></td><td class="radar-row-actions"><button data-show="${r.id}">Показать график</button><a href="${tradePlanUrl(r)}">Торговый план</a><a href="/reports/?slug=${encodeURIComponent(r.slug)}">Отчет</a><button data-hide="${escapeHtml(r.ticker)}">Скрыть</button></td></tr>`).join(""); }
   function renderChart() { const row = rows.find((r) => r.id === selectedId) || rows[0]; if (!row || !window.LightweightCharts || !window.TradePlanChart) { $("selected-title").textContent = "График выбранной монеты"; $("selected-meta").textContent = "Запустите сканер и выберите найденный диапазон."; $("radar-chart").innerHTML = ""; chart = null; lastChartKey = null; return; } selectedId = row.id; $("selected-title").textContent = `${row.ticker} · ${row.timeframe}`; $("selected-meta").textContent = `${row.exchange} · ${row.symbol} · вход ${money(row.levels.entry.value)} · тейк ${money(row.levels.take.value)}`; const opts = { candles:row.candles, range:row.range, levels:row.chartLevels, timeframe:row.timeframe, symbol:row.ticker, ticker:row.ticker, exchange:row.exchange, slug:row.slug, iconHtml:row.iconUrl ? `<img src="${row.iconUrl}" alt="" style="width:18px;height:18px;border-radius:50%">` : "", showPlan:true }; const chartKey = `${row.id}:${row.timeframe}:${row.exchange}`; const preserveView = chartKey === lastChartKey; lastChartKey = chartKey; if (chart) chart.setData(opts, { preserveView }); else chart = new window.TradePlanChart($("radar-chart"), opts); }
   function renderSortHeaders() {
     document.querySelectorAll(".radar-table th[data-sort]").forEach((th) => {
@@ -275,7 +307,12 @@
     });
   }
   function renderAll() { recalcRows(); renderKpis(); renderTable(); renderChart(); renderSortHeaders(); }
-  async function scan() {
+  function resetDefaultSort() { sortState = { key:"distanceToEntryAbs", dir:"asc" }; renderAll(); saveRadarPreferences(); }
+  function updateRadarProgress(checked = 0, total = 0) { const el = $("radar-progress"); if (!el) return; const bar = el.querySelector("span"); const pctValue = total > 0 ? Math.min(100, Math.max(0, (checked / total) * 100)) : 0; el.hidden = false; el.setAttribute("aria-label", `Прогресс сканирования ${Math.round(pctValue)}%`); if (bar) bar.style.width = `${pctValue}%`; }
+  function hideRadarProgress() { const el = $("radar-progress"); if (!el) return; el.hidden = true; const bar = el.querySelector("span"); if (bar) bar.style.width = "0%"; }
+  function updateAutoRefreshTimer() { clearInterval(autoRefreshTimer); autoRefreshTimer = null; nextAutoRefreshAt = null; const seconds = Number($("radar-auto-refresh")?.value || 0); if (!Number.isFinite(seconds) || seconds <= 0) return; nextAutoRefreshAt = Date.now() + seconds * 1000; autoRefreshTimer = setInterval(() => { if (!nextAutoRefreshAt) return; const remaining = Math.max(0, Math.ceil((nextAutoRefreshAt - Date.now()) / 1000)); const current = $("radar-state")?.textContent || ""; if (!isScanning && rawRows.length && remaining > 0 && !current.includes("Сканируем")) $("radar-state").textContent = `Автообновление через ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}. Найдено: ${rawRows.length}.`; if (remaining <= 0) { if (!isScanning) scan({ keepRowsUntilFirstBatch:true }); const nextSeconds = Number($("radar-auto-refresh")?.value || 0); nextAutoRefreshAt = nextSeconds > 0 ? Date.now() + nextSeconds * 1000 : null; } }, 1000); }
+  async function scan(options = {}) {
+    const keepRowsUntilFirstBatch = options.keepRowsUntilFirstBatch === true;
     const s = settings();
     if (!s.timeframes.length || !s.exchanges.length) return;
 
@@ -287,20 +324,24 @@
     const generation = ++scanGeneration;
     isScanning = true;
 
-    rawRows = [];
-    rows = [];
-    selectedId = null;
-    lastChartKey = null;
+    if (!keepRowsUntilFirstBatch) {
+      rawRows = [];
+      rows = [];
+      selectedId = null;
+      lastChartKey = null;
+      $("radar-rows").innerHTML = "";
+      renderKpis();
+      renderTable();
+    }
 
-    $("radar-rows").innerHTML = "";
     $("radar-state").textContent = "Сканируем бычьи диапазоны: проверяем первые монеты...";
-    renderKpis();
-    renderTable();
+    updateRadarProgress(0, 1);
 
     let jobOffset = 0;
     const jobLimit = jobLimitForSettings(s);
     const summaryTotal = {};
     let checkedTotal = 0;
+    let firstBatchApplied = false;
 
     try {
       while (isScanning && generation === scanGeneration) {
@@ -340,8 +381,17 @@
 
         const batchRows = Array.isArray(data.results) ? data.results : [];
 
+        if (keepRowsUntilFirstBatch && !firstBatchApplied) {
+          rawRows = [];
+          rows = [];
+          selectedId = null;
+          lastChartKey = null;
+          firstBatchApplied = true;
+        }
+
         for (const row of batchRows) {
-          if (!rawRows.some((item) => item.id === row.id)) {
+          const rowTicker = String(row.ticker || "").toUpperCase();
+          if (!radarBlacklist.has(rowTicker) && !rawRows.some((item) => item.id === row.id)) {
             rawRows.push(row);
           }
         }
@@ -362,6 +412,7 @@
         const checked = progress.nextJobOffset || rawRows.length;
         checkedTotal = checked;
         const total = progress.totalJobs || "?";
+        updateRadarProgress(Number(checked), Number(total));
 
         $("radar-state").textContent =
           `Сканируем Bybit: проверено ${checked} из ${total} задач. ` +
@@ -397,8 +448,12 @@
       }
 
       renderAll();
+      updateRadarProgress(1, 1);
+      setTimeout(hideRadarProgress, 1200);
+      updateAutoRefreshTimer();
     } catch (e) {
       isScanning = false;
+      hideRadarProgress();
       console.error(e);
       const statusText = e.status ? `HTTP ${e.status}. ` : "";
       $("radar-state").textContent = e.message?.includes("слишком много таймфреймов")
@@ -416,19 +471,26 @@
     }
   }
   renderSettings();
-  $("entry-fib-range").addEventListener("input", (e) => { $("entry-fib-number").value = Number(e.target.value).toFixed(2); renderAll(); });
-  $("entry-fib-number").addEventListener("input", (e) => { const v = clamp(e.target.value, .3, .99, .5); $("entry-fib-range").value = v; renderAll(); });
-  $("average-count").addEventListener("change", () => { renderAvgInputs(); renderAll(); });
-  document.addEventListener("input", (e) => { if (e.target.matches("[data-avg-fib]")) renderAll(); });
-  document.querySelectorAll("[data-tf-preset]").forEach((button) => button.addEventListener("click", () => { const set = new Set(button.dataset.tfPreset.split(",")); document.querySelectorAll('[name="radar-tf"]').forEach((x) => x.checked = set.has(x.value)); if (button.dataset.tfPreset.includes("1m")) { $("radar-state").textContent = "Скальпинг проверяется маленькими батчами, чтобы не упереться в лимиты Cloudflare."; } }));
+  applyRadarPreferences();
+  renderRadarBlacklist();
+  renderSortHeaders();
+  updateAutoRefreshTimer();
+  $("entry-fib-range").addEventListener("input", (e) => { $("entry-fib-number").value = Number(e.target.value).toFixed(2); renderAll(); saveRadarPreferences(); });
+  $("entry-fib-number").addEventListener("input", (e) => { const v = clamp(e.target.value, .3, .99, .5); $("entry-fib-range").value = v; renderAll(); saveRadarPreferences(); });
+  $("average-count").addEventListener("change", () => { renderAvgInputs(); renderAll(); saveRadarPreferences(); });
+  document.addEventListener("input", (e) => { if (e.target.matches("[data-avg-fib]")) { renderAll(); saveRadarPreferences(); } });
+  document.addEventListener("change", (event) => { if (event.target.matches('[name="radar-tf"]') || event.target.matches("#min-turnover-24h") || event.target.matches("#radar-auto-refresh")) { saveRadarPreferences(); updateAutoRefreshTimer(); } });
+  document.querySelectorAll("[data-tf-preset]").forEach((button) => button.addEventListener("click", () => { const set = new Set(button.dataset.tfPreset.split(",")); document.querySelectorAll('[name="radar-tf"]').forEach((x) => x.checked = set.has(x.value)); saveRadarPreferences(); if (button.dataset.tfPreset.includes("1m")) { $("radar-state").textContent = "Скальпинг проверяется маленькими батчами, чтобы не упереться в лимиты Cloudflare."; } }));
   $("radar-settings").addEventListener("submit", (e) => { e.preventDefault(); scan(); });
-  $("refresh-radar").addEventListener("click", scan);
+  $("refresh-radar").addEventListener("click", () => scan());
+  $("reset-radar-sort")?.addEventListener("click", resetDefaultSort);
   $("stop-radar")?.addEventListener("click", () => {
     isScanning = false;
     scanGeneration += 1;
     $("radar-state").textContent = "Сканирование остановлено. Уже найденные результаты оставлены в таблице.";
   });
-  $("radar-rows").addEventListener("click", (e) => { if (e.target.closest("a")) return; const tr = e.target.closest("tr[data-row-id]"); if (!tr) return; selectedId = tr.dataset.rowId; renderTable(); renderChart(); });
+  $("radar-rows").addEventListener("click", (e) => { const hideButton = e.target.closest("[data-hide]"); if (hideButton) { e.preventDefault(); e.stopPropagation(); hideTicker(hideButton.dataset.hide); return; } if (e.target.closest("a")) return; const tr = e.target.closest("tr[data-row-id]"); if (!tr) return; selectedId = tr.dataset.rowId; renderTable(); renderChart(); });
+  $("radar-blacklist")?.addEventListener("click", (event) => { const button = event.target.closest("[data-unhide]"); if (!button) return; unhideTicker(button.dataset.unhide); });
   document.querySelector(".radar-table thead")?.addEventListener("click", (event) => {
     const th = event.target.closest("th[data-sort]");
     if (!th) return;
@@ -445,6 +507,7 @@
     }
 
     renderAll();
+    saveRadarPreferences();
   });
   renderKpis();
   renderSortHeaders();
