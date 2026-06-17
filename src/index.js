@@ -266,7 +266,7 @@ async function processStrategyJob(db, { asset, timeframe }) {
     const updated = evaluateVirtualTrade({ trade:{ ...oldTrade, levels:plan.levels, range:built.range }, candles:built.candles, currentPrice:built.currentPrice });
     updated.updatedAt = new Date().toISOString();
     if (updated.status === "take_hit" && !updated.closedAt) updated.closedAt = updated.updatedAt;
-    updated.entryPrice = updated.entryPrice || plan.levels[getStrategyStartIndex(entryMode)]?.price || null;
+    updated.entryPrice = updated.entryPrice || plan.levels[0]?.price || null;
     await putTrade(db, updated);
     if (!existing) await addTradeEvent(db, id, "opened", built.currentPrice, 0, { entryMode, timeframe });
     const previousActivated = Number(oldTrade.activatedLevels || 0);
@@ -281,7 +281,6 @@ async function processStrategyJob(db, { asset, timeframe }) {
     await refreshStrategyStats(db, asset.ticker, timeframe, entryMode, "BYBIT");
   }
 }
-function getStrategyStartIndex(entryMode) { return Math.abs(Number(entryMode)-0.31)<0.001 ? 0 : Math.abs(Number(entryMode)-0.75)<0.001 ? 2 : 1; }
 async function refreshStrategyStats(db, symbol, timeframe, entryMode, exchange) {
   const rows = (await db.prepare(`SELECT * FROM virtual_trades WHERE base_symbol=? AND timeframe=? AND entry_mode=? AND exchange=?`).bind(symbol, timeframe, entryMode, exchange).all()).results || [];
   const total = rows.length || 0, takeHits = rows.filter(r => r.status === "take_hit").length;

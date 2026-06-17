@@ -31,18 +31,45 @@ function levelPrice(range, ratio, forceLog = false) {
 }
 export function getStrategyConfig(entryMode = 0.5) {
   const key = modeKey(entryMode);
-  return { entryMode:Number(key), entryRatios:[...ENTRY_RATIOS], qtyMultipliers:[...CAPITAL_MULTIPLIERS[key]], startIndex:START_INDEX[key] };
+  const startIndex = START_INDEX[key];
+  const activeEntryRatios = ENTRY_RATIOS.slice(startIndex);
+  const rawMultipliers = CAPITAL_MULTIPLIERS[key] || CAPITAL_MULTIPLIERS["0.5"];
+  const qtyMultipliers = rawMultipliers.slice(0, activeEntryRatios.length);
+
+  return {
+    entryMode:Number(key),
+    startIndex,
+    entryRatios:activeEntryRatios,
+    qtyMultipliers,
+  };
 }
 export function calculateCapitalPlan({ entryMode = 0.5, capital = 100 } = {}) {
   const config = getStrategyConfig(entryMode);
   const total = config.qtyMultipliers.reduce((a, b) => a + b, 0);
-  return config.qtyMultipliers.map((qtyMultiplier, index) => ({ index, qtyMultiplier, capitalPct: total > 0 ? qtyMultiplier / total * 100 : 0, capitalAmount:Number(capital) * (total > 0 ? qtyMultiplier / total : 0) }));
+
+  return config.qtyMultipliers.map((qtyMultiplier, index) => ({
+    index,
+    globalIndex:config.startIndex + index,
+    ratio:config.entryRatios[index],
+    qtyMultiplier,
+    capitalPct: total > 0 ? qtyMultiplier / total * 100 : 0,
+    capitalAmount:Number(capital) * (total > 0 ? qtyMultiplier / total : 0),
+  }));
 }
 export function calculateLevels({ range, entryMode = 0.5 } = {}) {
   const config = getStrategyConfig(entryMode);
   const capitalPlan = calculateCapitalPlan({ entryMode, capital:100 });
   const forceLog = config.entryRatios.some((ratio) => { const rb = rangeTopBottom(range); if (!rb) return false; const linear = rb.bullish ? rb.top - Number(ratio) * (rb.top - rb.bottom) : rb.bottom + Number(ratio) * (rb.top - rb.bottom); return !(linear > 0); });
-  return config.entryRatios.map((ratio, index) => ({ index, ratio, price:levelPrice(range, ratio, forceLog), qtyMultiplier:capitalPlan[index].qtyMultiplier, capitalPct:capitalPlan[index].capitalPct }));
+
+  return config.entryRatios.map((ratio, index) => ({
+    index,
+    globalIndex:config.startIndex + index,
+    ratio,
+    label:index === 0 ? "Вход" : `Уср. ${index}`,
+    price:levelPrice(range, ratio, forceLog),
+    qtyMultiplier:capitalPlan[index].qtyMultiplier,
+    capitalPct:capitalPlan[index].capitalPct,
+  }));
 }
 export function calculateAveragePrice(filledLevels = []) {
   const levels = Array.isArray(filledLevels) ? filledLevels.filter((l) => finite(l?.price) > 0 && finite(l?.qtyMultiplier) > 0) : [];
@@ -67,9 +94,8 @@ export function calculateDynamicTake({ range, filledLevels = [], candles, curren
 export function buildStrategyPlan({ range, entryMode = 0.5, currentPrice, candles, capital = 100 } = {}) {
   const price = lastPrice(candles, currentPrice);
   const levels = calculateLevels({ range, entryMode });
-  const start = getStrategyConfig(entryMode).startIndex;
   const side = rangeTopBottom(range)?.bullish !== false ? "long" : "short";
-  const activated = levels.filter((l) => l.index >= start && price != null && side === "long" && price <= l.price);
+  const activated = levels.filter((l) => price != null && side === "long" && price <= Number(l.price));
   const avg = calculateAveragePrice(activated);
   const take = calculateDynamicTake({ range, filledLevels:activated, candles, currentPrice:price });
   return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", currentPrice:price, levels, activatedLevels:activated.length, averagePrice:avg, usedCapitalPct:activated.reduce((s, l) => s + l.capitalPct, 0), takePrice:take.takePrice, dynamicTakeMode:take.dynamicTakeMode, capitalPlan:calculateCapitalPlan({ entryMode, capital }) };
@@ -77,11 +103,9 @@ export function buildStrategyPlan({ range, entryMode = 0.5, currentPrice, candle
 export function evaluateVirtualTrade({ trade, candles, currentPrice } = {}) {
   const price = lastPrice(candles, currentPrice) ?? finite(trade?.currentPrice);
   const levels = Array.isArray(trade?.levels) ? trade.levels : [];
-  const entryMode = trade?.entryMode ?? 0.5;
-  const start = getStrategyConfig(entryMode).startIndex;
-  const filled = levels.filter((l) => l.index >= start && price != null && price <= Number(l.price));
+  const filled = levels.filter((l) => price != null && price <= Number(l.price));
   const hadEntry = ["active", "averaging", "drawdown", "take_hit"].includes(trade?.status) || Number(trade?.activatedLevels) > 0;
-  const activated = hadEntry && filled.length === 0 ? levels.slice(start, start + Math.max(1, Number(trade?.activatedLevels) || 1)) : filled;
+  const activated = hadEntry && filled.length === 0 ? levels.slice(0, Math.max(1, Number(trade?.activatedLevels) || 1)) : filled;
   const averagePrice = calculateAveragePrice(activated) ?? finite(trade?.averagePrice);
   const take = calculateDynamicTake({ range:trade?.range, filledLevels:activated, candles, currentPrice:price });
   const takePrice = take.takePrice ?? finite(trade?.takePrice);
