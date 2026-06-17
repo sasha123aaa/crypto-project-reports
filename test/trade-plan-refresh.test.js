@@ -21,8 +21,13 @@ test("chart refresh preserves the view and context failure is non-fatal", () => 
 test("candle refresh bypasses caches and reports whether the latest candle changed", () => {
   const loadChartSource = source.match(/async function loadChart[\s\S]*?(?=\n    function updateTimer)/)[0];
 
-  assert.match(loadChartSource, /timeframe=\$\{encodeURIComponent\(tf\)\}&_=\$\{Date\.now\(\)\}/);
-  assert.match(loadChartSource, /fetch\(candlesUrl,\{cache:'no-store',headers:\{'Cache-Control':'no-cache'\}\}\)/);
+  assert.match(loadChartSource, /new URLSearchParams\(\{timeframe:tf,_:String\(Date\.now\(\)\)\}\)/);
+  assert.match(loadChartSource, /if\(initialExchangeParam\)candleParams\.set\("exchange",initialExchangeParam\)/);
+  assert.match(loadChartSource, /const candlesUrl=`\/api\/trade-plan-candles\/\$\{encodeURIComponent\(slug\)\}\?\$\{candleParams\.toString\(\)\}`/);
+  assert.match(loadChartSource, /fetchJsonWithTimeout\(/);
+  assert.match(loadChartSource, /cache:\s*"no-store"/);
+  assert.match(loadChartSource, /headers:\s*\{\s*"Cache-Control":\s*"no-cache"\s*\}/);
+  assert.match(loadChartSource, /12000/);
   assert.match(loadChartSource, /const changed=!prevLastCandle\|\|!nextLastCandle\|\|/);
   assert.match(loadChartSource, /return \{changed,lastCandleTime:nextLastCandle\?\.time\|\|null\}/);
 });
