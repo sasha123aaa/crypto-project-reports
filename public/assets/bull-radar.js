@@ -14,6 +14,7 @@
   let isScanning = false;
   let autoRefreshTimer = null;
   let nextAutoRefreshAt = null;
+  let activeScanController = null;
   let radarBlacklist = new Set();
   const $ = (id) => document.getElementById(id);
   const hasNumber = (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v));
@@ -217,7 +218,7 @@
   function applyRadarPreferences() { const prefs = readJsonStorage(RADAR_PREFS_KEY, null); if (!prefs) return; if (Array.isArray(prefs.timeframes) && prefs.timeframes.length) { const set = new Set(prefs.timeframes); document.querySelectorAll('[name="radar-tf"]').forEach((input) => { input.checked = set.has(input.value); }); } if (Number.isFinite(Number(prefs.entryFib))) { const value = clamp(prefs.entryFib, .3, .99, .5); $("entry-fib-range").value = value; $("entry-fib-number").value = Number(value).toFixed(2); } if ([0, 1, 2, 3].includes(Number(prefs.averageCount))) { $("average-count").value = String(prefs.averageCount); renderAvgInputs(); } if (Array.isArray(prefs.avgFibs)) { document.querySelectorAll("[data-avg-fib]").forEach((input, index) => { if (Number.isFinite(Number(prefs.avgFibs[index]))) input.value = prefs.avgFibs[index]; }); } if (Number.isFinite(Number(prefs.minTurnover24h)) && $("min-turnover-24h")) $("min-turnover-24h").value = String(prefs.minTurnover24h); if (prefs.sortState?.key) sortState = { key:prefs.sortState.key, dir:prefs.sortState.dir === "desc" ? "desc" : "asc" }; if ($("radar-auto-refresh") && prefs.autoRefresh) $("radar-auto-refresh").value = prefs.autoRefresh; }
   function saveRadarBlacklist() { writeJsonStorage(RADAR_BLACKLIST_KEY, [...radarBlacklist]); }
   function renderRadarBlacklist() { const el = $("radar-blacklist"); if (!el) return; if (!radarBlacklist.size) { el.innerHTML = `<span class="radar-blacklist-empty">Скрытых монет нет</span>`; return; } el.innerHTML = [...radarBlacklist].sort().map((ticker) => `<button type="button" data-unhide="${escapeHtml(ticker)}">${escapeHtml(ticker)} <span>×</span></button>`).join(""); }
-  function hideTicker(ticker) { const value = String(ticker || "").toUpperCase(); if (!value) return; radarBlacklist.add(value); saveRadarBlacklist(); rawRows = rawRows.filter((row) => String(row.ticker || "").toUpperCase() !== value); if (selectedId && !rawRows.some((row) => row.id === selectedId)) selectedId = null; renderRadarBlacklist(); renderAll(); }
+  function hideTicker(ticker) { const value = String(ticker || "").toUpperCase(); if (!value) return; radarBlacklist.add(value); saveRadarBlacklist(); if (selectedId) { const selectedRow = rawRows.find((row) => row.id === selectedId); if (String(selectedRow?.ticker || "").toUpperCase() === value) selectedId = null; } renderRadarBlacklist(); renderAll(); }
   function unhideTicker(ticker) { const value = String(ticker || "").toUpperCase(); radarBlacklist.delete(value); saveRadarBlacklist(); renderRadarBlacklist(); renderAll(); }
   function recalcRows() { const s = settings(); const visibleRows = rawRows.filter((row) => !radarBlacklist.has(String(row.ticker || "").toUpperCase())); const recalculated = visibleRows.map((row) => { const levels = buildRadarLevels(row.range, s), price = Number(row.price), distanceToEntryPct = ((price - levels.entry.value) / levels.entry.value) * 100, absDistanceToEntryPct = Math.abs(distanceToEntryPct), potentialToTakePct = ((levels.take.value - price) / price) * 100; return { ...row, levels, chartLevels:chartLevels(levels), metrics:{ ...row.metrics, distanceToEntryPct, absDistanceToEntryPct, potentialToTakePct, status:status(price, levels, absDistanceToEntryPct) } }; }); rows = sortRows(recalculated); if (!selectedId && rows[0]) selectedId = rows[0].id; if (selectedId && !rows.some((r) => r.id === selectedId)) selectedId = rows[0]?.id || null; }
   function renderSettings() {
@@ -288,7 +289,7 @@
 
     return `<span class="radar-coin-icon">${localIcons[key] || fallback}${remote}</span>`;
   }
-  function tradePlanUrl(row) { const s = settings(); const params = new URLSearchParams({ slug:row.slug, timeframe:row.timeframe, entryFib:String(s.entryFib), avgFibs:s.avgFibs.slice(0, s.averageCount).join(",") }); return `/trade-plan/?${params.toString()}`; }
+  function tradePlanUrl(row) { const s = settings(); const params = new URLSearchParams({ slug:row.slug, timeframe:row.timeframe, exchange:row.exchange || "BYBIT", entryFib:String(s.entryFib), averageCount:String(s.averageCount), avgFibs:s.avgFibs.slice(0, s.averageCount).join(",") }); return `/trade-plan/?${params.toString()}`; }
   function renderTable() { if (!rows.length && rawRows.length) $("radar-state").textContent = "Бычьи диапазоны по выбранным настройкам не найдены."; $("radar-rows").innerHTML = rows.map((r) => `<tr data-row-id="${r.id}" class="${r.id === selectedId ? "active" : ""}"><td><div class="radar-coin">${radarCoinIconHtml(r)}<b>${r.ticker}</b><span>${r.name || ""}</span></div></td><td>${r.timeframe}</td><td>${r.exchange}</td><td>${money(r.price)}</td><td class="${hasNumber(r.change24hPct) ? (Number(r.change24hPct) >= 0 ? "pos" : "neg") : ""}">${pct(r.change24hPct)}</td><td>${pct(r.metrics.distanceToEntryPct)}</td><td>${pct(r.metrics.rangePct)}</td><td>${money(r.levels.entry.value)}</td><td>${money(r.levels.averages[0]?.value)}</td><td>${money(r.levels.averages[1]?.value)}</td><td>${money(r.levels.averages[2]?.value)}</td><td>${money(r.levels.take.value)}</td><td>${pct(r.metrics.potentialToTakePct)}</td><td>${compact(r.volume24h)}</td><td><span class="radar-status ${statusClass(r.metrics.status)}">${r.metrics.status}</span></td><td class="radar-row-actions"><button data-show="${r.id}">Показать график</button><a href="${tradePlanUrl(r)}">Торговый план</a><a href="/reports/?slug=${encodeURIComponent(r.slug)}">Отчет</a><button data-hide="${escapeHtml(r.ticker)}">Скрыть</button></td></tr>`).join(""); }
   function renderChart() { const row = rows.find((r) => r.id === selectedId) || rows[0]; if (!row || !window.LightweightCharts || !window.TradePlanChart) { $("selected-title").textContent = "График выбранной монеты"; $("selected-meta").textContent = "Запустите сканер и выберите найденный диапазон."; $("radar-chart").innerHTML = ""; chart = null; lastChartKey = null; return; } selectedId = row.id; $("selected-title").textContent = `${row.ticker} · ${row.timeframe}`; $("selected-meta").textContent = `${row.exchange} · ${row.symbol} · вход ${money(row.levels.entry.value)} · тейк ${money(row.levels.take.value)}`; const opts = { candles:row.candles, range:row.range, levels:row.chartLevels, timeframe:row.timeframe, symbol:row.ticker, ticker:row.ticker, exchange:row.exchange, slug:row.slug, iconHtml:row.iconUrl ? `<img src="${row.iconUrl}" alt="" style="width:18px;height:18px;border-radius:50%">` : "", showPlan:true }; const chartKey = `${row.id}:${row.timeframe}:${row.exchange}`; const preserveView = chartKey === lastChartKey; lastChartKey = chartKey; if (chart) chart.setData(opts, { preserveView }); else chart = new window.TradePlanChart($("radar-chart"), opts); }
   function renderSortHeaders() {
@@ -310,6 +311,7 @@
   function resetDefaultSort() { sortState = { key:"distanceToEntryAbs", dir:"asc" }; renderAll(); saveRadarPreferences(); }
   function updateRadarProgress(checked = 0, total = 0) { const el = $("radar-progress"); if (!el) return; const bar = el.querySelector("span"); const pctValue = total > 0 ? Math.min(100, Math.max(0, (checked / total) * 100)) : 0; el.hidden = false; el.setAttribute("aria-label", `Прогресс сканирования ${Math.round(pctValue)}%`); if (bar) bar.style.width = `${pctValue}%`; }
   function hideRadarProgress() { const el = $("radar-progress"); if (!el) return; el.hidden = true; const bar = el.querySelector("span"); if (bar) bar.style.width = "0%"; }
+  function setRadarScanningState(scanning) { const start = $("start-radar"); const refresh = $("refresh-radar"); const stop = $("stop-radar"); if (start) start.disabled = scanning; if (refresh) refresh.disabled = scanning; if (stop) stop.disabled = !scanning; }
   function updateAutoRefreshTimer() { clearInterval(autoRefreshTimer); autoRefreshTimer = null; nextAutoRefreshAt = null; const seconds = Number($("radar-auto-refresh")?.value || 0); if (!Number.isFinite(seconds) || seconds <= 0) return; nextAutoRefreshAt = Date.now() + seconds * 1000; autoRefreshTimer = setInterval(() => { if (!nextAutoRefreshAt) return; const remaining = Math.max(0, Math.ceil((nextAutoRefreshAt - Date.now()) / 1000)); const current = $("radar-state")?.textContent || ""; if (!isScanning && rawRows.length && remaining > 0 && !current.includes("Сканируем")) $("radar-state").textContent = `Автообновление через ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}. Найдено: ${rawRows.length}.`; if (remaining <= 0) { if (!isScanning) scan({ keepRowsUntilFirstBatch:true }); const nextSeconds = Number($("radar-auto-refresh")?.value || 0); nextAutoRefreshAt = nextSeconds > 0 ? Date.now() + nextSeconds * 1000 : null; } }, 1000); }
   async function scan(options = {}) {
     const keepRowsUntilFirstBatch = options.keepRowsUntilFirstBatch === true;
@@ -321,8 +323,18 @@
       return;
     }
 
+    if (isScanning) {
+      activeScanController?.abort();
+      isScanning = false;
+    }
+
+    activeScanController?.abort();
+    const controller = new AbortController();
+    activeScanController = controller;
+
     const generation = ++scanGeneration;
     isScanning = true;
+    setRadarScanningState(true);
 
     if (!keepRowsUntilFirstBatch) {
       rawRows = [];
@@ -361,7 +373,12 @@
           jobLimit:String(jobLimit),
         });
 
-        const res = await fetch(`/api/bull-radar?${params}`, { cache:"no-store" });
+        const res = await fetch(`/api/bull-radar?${params}`, { cache:"no-store", signal:controller.signal });
+
+        if (generation !== scanGeneration || controller.signal.aborted) {
+          return;
+        }
+
         const text = await res.text();
 
         let data = {};
@@ -369,6 +386,10 @@
           data = text ? JSON.parse(text) : {};
         } catch {
           data = { raw:text };
+        }
+
+        if (generation !== scanGeneration || controller.signal.aborted) {
+          return;
         }
 
         if (!res.ok) {
@@ -390,8 +411,7 @@
         }
 
         for (const row of batchRows) {
-          const rowTicker = String(row.ticker || "").toUpperCase();
-          if (!radarBlacklist.has(rowTicker) && !rawRows.some((item) => item.id === row.id)) {
+          if (!rawRows.some((item) => item.id === row.id)) {
             rawRows.push(row);
           }
         }
@@ -430,8 +450,10 @@
       }
 
       isScanning = false;
+      setRadarScanningState(false);
+      if (activeScanController === controller) activeScanController = null;
 
-      if (generation !== scanGeneration) return;
+      if (generation !== scanGeneration || controller.signal.aborted) return;
 
       if (!rawRows.length) {
         $("radar-state").textContent =
@@ -452,8 +474,22 @@
       setTimeout(hideRadarProgress, 1200);
       updateAutoRefreshTimer();
     } catch (e) {
-      isScanning = false;
+      const isActiveController = activeScanController === controller;
+      if (isActiveController) {
+        isScanning = false;
+        setRadarScanningState(false);
+        activeScanController = null;
+      }
       hideRadarProgress();
+      if (e?.name === "AbortError") {
+        if (generation === scanGeneration) {
+          $("radar-state").textContent = rawRows.length
+            ? "Сканирование остановлено. Уже найденные результаты оставлены в таблице."
+            : "Сканирование остановлено.";
+          renderAll();
+        }
+        return;
+      }
       console.error(e);
       const statusText = e.status ? `HTTP ${e.status}. ` : "";
       $("radar-state").textContent = e.message?.includes("слишком много таймфреймов")
@@ -475,6 +511,7 @@
   renderRadarBlacklist();
   renderSortHeaders();
   updateAutoRefreshTimer();
+  setRadarScanningState(false);
   $("entry-fib-range").addEventListener("input", (e) => { $("entry-fib-number").value = Number(e.target.value).toFixed(2); renderAll(); saveRadarPreferences(); });
   $("entry-fib-number").addEventListener("input", (e) => { const v = clamp(e.target.value, .3, .99, .5); $("entry-fib-range").value = v; renderAll(); saveRadarPreferences(); });
   $("average-count").addEventListener("change", () => { renderAvgInputs(); renderAll(); saveRadarPreferences(); });
@@ -487,6 +524,10 @@
   $("stop-radar")?.addEventListener("click", () => {
     isScanning = false;
     scanGeneration += 1;
+    activeScanController?.abort();
+    activeScanController = null;
+    hideRadarProgress();
+    setRadarScanningState(false);
     $("radar-state").textContent = "Сканирование остановлено. Уже найденные результаты оставлены в таблице.";
   });
   $("radar-rows").addEventListener("click", (e) => { const hideButton = e.target.closest("[data-hide]"); if (hideButton) { e.preventDefault(); e.stopPropagation(); hideTicker(hideButton.dataset.hide); return; } if (e.target.closest("a")) return; const tr = e.target.closest("tr[data-row-id]"); if (!tr) return; selectedId = tr.dataset.rowId; renderTable(); renderChart(); });
