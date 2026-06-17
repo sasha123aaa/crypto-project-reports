@@ -12,6 +12,26 @@ const backReport=document.getElementById('back-report');
 if(backReport){backReport.href=`/reports/?slug=${encodeURIComponent(slug)}`;backReport.title=`Открыть полный отчет по ${slug.toUpperCase()}`}
 const tfLabel={bullish:'Бычий',bearish:'Медвежий',neutral:'Нейтральный'},money=value=>Number.isFinite(value)?new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:value<1?6:2}).format(value):'—';
 const allocations={entry:10,average1:10,average2:20,average3:60};
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 7000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
 function projectIconHtml(meta = {}, extraClass = "") {
   const ticker = String(meta.ticker || "").toUpperCase();
   const branding = meta.branding || {};
@@ -92,7 +112,13 @@ function updatePlan(plan){updateTopLayer(plan);const levels=document.getElementB
 const REFRESH_INTERVAL_MS=60000;
 async function init(){
   try{
-    async function fetchReportShell(){const res=await fetch(`/api/report-shell/${encodeURIComponent(slug)}?request_id=${Date.now()}`,{cache:'no-store'});if(!res.ok)throw Error('shell');return res.json()}
+    async function fetchReportShell() {
+      return fetchJsonWithTimeout(
+        `/api/report-shell/${encodeURIComponent(slug)}?request_id=${Date.now()}`,
+        { cache: "no-store" },
+        3500
+      );
+    }
     let report;
     try{report=await fetchReportShell()}catch{report={meta:{slug,project_name:slug.toUpperCase(),ticker:slug.toUpperCase(),branding:null,market_symbols:null},market:{},technical_bias:null}}
     const frames=['1m','3m','5m','15m','1h','4h','1d','1w','1M'];
@@ -107,9 +133,19 @@ async function init(){
     async function loadChart(tf,options={}){
       const preserveView=options.preserveView===true,prevLastCandle=chart?.candles?.[chart.candles.length-1]||null;
       activeTf=tf;document.querySelectorAll('[data-timeframe]').forEach(b=>b.classList.toggle('active',b.dataset.timeframe===tf));
+      if (!window.LightweightCharts || !window.TradePlanChart) {
+        throw new Error("Chart library unavailable");
+      }
       const candleParams=new URLSearchParams({timeframe:tf,_:String(Date.now())});if(initialExchangeParam)candleParams.set("exchange",initialExchangeParam);const candlesUrl=`/api/trade-plan-candles/${encodeURIComponent(slug)}?${candleParams.toString()}`;
-      const response=await fetch(candlesUrl,{cache:'no-store',headers:{'Cache-Control':'no-cache'}});if(!response.ok)throw Error('candles');
-      const payload=await response.json(),range=payload.range||null,nextLastCandle=payload.candles?.[payload.candles.length-1]||null;document.querySelector('.section-sub').textContent=`Рабочий диапазон · ${tf}`;
+      const payload = await fetchJsonWithTimeout(
+        candlesUrl,
+        {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        },
+        12000
+      );
+      const range=payload.range||null,nextLastCandle=payload.candles?.[payload.candles.length-1]||null;document.querySelector('.section-sub').textContent=`Рабочий диапазон · ${tf}`;
       if(!range)throw Error('range');const plan=buildPlan(range,payload.candles,planFibSettings());updatePlan(plan);const chartOptions={slug,candles:payload.candles,levels:plan.levels,range,timeframe:tf,showPlan:range.bullish,symbol:payload.symbol||meta.market_symbols?.technical||meta.symbol||meta.ticker||slug.toUpperCase(),exchange:payload.source||payload.exchange||'Источник не определен',iconHtml:chartIconHtml(meta)};chart?chart.setData(chartOptions,{preserveView}):chart=new TradePlanChart(container,chartOptions);
       const changed=!prevLastCandle||!nextLastCandle||prevLastCandle.time!==nextLastCandle.time||prevLastCandle.open!==nextLastCandle.open||prevLastCandle.high!==nextLastCandle.high||prevLastCandle.low!==nextLastCandle.low||prevLastCandle.close!==nextLastCandle.close;
       return {changed,lastCandleTime:nextLastCandle?.time||null};

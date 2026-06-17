@@ -1,3 +1,4 @@
+(function () {
 const escapeHtml = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll("\"", '&quot;').replaceAll("'", '&#039;');
 class TradePlanChart {
   constructor(container,options){
@@ -57,3 +58,4 @@ class TradePlanChart {
   updateOverlay(){if(!this.candles?.length)return;const r=this.range;if(r){const ax=this.chart.timeScale().timeToCoordinate(r.aTime),bx=this.chart.timeScale().timeToCoordinate(r.bTime),ay=this.series.priceToCoordinate(r.aPrice),by=this.series.priceToCoordinate(r.bPrice);if([ax,bx,ay,by].every(v=>v!=null)){const left=Math.min(ax,bx),top=Math.min(ay,by),width=Math.max(2,Math.abs(bx-ax)),height=Math.max(2,Math.abs(by-ay));this.overlay.innerHTML=`<div class="range-segment ${r.bullish?'bullish':'bearish'}" style="left:${left}px;top:${top}px;width:${width}px;height:${height}px"><i class="range-line range-line-a" style="top:${ay-top}px"></i><i class="range-line range-line-b" style="top:${by-top}px"></i></div><span class="range-point range-a" style="left:${ax}px;top:${ay}px"></span><span class="range-point range-b ${r.bullish?'bullish':'bearish'}" style="left:${bx}px;top:${by}px"></span>`}else this.overlay.innerHTML=''}else this.overlay.innerHTML='';this.planOverlay.innerHTML=this.showPlan?Object.values(this.levels).map(l=>{const y=this.series.priceToCoordinate(l.value);return y==null?'':`<div class="trade-plan-overlay-level ${l.state}" style="top:${y}px"><span>${l.label}</span><i></i><b>${this.formatPrice(l.value)}</b></div>`}).join(''):''}
 }
 window.TradePlanChart=TradePlanChart;
+})();
