@@ -627,10 +627,9 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 .trade-drawing-toolbar button:hover,.trade-drawing-toolbar button.active{background:#4f7cff;color:#fff}
 .trade-drawing-overlay{position:absolute;inset:0;z-index:25;width:100%;height:100%;pointer-events:none}
 .trade-drawing-mode .trade-drawing-overlay{pointer-events:auto;cursor:crosshair}
-.trade-drawing-overlay .drawing-line{stroke:#d7deec;stroke-width:1.5;fill:none;pointer-events:stroke}
-.trade-drawing-overlay .drawing-selected{stroke:#4f7cff;stroke-width:2}
-.trade-drawing-overlay .drawing-rect{fill:rgba(79,124,255,.12);stroke:#4f7cff;stroke-width:1.2;pointer-events:all}
-.trade-drawing-overlay .drawing-fib-line{stroke:rgba(215,222,236,.75);stroke-width:1;pointer-events:stroke}
+.trade-drawing-overlay .drawing-line,
+.trade-drawing-overlay .drawing-fib-line{fill:none;pointer-events:stroke}
+.trade-drawing-overlay .drawing-rect{pointer-events:all}
 .trade-drawing-overlay .drawing-fib-label{fill:#d7deec;font-size:11px;font-weight:700;pointer-events:all}
 
 .hero-overview{
@@ -1342,14 +1341,18 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 
 .trade-drawing-overlay .drawing-hitbox{
   stroke:transparent;
-  stroke-width:12;
+  stroke-width:16;
   fill:none;
   pointer-events:stroke;
+  cursor:move;
 }
 
-.trade-drawing-overlay .drawing-line,
-.trade-drawing-overlay .drawing-rect,
-.trade-drawing-overlay .drawing-fib-line,
+.trade-drawing-overlay rect.drawing-hitbox{
+  fill:transparent;
+  stroke:transparent;
+  pointer-events:all;
+}
+
 .trade-drawing-overlay .drawing-fib-label,
 .trade-drawing-overlay .drawing-label,
 .trade-drawing-overlay .drawing-position-profit,
@@ -1358,8 +1361,7 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 }
 
 .trade-drawing-overlay .drawing-selected{
-  stroke:#4f7cff;
-  stroke-width:2;
+  filter:drop-shadow(0 0 4px rgba(79,124,255,.7));
 }
 
 .trade-drawing-overlay [data-drawing-id]{
@@ -1380,12 +1382,11 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 }
 
 .trade-drawing-overlay .drawing-hovered{
-  filter:drop-shadow(0 0 5px rgba(79,124,255,.65));
+  filter:drop-shadow(0 0 6px rgba(79,124,255,.85));
 }
 
 .trade-drawing-overlay .drawing-selected{
-  stroke:#4f7cff;
-  stroke-width:2;
+  filter:drop-shadow(0 0 4px rgba(79,124,255,.7));
 }
 
 .trade-drawing-overlay .drawing-locked{
@@ -1423,4 +1424,89 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
 
 .trade-drawing-context-menu button:hover{
   background:rgba(79,124,255,.18);
+}
+
+.drawing-price-overlay{
+  position:absolute;
+  inset:0;
+  z-index:31;
+  pointer-events:none;
+}
+
+.drawing-price-marker{
+  position:absolute;
+  right:2px;
+  transform:translateY(-50%);
+  display:flex;
+  align-items:center;
+  gap:4px;
+  font-size:10px;
+  font-weight:900;
+}
+
+.drawing-price-marker span{
+  color:#dce7ff;
+  background:rgba(11,16,32,.82);
+  border-radius:5px;
+  padding:2px 4px;
+}
+
+.drawing-price-marker b{
+  color:#fff;
+  background:var(--marker-color);
+  border-radius:5px;
+  padding:3px 5px;
+  box-shadow:0 0 0 1px rgba(255,255,255,.12) inset;
+}
+
+.drawing-crosshair{
+  position:absolute;
+  inset:0;
+  z-index:30;
+  pointer-events:none;
+}
+
+.drawing-crosshair::before,
+.drawing-crosshair::after{
+  content:"";
+  position:absolute;
+  background:rgba(220,231,255,.35);
+}
+
+.drawing-crosshair::before{
+  left:var(--x);
+  top:0;
+  bottom:0;
+  width:1px;
+}
+
+.drawing-crosshair::after{
+  top:var(--y);
+  left:0;
+  right:0;
+  height:1px;
+}
+
+.drawing-crosshair[hidden]{
+  display:none;
+}
+
+.drawing-hint{
+  position:absolute;
+  left:56px;
+  bottom:14px;
+  z-index:45;
+  max-width:360px;
+  padding:8px 10px;
+  border-radius:10px;
+  background:rgba(15,23,42,.88);
+  border:1px solid rgba(255,255,255,.12);
+  color:#dce7ff;
+  font-size:12px;
+  font-weight:800;
+  pointer-events:none;
+}
+
+.drawing-hint[hidden]{
+  display:none;
 }
