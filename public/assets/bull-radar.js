@@ -8,6 +8,7 @@
   const defaults = { avgFibs:[1, 1.5, 2] };
   const RADAR_PREFS_KEY = "bullRadar:prefs:v1";
   const RADAR_BLACKLIST_KEY = "bullRadar:blacklist:v1";
+  const RADAR_CHART_REFRESH_MS = 60_000;
   let rawRows = [], rows = [], selectedId = null, chart = null, lastUpdated = null, lastChartKey = null;
   let sortState = { key: "distanceToEntryAbs", dir: "asc" };
   let scanGeneration = 0;
@@ -15,6 +16,10 @@
   let autoRefreshTimer = null;
   let nextAutoRefreshAt = null;
   let activeScanController = null;
+  let selectedChartRefreshTimer = null;
+  let selectedChartRefreshAt = null;
+  let selectedChartRefreshing = false;
+  let selectedChartController = null;
   let radarBlacklist = new Set();
   const $ = (id) => document.getElementById(id);
   const hasNumber = (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v));
@@ -289,9 +294,67 @@
 
     return `<span class="radar-coin-icon">${localIcons[key] || fallback}${remote}</span>`;
   }
+  function selectedRow() { return rows.find((r) => r.id === selectedId) || rows[0] || null; }
+  function resetSelectedChartRefreshTimer() {
+    clearInterval(selectedChartRefreshTimer);
+    selectedChartRefreshTimer = null;
+    selectedChartRefreshAt = null;
+    const row = selectedRow();
+    if (!row) return;
+    selectedChartRefreshAt = Date.now() + RADAR_CHART_REFRESH_MS;
+    selectedChartRefreshTimer = setInterval(() => {
+      const current = selectedRow();
+      if (!current || isScanning) return;
+      const remaining = Math.max(0, Math.ceil((selectedChartRefreshAt - Date.now()) / 1000));
+      const meta = $("selected-meta");
+      if (meta && !selectedChartRefreshing && remaining > 0) {
+        meta.textContent = `${current.exchange} · ${current.symbol} · вход ${money(current.levels.entry.value)} · тейк ${money(current.levels.take.value)} · обновление через ${String(Math.floor(remaining / 60)).padStart(2, "0")}:${String(remaining % 60).padStart(2, "0")}`;
+      }
+      if (remaining <= 0 && !selectedChartRefreshing) refreshSelectedChart();
+    }, 1000);
+  }
+  async function refreshSelectedChart() {
+    const row = selectedRow();
+    if (!row || selectedChartRefreshing) return;
+    selectedChartRefreshing = true;
+    selectedChartController?.abort();
+    const controller = new AbortController();
+    selectedChartController = controller;
+    try {
+      const params = new URLSearchParams({ symbol:row.symbol, exchange:row.exchange || "BYBIT", timeframe:row.timeframe, _:String(Date.now()) });
+      const response = await fetch(`/api/radar-chart-candles?${params.toString()}`, { cache:"no-store", signal:controller.signal });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || data.reason || `HTTP ${response.status}`);
+      const nextCandles = Array.isArray(data.candles) ? data.candles : [];
+      const nextRange = data.range || null;
+      if (!nextRange || nextRange.bullish !== true) {
+        rawRows = rawRows.filter((item) => item.id !== row.id);
+        if (selectedId === row.id) selectedId = null;
+        $("radar-state").textContent = `${row.ticker} ${row.timeframe}: бычий диапазон больше не активен. Строка убрана из радара.`;
+        renderAll();
+        resetSelectedChartRefreshTimer();
+        return;
+      }
+      const updatedLast = nextCandles[nextCandles.length - 1];
+      const nextPrice = Number(updatedLast?.close);
+      rawRows = rawRows.map((item) => item.id !== row.id ? item : { ...item, candles:nextCandles, range:nextRange, price:Number.isFinite(nextPrice) ? nextPrice : item.price });
+      lastUpdated = data.updated_at || new Date().toISOString();
+      renderAll();
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        console.warn("Radar selected chart refresh failed", error);
+        const rowNow = selectedRow();
+        if (rowNow) $("selected-meta").textContent = `${rowNow.exchange} · ${rowNow.symbol} · не удалось обновить график`;
+      }
+    } finally {
+      if (selectedChartController === controller) selectedChartController = null;
+      selectedChartRefreshing = false;
+      selectedChartRefreshAt = Date.now() + RADAR_CHART_REFRESH_MS;
+    }
+  }
   function tradePlanUrl(row) { const s = settings(); const params = new URLSearchParams({ slug:row.slug, timeframe:row.timeframe, exchange:row.exchange || "BYBIT", entryFib:String(s.entryFib), averageCount:String(s.averageCount), avgFibs:s.avgFibs.slice(0, s.averageCount).join(",") }); return `/trade-plan/?${params.toString()}`; }
   function renderTable() { if (!rows.length && rawRows.length) $("radar-state").textContent = "Бычьи диапазоны по выбранным настройкам не найдены."; $("radar-rows").innerHTML = rows.map((r) => `<tr data-row-id="${r.id}" class="${r.id === selectedId ? "active" : ""}"><td><div class="radar-coin">${radarCoinIconHtml(r)}<b>${r.ticker}</b><span>${r.name || ""}</span></div></td><td>${r.timeframe}</td><td>${r.exchange}</td><td>${money(r.price)}</td><td class="${hasNumber(r.change24hPct) ? (Number(r.change24hPct) >= 0 ? "pos" : "neg") : ""}">${pct(r.change24hPct)}</td><td>${pct(r.metrics.distanceToEntryPct)}</td><td>${pct(r.metrics.rangePct)}</td><td>${money(r.levels.entry.value)}</td><td>${money(r.levels.averages[0]?.value)}</td><td>${money(r.levels.averages[1]?.value)}</td><td>${money(r.levels.averages[2]?.value)}</td><td>${money(r.levels.take.value)}</td><td>${pct(r.metrics.potentialToTakePct)}</td><td>${compact(r.volume24h)}</td><td><span class="radar-status ${statusClass(r.metrics.status)}">${r.metrics.status}</span></td><td class="radar-row-actions"><button data-show="${r.id}">Показать график</button><a href="${tradePlanUrl(r)}">Торговый план</a><a href="/reports/?slug=${encodeURIComponent(r.slug)}">Отчет</a><button data-hide="${escapeHtml(r.ticker)}">Скрыть</button></td></tr>`).join(""); }
-  function renderChart() { const row = rows.find((r) => r.id === selectedId) || rows[0]; if (!row || !window.LightweightCharts || !window.TradePlanChart) { $("selected-title").textContent = "График выбранной монеты"; $("selected-meta").textContent = "Запустите сканер и выберите найденный диапазон."; $("radar-chart").innerHTML = ""; chart = null; lastChartKey = null; return; } selectedId = row.id; $("selected-title").textContent = `${row.ticker} · ${row.timeframe}`; $("selected-meta").textContent = `${row.exchange} · ${row.symbol} · вход ${money(row.levels.entry.value)} · тейк ${money(row.levels.take.value)}`; const opts = { candles:row.candles, range:row.range, levels:row.chartLevels, timeframe:row.timeframe, symbol:row.ticker, ticker:row.ticker, exchange:row.exchange, slug:row.slug, iconHtml:row.iconUrl ? `<img src="${row.iconUrl}" alt="" style="width:18px;height:18px;border-radius:50%">` : "", showPlan:true }; const chartKey = `${row.id}:${row.timeframe}:${row.exchange}`; const preserveView = chartKey === lastChartKey; lastChartKey = chartKey; if (chart) chart.setData(opts, { preserveView }); else chart = new window.TradePlanChart($("radar-chart"), opts); }
+  function renderChart() { const row = selectedRow(); if (!row || !window.LightweightCharts || !window.TradePlanChart) { $("selected-title").textContent = "График выбранной монеты"; $("selected-meta").textContent = "Запустите сканер и выберите найденный диапазон."; $("radar-chart").innerHTML = ""; chart = null; lastChartKey = null; resetSelectedChartRefreshTimer(); return; } selectedId = row.id; $("selected-title").textContent = `${row.ticker} · ${row.timeframe}`; $("selected-meta").textContent = `${row.exchange} · ${row.symbol} · вход ${money(row.levels.entry.value)} · тейк ${money(row.levels.take.value)}`; const opts = { candles:row.candles, range:row.range, levels:row.chartLevels, timeframe:row.timeframe, symbol:row.ticker, ticker:row.ticker, exchange:row.exchange, slug:row.slug, iconHtml:row.iconUrl ? `<img src="${row.iconUrl}" alt="" style="width:18px;height:18px;border-radius:50%">` : "", showPlan:true }; const chartKey = `${row.id}:${row.timeframe}:${row.exchange}`; const previousChartKey = lastChartKey; const preserveView = chartKey === lastChartKey; lastChartKey = chartKey; if (chart) chart.setData(opts, { preserveView }); else chart = new window.TradePlanChart($("radar-chart"), opts); if (chartKey !== previousChartKey) resetSelectedChartRefreshTimer(); }
   function renderSortHeaders() {
     document.querySelectorAll(".radar-table th[data-sort]").forEach((th) => {
       const key = th.dataset.sort;
@@ -329,6 +392,8 @@
     }
 
     activeScanController?.abort();
+    selectedChartController?.abort();
+    selectedChartRefreshing = false;
     const controller = new AbortController();
     activeScanController = controller;
 
@@ -530,7 +595,7 @@
     setRadarScanningState(false);
     $("radar-state").textContent = "Сканирование остановлено. Уже найденные результаты оставлены в таблице.";
   });
-  $("radar-rows").addEventListener("click", (e) => { const hideButton = e.target.closest("[data-hide]"); if (hideButton) { e.preventDefault(); e.stopPropagation(); hideTicker(hideButton.dataset.hide); return; } if (e.target.closest("a")) return; const tr = e.target.closest("tr[data-row-id]"); if (!tr) return; selectedId = tr.dataset.rowId; renderTable(); renderChart(); });
+  $("radar-rows").addEventListener("click", (e) => { const hideButton = e.target.closest("[data-hide]"); if (hideButton) { e.preventDefault(); e.stopPropagation(); hideTicker(hideButton.dataset.hide); return; } if (e.target.closest("a")) return; const tr = e.target.closest("tr[data-row-id]"); if (!tr) return; selectedId = tr.dataset.rowId; renderTable(); renderChart(); resetSelectedChartRefreshTimer(); });
   $("radar-blacklist")?.addEventListener("click", (event) => { const button = event.target.closest("[data-unhide]"); if (!button) return; unhideTicker(button.dataset.unhide); });
   document.querySelector(".radar-table thead")?.addEventListener("click", (event) => {
     const th = event.target.closest("th[data-sort]");
