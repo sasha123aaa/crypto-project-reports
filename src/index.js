@@ -16,10 +16,15 @@ import { orchestrateReportSources, publishReportReadiness } from "./lib/report-r
 import { brandingFromCoinGeckoAsset, isHttpsUrl, mergeBranding } from "./lib/branding.js";
 export { mergeBranding } from "./lib/branding.js";
 import { getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, REPORT_CACHE_VERSION, responseFromSnapshot, responseSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "./lib/report-cache.js";
+import { buildStrategyPlan, evaluateVirtualTrade } from "../public/assets/strategy-engine.js";
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/strategy/plan") return handleStrategyPlanApi(url, env);
+    if (url.pathname === "/api/strategy/trades") return handleStrategyTradesApi(url, env);
+    if (url.pathname === "/api/strategy/stats") return handleStrategyStatsApi(url, env);
+    if (url.pathname === "/api/strategy/active") return handleStrategyActiveApi(env);
     if (url.pathname === "/api/bull-radar") {
       return handleBullRadarApi(url);
     }
@@ -37,7 +42,128 @@ export default {
     }
     return env.ASSETS.fetch(request);
   },
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runStrategyMonitorBatch(env));
+  },
 };
+
+
+const STRATEGY_TIMEFRAMES = ["15m", "1h", "4h"];
+const STRATEGY_ENTRY_MODES = [0.31, 0.5, 0.75];
+const STRATEGY_BATCH_SIZE = 12;
+
+function strategyDb(env) { return env?.DB || env?.STRATEGY_DB || null; }
+function baseFromSymbol(symbol) { return String(symbol || "").toUpperCase().replace(/USDT$/, ""); }
+function strategyTradeId({ symbol, exchange, timeframe, entryMode, range }) {
+  return [exchange, symbol, timeframe, entryMode, range?.aTime || "a", range?.bTime || "b"].join(":");
+}
+function rowToTrade(row) {
+  return {
+    id:row.id, symbol:row.symbol, baseSymbol:row.base_symbol, exchange:row.exchange, timeframe:row.timeframe,
+    direction:row.direction, entryMode:row.entry_mode, range:JSON.parse(row.range_json || "null"), levels:JSON.parse(row.levels_json || "[]"),
+    status:row.status, openedAt:row.opened_at, updatedAt:row.updated_at, closedAt:row.closed_at,
+    entryPrice:row.entry_price, averagePrice:row.average_price, takePrice:row.take_price, currentPrice:row.current_price,
+    activatedLevels:row.activated_levels, usedCapitalPct:row.used_capital_pct, maxDrawdownPct:row.max_drawdown_pct,
+    currentPnlPct:row.current_pnl_pct, resultPct:row.result_pct, resultOnFullCapitalPct:row.result_on_full_capital_pct,
+  };
+}
+function tradeParams(trade) {
+  return [trade.id, trade.symbol, trade.baseSymbol, trade.exchange, trade.timeframe, trade.direction, trade.entryMode,
+    JSON.stringify(trade.range), JSON.stringify(trade.levels), trade.status, trade.openedAt, trade.updatedAt, trade.closedAt,
+    trade.entryPrice, trade.averagePrice, trade.takePrice, trade.currentPrice, trade.activatedLevels, trade.usedCapitalPct,
+    trade.maxDrawdownPct, trade.currentPnlPct, trade.resultPct, trade.resultOnFullCapitalPct];
+}
+async function putTrade(db, trade) {
+  await db.prepare(`INSERT OR REPLACE INTO virtual_trades (id,symbol,base_symbol,exchange,timeframe,direction,entry_mode,range_json,levels_json,status,opened_at,updated_at,closed_at,entry_price,average_price,take_price,current_price,activated_levels,used_capital_pct,max_drawdown_pct,current_pnl_pct,result_pct,result_on_full_capital_pct) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...tradeParams(trade)).run();
+}
+async function addTradeEvent(db, tradeId, eventType, price, levelIndex = null, payload = {}) {
+  const now = new Date().toISOString();
+  await db.prepare(`INSERT INTO virtual_trade_events (id,trade_id,event_type,event_time,price,level_index,payload_json) VALUES (?,?,?,?,?,?,?)`).bind(`${tradeId}:${eventType}:${Date.now()}:${Math.random().toString(16).slice(2)}`, tradeId, eventType, now, price, levelIndex, JSON.stringify(payload)).run();
+}
+function chartTradePayload(trade) {
+  if (!trade) return null;
+  return { id:trade.id, status:trade.status, entryMode:trade.entryMode, averagePrice:trade.averagePrice, takePrice:trade.takePrice, currentPrice:trade.currentPrice, usedCapitalPct:trade.usedCapitalPct, activatedLevels:trade.activatedLevels, maxDrawdownPct:trade.maxDrawdownPct, currentPnlPct:trade.currentPnlPct,
+    levels:(trade.levels || []).map((level, index) => ({ label:index === 0 ? "Вход" : `Уср. ${index}`, price:level.price, state:index < Number(trade.activatedLevels || 0) ? "filled" : "waiting" })) };
+}
+async function buildStrategyPlanForMarket({ symbol, exchange = "BYBIT", timeframe = "4h", entryMode = 0.5 }) {
+  const routes = [{ exchange, symbol, source:`${exchange} spot` }];
+  const candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50, timeoutMs:4500 });
+  if (!candleResult.route || !candleResult.candles.length) throw new Error("Candles unavailable");
+  const rangeData = activePreviewRangeForCandles(candleResult.candles);
+  const range = rangePayload(rangeData.range, rangeData.analysisCandles);
+  const currentPrice = Number(candleResult.candles.at(-1)?.close);
+  const plan = range?.bullish ? buildStrategyPlan({ range, entryMode, currentPrice, candles:candleResult.candles, capital:100 }) : null;
+  return { symbol:candleResult.symbol, exchange:candleResult.exchange, timeframe, range, currentPrice, candles:candleResult.candles, plan, activeTrade:null, updated_at:new Date().toISOString() };
+}
+async function handleStrategyPlanApi(url, env) {
+  try {
+    const base = String(url.searchParams.get("symbol") || "").toUpperCase().replace(/USDT$/, "");
+    const symbol = `${base}USDT`;
+    if (!base) return json({ error:"Missing symbol" }, 400, { cacheControl:"no-store" });
+    const payload = await buildStrategyPlanForMarket({ symbol, exchange:String(url.searchParams.get("exchange") || "BYBIT").toUpperCase(), timeframe:url.searchParams.get("timeframe") || "4h", entryMode:Number(url.searchParams.get("entryMode") || 0.5) });
+    const db = strategyDb(env);
+    if (db) {
+      const row = await db.prepare(`SELECT * FROM virtual_trades WHERE symbol=? AND timeframe=? AND exchange=? AND entry_mode=? AND status IN ('active','averaging','drawdown') ORDER BY updated_at DESC LIMIT 1`).bind(payload.symbol, payload.timeframe, payload.exchange, Number(url.searchParams.get("entryMode") || 0.5)).first().catch(() => null);
+      payload.activeTrade = chartTradePayload(row ? rowToTrade(row) : null);
+    }
+    return json(payload, 200, { cacheControl:"no-store" });
+  } catch (error) { return json({ error:"Strategy plan unavailable", reason:error.message }, 502, { cacheControl:"no-store" }); }
+}
+async function handleStrategyTradesApi(url, env) {
+  const db = strategyDb(env); if (!db) return json({ error:"Strategy database binding is not configured" }, 503, { cacheControl:"no-store" });
+  const symbol = String(url.searchParams.get("symbol") || "").toUpperCase();
+  const stmt = symbol ? db.prepare(`SELECT * FROM virtual_trades WHERE base_symbol=? OR symbol=? ORDER BY updated_at DESC LIMIT 100`).bind(baseFromSymbol(symbol), symbol.endsWith("USDT") ? symbol : `${symbol}USDT`) : db.prepare(`SELECT * FROM virtual_trades ORDER BY updated_at DESC LIMIT 100`);
+  const res = await stmt.all(); return json({ trades:(res.results || []).map(rowToTrade) }, 200, { cacheControl:"no-store" });
+}
+async function handleStrategyActiveApi(env) {
+  const db = strategyDb(env); if (!db) return json({ error:"Strategy database binding is not configured" }, 503, { cacheControl:"no-store" });
+  const res = await db.prepare(`SELECT * FROM virtual_trades WHERE status IN ('active','averaging','drawdown') ORDER BY updated_at DESC`).all();
+  return json({ trades:(res.results || []).map(rowToTrade) }, 200, { cacheControl:"no-store" });
+}
+async function handleStrategyStatsApi(url, env) {
+  const db = strategyDb(env); if (!db) return json({ error:"Strategy database binding is not configured" }, 503, { cacheControl:"no-store" });
+  const symbol = String(url.searchParams.get("symbol") || "").toUpperCase();
+  const stmt = symbol ? db.prepare(`SELECT * FROM strategy_stats WHERE symbol=? ORDER BY timeframe, entry_mode`).bind(baseFromSymbol(symbol)) : db.prepare(`SELECT * FROM strategy_stats ORDER BY symbol, timeframe, entry_mode`);
+  const res = await stmt.all(); return json({ stats:res.results || [] }, 200, { cacheControl:"no-store" });
+}
+async function runStrategyMonitorBatch(env) {
+  const db = strategyDb(env); if (!db) return;
+  const universe = await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
+  const jobs = universe.flatMap((asset) => STRATEGY_TIMEFRAMES.map((timeframe) => ({ asset, timeframe })));
+  const cursorRow = await db.prepare(`SELECT payload_json FROM virtual_trade_events WHERE trade_id='strategy-monitor' AND event_type='cursor' ORDER BY event_time DESC LIMIT 1`).first().catch(() => null);
+  const offset = Math.max(0, Number(JSON.parse(cursorRow?.payload_json || "{}")?.offset) || 0);
+  const batch = jobs.slice(offset, offset + STRATEGY_BATCH_SIZE);
+  for (const job of batch) await processStrategyJob(db, job).catch(() => {});
+  const nextOffset = offset + batch.length >= jobs.length ? 0 : offset + batch.length;
+  await addTradeEvent(db, "strategy-monitor", "cursor", null, null, { offset:nextOffset, total:jobs.length });
+}
+async function processStrategyJob(db, { asset, timeframe }) {
+  const built = await buildStrategyPlanForMarket({ symbol:asset.symbol, exchange:"BYBIT", timeframe, entryMode:0.5 });
+  if (!built.plan || !built.range?.bullish) return;
+  for (const entryMode of STRATEGY_ENTRY_MODES) {
+    const plan = buildStrategyPlan({ range:built.range, entryMode, currentPrice:built.currentPrice, candles:built.candles, capital:100 });
+    const id = strategyTradeId({ symbol:asset.symbol, exchange:"BYBIT", timeframe, entryMode, range:built.range });
+    const existing = await db.prepare(`SELECT * FROM virtual_trades WHERE id=?`).bind(id).first();
+    if (!existing && plan.activatedLevels <= 0) continue;
+    const oldTrade = existing ? rowToTrade(existing) : { id, symbol:asset.symbol, baseSymbol:asset.ticker, exchange:"BYBIT", timeframe, direction:"long", entryMode, range:built.range, levels:plan.levels, status:"active", openedAt:new Date().toISOString(), maxDrawdownPct:0 };
+    const updated = evaluateVirtualTrade({ trade:{ ...oldTrade, levels:plan.levels, range:built.range }, candles:built.candles, currentPrice:built.currentPrice });
+    updated.updatedAt = new Date().toISOString();
+    if (updated.status === "take_hit" && !updated.closedAt) updated.closedAt = updated.updatedAt;
+    updated.entryPrice = updated.entryPrice || plan.levels[getStrategyStartIndex(entryMode)]?.price || null;
+    await putTrade(db, updated);
+    if (!existing) await addTradeEvent(db, id, "opened", built.currentPrice, null, { entryMode, timeframe });
+    if (updated.status === "take_hit" && oldTrade.status !== "take_hit") await addTradeEvent(db, id, "take_hit", built.currentPrice, null, updated);
+    await refreshStrategyStats(db, asset.ticker, timeframe, entryMode, "BYBIT");
+  }
+}
+function getStrategyStartIndex(entryMode) { return Math.abs(Number(entryMode)-0.31)<0.001 ? 0 : Math.abs(Number(entryMode)-0.75)<0.001 ? 2 : 1; }
+async function refreshStrategyStats(db, symbol, timeframe, entryMode, exchange) {
+  const rows = (await db.prepare(`SELECT * FROM virtual_trades WHERE base_symbol=? AND timeframe=? AND entry_mode=? AND exchange=?`).bind(symbol, timeframe, entryMode, exchange).all()).results || [];
+  const total = rows.length || 0, takeHits = rows.filter(r => r.status === "take_hit").length;
+  const active = rows.filter(r => ["active","averaging"].includes(r.status)).length, dd = rows.filter(r => r.status === "drawdown").length;
+  const avg = (field) => { const vals = rows.map(r => Number(r[field])).filter(Number.isFinite); return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null; };
+  await db.prepare(`INSERT OR REPLACE INTO strategy_stats (key,symbol,timeframe,entry_mode,exchange,total_trades,take_hits,active_trades,drawdown_trades,avg_result_pct,avg_drawdown_pct,avg_time_to_take_minutes,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(`${exchange}:${symbol}:${timeframe}:${entryMode}`, symbol, timeframe, entryMode, exchange, total, takeHits, active, dd, avg("result_pct"), avg("max_drawdown_pct"), null, new Date().toISOString()).run();
+}
 
 const RADAR_UNIVERSE = [
   "BTC", "ETH", "BNB", "SOL", "LINK", "DOGE", "PEPE",
