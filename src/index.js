@@ -23,6 +23,9 @@ export default {
     if (url.pathname === "/api/bull-radar") {
       return handleBullRadarApi(url);
     }
+    if (url.pathname === "/api/radar-chart-candles") {
+      return handleRadarChartCandles(url);
+    }
     if (url.pathname.startsWith("/api/trade-plan-candles/")) {
       return handleTradePlanCandles(url);
     }
@@ -250,6 +253,65 @@ async function enrichRadarRowsWithMarket(rows, limit = 20) {
 
 function isRadarBudgetExceeded(startedAt, maxRuntimeMs) {
   return Date.now() - startedAt >= maxRuntimeMs;
+}
+
+async function handleRadarChartCandles(url) {
+  const symbol = String(url.searchParams.get("symbol") || "").toUpperCase();
+  const exchange = String(url.searchParams.get("exchange") || "BYBIT").toUpperCase();
+  const timeframe = String(url.searchParams.get("timeframe") || "4h");
+
+  if (!symbol || !symbol.endsWith("USDT")) {
+    return json({ error:"Missing or unsupported symbol" }, 400, { cacheControl:"no-store" });
+  }
+
+  if (!RADAR_EXCHANGES.has(exchange)) {
+    return json({ error:"Unsupported exchange" }, 400, { cacheControl:"no-store" });
+  }
+
+  if (!RADAR_TIMEFRAMES.has(timeframe)) {
+    return json({ error:"Unsupported timeframe" }, 400, { cacheControl:"no-store" });
+  }
+
+  try {
+    const routes = [{ exchange, symbol, source:`${exchange} spot` }];
+    const candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50, timeoutMs:4500 });
+    const candles = candleResult.candles || [];
+
+    if (!candleResult.route || !candles.length) {
+      return json({ error:"Candles unavailable", symbol, exchange, timeframe, attempts:candleResult.errors || [] }, 404, { cacheControl:"no-store" });
+    }
+
+    const rangeData = activePreviewRangeForCandles(candles);
+    const range = rangePayload(rangeData.range, rangeData.analysisCandles);
+    const firstCandle = candles[0] || null;
+    const lastCandle = candles[candles.length - 1] || null;
+
+    return json({
+      symbol:candleResult.symbol,
+      exchange:candleResult.exchange,
+      source:candleResult.source,
+      timeframe,
+      candles,
+      range,
+      rangeSource:rangeData.source,
+      updated_at:new Date().toISOString(),
+      last_candle_time:lastCandle?.time || null,
+      candle_debug:{
+        count:candles.length,
+        first_time:firstCandle?.time || null,
+        last_time:lastCandle?.time || null,
+        ascending:candles.every((c, index) => index === 0 || c.time > candles[index - 1].time),
+      },
+    }, 200, { cacheControl:"no-store, no-cache, must-revalidate, max-age=0" });
+  } catch (error) {
+    return json({
+      error:"Radar chart candles unavailable",
+      reason:error instanceof Error ? error.message : String(error),
+      symbol,
+      exchange,
+      timeframe,
+    }, 502, { cacheControl:"no-store" });
+  }
 }
 
 async function handleBullRadarApi(url) {

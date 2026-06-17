@@ -31,6 +31,14 @@ function toFiniteNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function normalizeChartTimestamp(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return NaN;
+  if (raw >= 1e12) return Math.floor(raw / 1000);
+  if (raw >= 1e10) return Math.floor(raw / 1000);
+  return Math.floor(raw);
+}
+
 function isExcludedBybitBase(base) {
   const symbol = String(base || "").toUpperCase();
 
@@ -246,7 +254,7 @@ export function activeRangeForCandles(candles) {
 
 function parseBybitKlineRow(row) {
   if (!Array.isArray(row) || row.length < 5) return null;
-  const time = Number(row[0]);
+  const time = normalizeChartTimestamp(row[0]);
   const open = Number(row[1]);
   const high = Number(row[2]);
   const low = Number(row[3]);
@@ -653,7 +661,7 @@ function parseGateKlineRow(row) {
   if (!Array.isArray(row) || row.length < 6) return null;
 
   return parseBybitKlineRow([
-    Number(row[0]) * 1000,
+    row[0],
     row[5],
     row[3],
     row[4],
