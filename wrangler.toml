@@ -5,3 +5,9 @@ compatibility_date = "2026-04-11"
 [assets]
 directory = "./public"
 binding = "ASSETS"
+
+# Replace REPLACE_WITH_REAL_D1_DATABASE_ID after creating the D1 database in Cloudflare.
+[[d1_databases]]
+binding = "DB"
+database_name = "crypto_strategy_trades"
+database_id = "REPLACE_WITH_REAL_D1_DATABASE_ID"
