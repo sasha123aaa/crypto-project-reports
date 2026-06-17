@@ -25,6 +25,7 @@ export default {
     if (url.pathname === "/api/strategy/trades") return handleStrategyTradesApi(url, env);
     if (url.pathname === "/api/strategy/stats") return handleStrategyStatsApi(url, env);
     if (url.pathname === "/api/strategy/active") return handleStrategyActiveApi(env);
+    if (url.pathname === "/api/strategy/status") return handleStrategyStatusApi(env);
     if (url.pathname === "/api/bull-radar") {
       return handleBullRadarApi(url);
     }
@@ -52,7 +53,7 @@ export default {
 };
 
 
-const STRATEGY_TIMEFRAMES = ["15m", "1h", "4h"];
+const STRATEGY_TIMEFRAMES = ["15m", "1h", "4h", "1d"];
 const STRATEGY_ENTRY_MODES = [0.31, 0.5, 0.75];
 const STRATEGY_BATCH_SIZE = 12;
 
@@ -89,6 +90,25 @@ function tradeParams(trade) {
 async function putTrade(db, trade) {
   await db.prepare(`INSERT OR REPLACE INTO virtual_trades (id,symbol,base_symbol,exchange,timeframe,direction,entry_mode,range_json,levels_json,status,opened_at,updated_at,closed_at,entry_price,average_price,take_price,current_price,activated_levels,used_capital_pct,max_drawdown_pct,current_pnl_pct,result_pct,result_on_full_capital_pct) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...tradeParams(trade)).run();
 }
+
+async function getMonitorState(db) {
+  const row = await db.prepare(
+    `SELECT value_json FROM strategy_monitor_state WHERE key='main' LIMIT 1`
+  ).first().catch(() => null);
+
+  try {
+    return row?.value_json ? JSON.parse(row.value_json) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function putMonitorState(db, state) {
+  await db.prepare(
+    `INSERT OR REPLACE INTO strategy_monitor_state (key,value_json,updated_at) VALUES ('main',?,?)`
+  ).bind(JSON.stringify(state), new Date().toISOString()).run();
+}
+
 async function addTradeEvent(db, tradeId, eventType, price, levelIndex = null, payload = {}) {
   const now = new Date().toISOString();
   await db.prepare(`INSERT INTO virtual_trade_events (id,trade_id,event_type,event_time,price,level_index,payload_json) VALUES (?,?,?,?,?,?,?)`).bind(`${tradeId}:${eventType}:${Date.now()}:${Math.random().toString(16).slice(2)}`, tradeId, eventType, now, price, levelIndex, JSON.stringify(payload)).run();
@@ -136,6 +156,55 @@ async function handleStrategyActiveApi(env) {
   const res = await db.prepare(`SELECT * FROM virtual_trades WHERE status IN ('active','averaging','drawdown') ORDER BY updated_at DESC`).all();
   return json({ trades:(res.results || []).map(rowToTrade) }, 200, { cacheControl:"no-store" });
 }
+
+async function handleStrategyStatusApi(env) {
+  const db = strategyDb(env);
+
+  if (!db) {
+    return json({
+      ok:true,
+      dbAvailable:false,
+      monitorActive:false,
+      message:"D1 database is not configured. Strategy memory works only as live plan calculation.",
+      timeframes:STRATEGY_TIMEFRAMES,
+      entryModes:STRATEGY_ENTRY_MODES,
+    }, 200, { cacheControl:"no-store" });
+  }
+
+  const monitorState = await getMonitorState(db);
+
+  const active = await db.prepare(
+    `SELECT COUNT(*) AS count FROM virtual_trades WHERE status IN ('active','averaging','drawdown')`
+  ).first().catch(() => ({ count:0 }));
+
+  const total = await db.prepare(
+    `SELECT COUNT(*) AS count FROM virtual_trades`
+  ).first().catch(() => ({ count:0 }));
+
+  const takes = await db.prepare(
+    `SELECT COUNT(*) AS count FROM virtual_trades WHERE status='take_hit'`
+  ).first().catch(() => ({ count:0 }));
+
+  const drawdown = await db.prepare(
+    `SELECT COUNT(*) AS count FROM virtual_trades WHERE status='drawdown'`
+  ).first().catch(() => ({ count:0 }));
+
+  return json({
+    ok:true,
+    dbAvailable:true,
+    monitorActive:true,
+    monitorState,
+    totals:{
+      totalTrades:Number(total?.count || 0),
+      activeTrades:Number(active?.count || 0),
+      takeHits:Number(takes?.count || 0),
+      drawdownTrades:Number(drawdown?.count || 0),
+    },
+    timeframes:STRATEGY_TIMEFRAMES,
+    entryModes:STRATEGY_ENTRY_MODES,
+  }, 200, { cacheControl:"no-store" });
+}
+
 async function handleStrategyStatsApi(url, env) {
   const db = strategyDb(env); if (!db) return strategyDbUnavailable();
   const symbol = String(url.searchParams.get("symbol") || "").toUpperCase();
@@ -147,14 +216,43 @@ async function runStrategyMonitorBatch(env) {
     console.log("Strategy DB is not configured. Skipping scheduled strategy monitor.");
     return;
   }
-  const universe = await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
-  const jobs = universe.flatMap((asset) => STRATEGY_TIMEFRAMES.map((timeframe) => ({ asset, timeframe })));
-  const cursorRow = await db.prepare(`SELECT payload_json FROM virtual_trade_events WHERE trade_id='strategy-monitor' AND event_type='cursor' ORDER BY event_time DESC LIMIT 1`).first().catch(() => null);
-  const offset = Math.max(0, Number(JSON.parse(cursorRow?.payload_json || "{}")?.offset) || 0);
-  const batch = jobs.slice(offset, offset + STRATEGY_BATCH_SIZE);
-  for (const job of batch) await processStrategyJob(db, job).catch(() => {});
-  const nextOffset = offset + batch.length >= jobs.length ? 0 : offset + batch.length;
-  await addTradeEvent(db, "strategy-monitor", "cursor", null, null, { offset:nextOffset, total:jobs.length });
+  let universe = [];
+  let jobs = [];
+  let batch = [];
+  let nextOffset = 0;
+  try {
+    universe = await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
+    jobs = universe.flatMap((asset) => STRATEGY_TIMEFRAMES.map((timeframe) => ({ asset, timeframe })));
+    const monitorState = await getMonitorState(db);
+    const offset = Math.max(0, Number(monitorState?.offset) || 0);
+    batch = jobs.slice(offset, offset + STRATEGY_BATCH_SIZE);
+    for (const job of batch) await processStrategyJob(db, job).catch((error) => console.log("Strategy monitor job failed", error?.message || error));
+    nextOffset = offset + batch.length >= jobs.length ? 0 : offset + batch.length;
+    await putMonitorState(db, {
+      lastRunAt:new Date().toISOString(),
+      offset:nextOffset,
+      totalJobs:jobs.length,
+      batchSize:STRATEGY_BATCH_SIZE,
+      processedJobs:batch.length,
+      timeframes:STRATEGY_TIMEFRAMES,
+      entryModes:STRATEGY_ENTRY_MODES,
+      universeSize:universe.length,
+    });
+  } catch (error) {
+    await putMonitorState(db, {
+      ...(await getMonitorState(db)),
+      lastRunAt:new Date().toISOString(),
+      offset:nextOffset,
+      totalJobs:jobs.length,
+      batchSize:STRATEGY_BATCH_SIZE,
+      processedJobs:batch.length,
+      timeframes:STRATEGY_TIMEFRAMES,
+      entryModes:STRATEGY_ENTRY_MODES,
+      universeSize:universe.length,
+      lastError:error?.message || String(error),
+    }).catch(() => {});
+    throw error;
+  }
 }
 async function processStrategyJob(db, { asset, timeframe }) {
   const built = await buildStrategyPlanForMarket({ symbol:asset.symbol, exchange:"BYBIT", timeframe, entryMode:0.5 });
@@ -170,7 +268,15 @@ async function processStrategyJob(db, { asset, timeframe }) {
     if (updated.status === "take_hit" && !updated.closedAt) updated.closedAt = updated.updatedAt;
     updated.entryPrice = updated.entryPrice || plan.levels[getStrategyStartIndex(entryMode)]?.price || null;
     await putTrade(db, updated);
-    if (!existing) await addTradeEvent(db, id, "opened", built.currentPrice, null, { entryMode, timeframe });
+    if (!existing) await addTradeEvent(db, id, "opened", built.currentPrice, 0, { entryMode, timeframe });
+    const previousActivated = Number(oldTrade.activatedLevels || 0);
+    const nextActivated = Number(updated.activatedLevels || 0);
+    if (nextActivated > previousActivated) {
+      for (let i = previousActivated; i < nextActivated; i++) {
+        await addTradeEvent(db, id, "level_filled", built.currentPrice, i, updated.levels?.[i] || {});
+      }
+    }
+    if (updated.status === "drawdown" && oldTrade.status !== "drawdown") await addTradeEvent(db, id, "drawdown", built.currentPrice, null, updated);
     if (updated.status === "take_hit" && oldTrade.status !== "take_hit") await addTradeEvent(db, id, "take_hit", built.currentPrice, null, updated);
     await refreshStrategyStats(db, asset.ticker, timeframe, entryMode, "BYBIT");
   }
