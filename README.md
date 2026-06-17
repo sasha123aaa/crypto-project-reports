@@ -18,3 +18,12 @@
    - `/`
    - `/reports/?slug=eth`
    - `/api/report/eth`
+
+## D1-память виртуальных сделок
+
+Стратегия использует D1 binding `DB` из `wrangler.toml`. После создания базы в Cloudflare замените placeholder `REPLACE_WITH_REAL_D1_DATABASE_ID` на реальный `database_id`.
+
+```bash
+npx wrangler d1 create crypto_strategy_trades
+npx wrangler d1 migrations apply crypto_strategy_trades
+```
