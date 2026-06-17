@@ -6,8 +6,16 @@ compatibility_date = "2026-04-11"
 directory = "./public"
 binding = "ASSETS"
 
-# Replace REPLACE_WITH_REAL_D1_DATABASE_ID after creating the D1 database in Cloudflare.
-[[d1_databases]]
-binding = "DB"
-database_name = "crypto_strategy_trades"
-database_id = "REPLACE_WITH_REAL_D1_DATABASE_ID"
+# Для включения памяти стратегии:
+# 1. Создать D1:
+#    npx wrangler d1 create crypto_strategy_trades
+# 2. Вставить реальный database_id в этот блок
+# 3. Применить миграции:
+#    npx wrangler d1 migrations apply crypto_strategy_trades
+#
+# Если реального database_id нет, binding должен оставаться закомментированным,
+# чтобы Cloudflare Workers deploy проходил без D1.
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "crypto_strategy_trades"
+# database_id = "REPLACE_WITH_REAL_D1_DATABASE_ID"
