@@ -43,6 +43,10 @@ export default {
     return env.ASSETS.fetch(request);
   },
   async scheduled(event, env, ctx) {
+    if (!hasStrategyDb(env)) {
+      console.log("Strategy DB is not configured. Skipping scheduled strategy monitor.");
+      return;
+    }
     ctx.waitUntil(runStrategyMonitorBatch(env));
   },
 };
@@ -53,6 +57,15 @@ const STRATEGY_ENTRY_MODES = [0.31, 0.5, 0.75];
 const STRATEGY_BATCH_SIZE = 12;
 
 function strategyDb(env) { return env?.DB || env?.STRATEGY_DB || null; }
+function hasStrategyDb(env) { return !!strategyDb(env); }
+function strategyDbUnavailable() {
+  return jsonResponse({
+    ok:false,
+    available:false,
+    reason:"D1 database is not configured",
+    message:"Память стратегии пока не подключена. Создайте D1 и добавьте database_id в wrangler.toml."
+  }, { status:200 });
+}
 function baseFromSymbol(symbol) { return String(symbol || "").toUpperCase().replace(/USDT$/, ""); }
 function strategyTradeId({ symbol, exchange, timeframe, entryMode, range }) {
   return [exchange, symbol, timeframe, entryMode, range?.aTime || "a", range?.bTime || "b"].join(":");
@@ -101,6 +114,9 @@ async function handleStrategyPlanApi(url, env) {
     const symbol = `${base}USDT`;
     if (!base) return json({ error:"Missing symbol" }, 400, { cacheControl:"no-store" });
     const payload = await buildStrategyPlanForMarket({ symbol, exchange:String(url.searchParams.get("exchange") || "BYBIT").toUpperCase(), timeframe:url.searchParams.get("timeframe") || "4h", entryMode:Number(url.searchParams.get("entryMode") || 0.5) });
+    payload.ok = true;
+    payload.dbAvailable = hasStrategyDb(env);
+    payload.activeTrade = null;
     const db = strategyDb(env);
     if (db) {
       const row = await db.prepare(`SELECT * FROM virtual_trades WHERE symbol=? AND timeframe=? AND exchange=? AND entry_mode=? AND status IN ('active','averaging','drawdown') ORDER BY updated_at DESC LIMIT 1`).bind(payload.symbol, payload.timeframe, payload.exchange, Number(url.searchParams.get("entryMode") || 0.5)).first().catch(() => null);
@@ -110,24 +126,27 @@ async function handleStrategyPlanApi(url, env) {
   } catch (error) { return json({ error:"Strategy plan unavailable", reason:error.message }, 502, { cacheControl:"no-store" }); }
 }
 async function handleStrategyTradesApi(url, env) {
-  const db = strategyDb(env); if (!db) return json({ error:"Strategy database binding is not configured" }, 503, { cacheControl:"no-store" });
+  const db = strategyDb(env); if (!db) return strategyDbUnavailable();
   const symbol = String(url.searchParams.get("symbol") || "").toUpperCase();
   const stmt = symbol ? db.prepare(`SELECT * FROM virtual_trades WHERE base_symbol=? OR symbol=? ORDER BY updated_at DESC LIMIT 100`).bind(baseFromSymbol(symbol), symbol.endsWith("USDT") ? symbol : `${symbol}USDT`) : db.prepare(`SELECT * FROM virtual_trades ORDER BY updated_at DESC LIMIT 100`);
   const res = await stmt.all(); return json({ trades:(res.results || []).map(rowToTrade) }, 200, { cacheControl:"no-store" });
 }
 async function handleStrategyActiveApi(env) {
-  const db = strategyDb(env); if (!db) return json({ error:"Strategy database binding is not configured" }, 503, { cacheControl:"no-store" });
+  const db = strategyDb(env); if (!db) return strategyDbUnavailable();
   const res = await db.prepare(`SELECT * FROM virtual_trades WHERE status IN ('active','averaging','drawdown') ORDER BY updated_at DESC`).all();
   return json({ trades:(res.results || []).map(rowToTrade) }, 200, { cacheControl:"no-store" });
 }
 async function handleStrategyStatsApi(url, env) {
-  const db = strategyDb(env); if (!db) return json({ error:"Strategy database binding is not configured" }, 503, { cacheControl:"no-store" });
+  const db = strategyDb(env); if (!db) return strategyDbUnavailable();
   const symbol = String(url.searchParams.get("symbol") || "").toUpperCase();
   const stmt = symbol ? db.prepare(`SELECT * FROM strategy_stats WHERE symbol=? ORDER BY timeframe, entry_mode`).bind(baseFromSymbol(symbol)) : db.prepare(`SELECT * FROM strategy_stats ORDER BY symbol, timeframe, entry_mode`);
   const res = await stmt.all(); return json({ stats:res.results || [] }, 200, { cacheControl:"no-store" });
 }
 async function runStrategyMonitorBatch(env) {
-  const db = strategyDb(env); if (!db) return;
+  const db = strategyDb(env); if (!db) {
+    console.log("Strategy DB is not configured. Skipping scheduled strategy monitor.");
+    return;
+  }
   const universe = await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
   const jobs = universe.flatMap((asset) => STRATEGY_TIMEFRAMES.map((timeframe) => ({ asset, timeframe })));
   const cursorRow = await db.prepare(`SELECT payload_json FROM virtual_trade_events WHERE trade_id='strategy-monitor' AND event_type='cursor' ORDER BY event_time DESC LIMIT 1`).first().catch(() => null);
@@ -1490,3 +1509,4 @@ function resolveReportCacheControl(dataStatus){
     : "public, max-age=60, s-maxage=120, stale-while-revalidate=900";
 }
 function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ return new Response(JSON.stringify(data,null,2),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":cacheControl}}); }
+function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
