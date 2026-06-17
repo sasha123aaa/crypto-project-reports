@@ -19,3 +19,6 @@ binding = "ASSETS"
 # binding = "DB"
 # database_name = "crypto_strategy_trades"
 # database_id = "REPLACE_WITH_REAL_D1_DATABASE_ID"
+
+[triggers]
+crons = ["*/15 * * * *"]
