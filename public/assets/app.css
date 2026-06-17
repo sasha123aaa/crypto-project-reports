@@ -1292,15 +1292,26 @@ body{min-height:100vh;background:radial-gradient(circle at 72% -10%,rgba(91,116,
   fill:#dce7ff;
   stroke:#2f6bff;
   stroke-width:2;
-  cursor:pointer;
+  cursor:grab;
   pointer-events:all;
   filter:drop-shadow(0 2px 4px rgba(0,0,0,.35));
+}
+
+.trade-drawing-overlay .drawing-handle:active{
+  cursor:grabbing;
 }
 
 .trade-drawing-overlay .drawing-handle:hover{
   fill:#ffffff;
   stroke:#4f7cff;
   r:6;
+}
+
+.trade-drawing-overlay .drawing-hitbox{
+  stroke:transparent;
+  stroke-width:12;
+  fill:none;
+  pointer-events:stroke;
 }
 
 .trade-drawing-overlay .drawing-line,
