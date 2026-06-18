@@ -56,3 +56,31 @@ test("/api/strategy/status without D1 returns dbAvailable false", async () => {
     drawdownTrades:0,
   });
 });
+
+test("/api/strategy/active without D1 returns an empty trades list", async () => {
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/active"), {});
+  const payload = await readJson(response);
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.dbAvailable, false);
+  assert.deepEqual(payload.trades, []);
+});
+
+test("/api/strategy/trades?limit=50 without symbol works without D1", async () => {
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/trades?limit=50"), {});
+  const payload = await readJson(response);
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.dbAvailable, false);
+  assert.deepEqual(payload.trades, []);
+});
+
+test("/api/strategy/stats without symbol works without D1", async () => {
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/stats"), {});
+  const payload = await readJson(response);
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.dbAvailable, false);
+  assert.deepEqual(payload.stats, []);
+  assert.equal(payload.aggregate.totalTrades, 0);
+});
