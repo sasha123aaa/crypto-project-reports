@@ -10,6 +10,7 @@
   const RADAR_BLACKLIST_KEY = "bullRadar:blacklist:v1";
   const RADAR_CHART_REFRESH_MS = 60_000;
   let rawRows = [], rows = [], selectedId = null, chart = null, lastUpdated = null, lastChartKey = null;
+  let strategyRadarStats = {};
   let sortState = { key: "distanceToEntryAbs", dir: "asc" };
   let scanGeneration = 0;
   let isScanning = false;
@@ -111,6 +112,10 @@
 
     return descFirst.has(key) ? "desc" : "asc";
   }
+
+  function rowStrategyStats(row) { return strategyRadarStats?.[String(row?.ticker||"").toUpperCase()]?.[row?.timeframe] || null; }
+  function strategyStatsHtml(row) { const st=rowStrategyStats(row); if(!st) return "Истории нет"; return `Сделок: ${escapeHtml(st.totalTrades)} · Тейков: ${escapeHtml(st.takeHits)} · Winrate: ${Number(st.winrate||0).toFixed(0)}% · Макс. уср: ${escapeHtml(st.maxActivatedLevels)} · Ср. просадка: ${pct(st.avgDrawdownPct)} · Результат: ${pct(st.estimatedFullCapitalResultPct)} · Лучший режим: ${escapeHtml(st.bestEntryMode)} · Активная сделка: ${st.activeTrade?escapeHtml(st.activeTrade.status||"да"):"нет"}`; }
+  async function loadStrategyRadarStatsForRows(list) { const symbols=[...new Set((list||[]).map(r=>String(r.ticker||"").toUpperCase()).filter(Boolean))]; if(!symbols.length) return; const tfs=[...new Set((list||[]).map(r=>r.timeframe).filter(Boolean))]; strategyRadarStats={}; for(const tf of tfs){ try{ const response=await fetch(`/api/strategy/radar-stats?symbols=${encodeURIComponent(symbols.join(","))}&timeframe=${encodeURIComponent(tf)}&_=${Date.now()}`,{cache:"no-store"}); const payload=await response.json().catch(()=>({})); if(payload?.stats) strategyRadarStats={...strategyRadarStats,...payload.stats}; }catch(error){ console.warn("Strategy radar stats unavailable", error); } } }
 
   function sortValue(row, key) {
     switch (key) {
@@ -331,6 +336,7 @@
         rawRows = rawRows.filter((item) => item.id !== row.id);
         if (selectedId === row.id) selectedId = null;
         $("radar-state").textContent = `${row.ticker} ${row.timeframe}: бычий диапазон больше не активен. Строка убрана из радара.`;
+        await loadStrategyRadarStatsForRows(rawRows);
         renderAll();
         resetSelectedChartRefreshTimer();
         return;
@@ -339,6 +345,7 @@
       const nextPrice = Number(updatedLast?.close);
       rawRows = rawRows.map((item) => item.id !== row.id ? item : { ...item, candles:nextCandles, range:nextRange, price:Number.isFinite(nextPrice) ? nextPrice : item.price });
       lastUpdated = data.updated_at || new Date().toISOString();
+      await loadStrategyRadarStatsForRows(rawRows);
       renderAll();
     } catch (error) {
       if (error?.name !== "AbortError") {
@@ -353,7 +360,7 @@
     }
   }
   function tradePlanUrl(row) { const s = settings(); const params = new URLSearchParams({ slug:row.slug, timeframe:row.timeframe, exchange:row.exchange || "BYBIT", entryFib:String(s.entryFib), averageCount:String(s.averageCount), avgFibs:s.avgFibs.slice(0, s.averageCount).join(",") }); return `/trade-plan/?${params.toString()}`; }
-  function renderTable() { if (!rows.length && rawRows.length) $("radar-state").textContent = "Бычьи диапазоны по выбранным настройкам не найдены."; $("radar-rows").innerHTML = rows.map((r) => `<tr data-row-id="${r.id}" class="${r.id === selectedId ? "active" : ""}"><td><div class="radar-coin">${radarCoinIconHtml(r)}<b>${r.ticker}</b><span>${r.name || ""}</span></div></td><td>${r.timeframe}</td><td>${r.exchange}</td><td>${money(r.price)}</td><td class="${hasNumber(r.change24hPct) ? (Number(r.change24hPct) >= 0 ? "pos" : "neg") : ""}">${pct(r.change24hPct)}</td><td>${pct(r.metrics.distanceToEntryPct)}</td><td>${pct(r.metrics.rangePct)}</td><td>${money(r.levels.entry.value)}</td><td>${money(r.levels.averages[0]?.value)}</td><td>${money(r.levels.averages[1]?.value)}</td><td>${money(r.levels.averages[2]?.value)}</td><td>${money(r.levels.take.value)}</td><td>${pct(r.metrics.potentialToTakePct)}</td><td>${compact(r.volume24h)}</td><td><span class="radar-status ${statusClass(r.metrics.status)}">${r.metrics.status}</span></td><td class="radar-row-actions"><button data-show="${r.id}">Показать график</button><a href="${tradePlanUrl(r)}">Торговый план</a><a href="/reports/?slug=${encodeURIComponent(r.slug)}">Отчет</a><button data-hide="${escapeHtml(r.ticker)}">Скрыть</button></td></tr>`).join(""); }
+  function renderTable() { if (!rows.length && rawRows.length) $("radar-state").textContent = "Бычьи диапазоны по выбранным настройкам не найдены."; $("radar-rows").innerHTML = rows.map((r) => `<tr data-row-id="${r.id}" class="${r.id === selectedId ? "active" : ""}"><td><div class="radar-coin">${radarCoinIconHtml(r)}<b>${r.ticker}</b><span>${r.name || ""}</span></div></td><td>${r.timeframe}</td><td>${r.exchange}</td><td>${money(r.price)}</td><td class="${hasNumber(r.change24hPct) ? (Number(r.change24hPct) >= 0 ? "pos" : "neg") : ""}">${pct(r.change24hPct)}</td><td>${pct(r.metrics.distanceToEntryPct)}</td><td>${pct(r.metrics.rangePct)}</td><td>${money(r.levels.entry.value)}</td><td>${money(r.levels.averages[0]?.value)}</td><td>${money(r.levels.averages[1]?.value)}</td><td>${money(r.levels.averages[2]?.value)}</td><td>${money(r.levels.take.value)}</td><td>${pct(r.metrics.potentialToTakePct)}</td><td>${compact(r.volume24h)}</td><td><span class="radar-status ${statusClass(r.metrics.status)}">${r.metrics.status}</span></td>${rowStrategyStats(r)?`<td>${escapeHtml(rowStrategyStats(r).totalTrades)}</td><td>${escapeHtml(rowStrategyStats(r).takeHits)}</td><td>${Number(rowStrategyStats(r).winrate||0).toFixed(0)}%</td><td>${escapeHtml(rowStrategyStats(r).maxActivatedLevels)}</td><td>${pct(rowStrategyStats(r).avgDrawdownPct)}</td><td>${pct(rowStrategyStats(r).estimatedFullCapitalResultPct)}</td><td>${escapeHtml(rowStrategyStats(r).bestEntryMode)}</td><td>${rowStrategyStats(r).activeTrade?escapeHtml(rowStrategyStats(r).activeTrade.status||"да"):"нет"}</td>`:`<td colspan="8">Истории нет</td>`}<td class="radar-row-actions"><button data-show="${r.id}">Показать график</button><a href="${tradePlanUrl(r)}">Торговый план</a><a href="/reports/?slug=${encodeURIComponent(r.slug)}">Отчет</a><button data-hide="${escapeHtml(r.ticker)}">Скрыть</button></td></tr>`).join(""); }
   function renderChart() { const row = selectedRow(); if (!row || !window.LightweightCharts || !window.TradePlanChart) { $("selected-title").textContent = "График выбранной монеты"; $("selected-meta").textContent = "Запустите сканер и выберите найденный диапазон."; $("radar-chart").innerHTML = ""; chart = null; lastChartKey = null; resetSelectedChartRefreshTimer(); return; } selectedId = row.id; $("selected-title").textContent = `${row.ticker} · ${row.timeframe}`; $("selected-meta").textContent = `${row.exchange} · ${row.symbol} · вход ${money(row.levels.entry.value)} · тейк ${money(row.levels.take.value)}`; const opts = { candles:row.candles, range:row.range, levels:row.chartLevels, timeframe:row.timeframe, symbol:row.ticker, ticker:row.ticker, exchange:row.exchange, slug:row.slug, iconHtml:row.iconUrl ? `<img src="${row.iconUrl}" alt="" style="width:18px;height:18px;border-radius:50%">` : "", showPlan:true }; const chartKey = `${row.id}:${row.timeframe}:${row.exchange}`; const previousChartKey = lastChartKey; const preserveView = chartKey === lastChartKey; lastChartKey = chartKey; if (chart) chart.setData(opts, { preserveView }); else chart = new window.TradePlanChart($("radar-chart"), opts); if (chartKey !== previousChartKey) resetSelectedChartRefreshTimer(); }
   function renderSortHeaders() {
     document.querySelectorAll(".radar-table th[data-sort]").forEach((th) => {
