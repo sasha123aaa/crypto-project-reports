@@ -26,6 +26,8 @@ export default {
     if (url.pathname === "/api/strategy/trades") return handleStrategyTradesApi(url, env);
     if (url.pathname === "/api/strategy/stats") return handleStrategyStatsApi(url, env);
     if (url.pathname === "/api/strategy/radar-stats") return handleStrategyRadarStatsApi(url, env);
+    if (url.pathname === "/api/strategy/repair-schema") return handleStrategyRepairSchemaApi(request, env);
+    if (url.pathname === "/api/strategy/rebuild-stats") return handleStrategyRebuildStatsApi(request, env);
     if (url.pathname === "/api/strategy/active") return handleStrategyActiveApi(env);
     if (url.pathname === "/api/strategy/status") return handleStrategyStatusApi(env);
     if (url.pathname === "/api/strategy/run-monitor") return handleStrategyRunMonitorApi(request, env);
@@ -102,6 +104,65 @@ function tradeParams(trade) {
 }
 async function putTrade(db, trade) {
   await db.prepare(`INSERT OR REPLACE INTO virtual_trades (id,symbol,base_symbol,exchange,timeframe,direction,entry_mode,range_json,levels_json,status,opened_at,updated_at,closed_at,entry_price,average_price,take_price,current_price,activated_levels,used_capital_pct,max_drawdown_pct,current_pnl_pct,result_pct,result_on_full_capital_pct) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...tradeParams(trade)).run();
+}
+
+
+async function ensureStrategySchema(db) {
+  if (!db) return { ok:false, repaired:false };
+
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS virtual_trades (
+      id TEXT PRIMARY KEY, symbol TEXT, base_symbol TEXT, exchange TEXT, timeframe TEXT, direction TEXT, entry_mode REAL,
+      range_json TEXT, levels_json TEXT, status TEXT, opened_at TEXT, updated_at TEXT, closed_at TEXT, entry_price REAL,
+      average_price REAL, take_price REAL, current_price REAL, activated_levels INTEGER, used_capital_pct REAL,
+      max_drawdown_pct REAL, current_pnl_pct REAL, result_pct REAL, result_on_full_capital_pct REAL
+    )
+  `).run();
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS virtual_trade_events (
+      id TEXT PRIMARY KEY, trade_id TEXT, event_type TEXT, event_time TEXT, price REAL, level_index INTEGER, payload_json TEXT
+    )
+  `).run();
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS strategy_stats (
+      key TEXT PRIMARY KEY, symbol TEXT, timeframe TEXT, entry_mode REAL, exchange TEXT, total_trades INTEGER, take_hits INTEGER,
+      active_trades INTEGER, drawdown_trades INTEGER, avg_result_pct REAL, avg_drawdown_pct REAL, avg_time_to_take_minutes REAL, updated_at TEXT
+    )
+  `).run();
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS strategy_monitor_state (
+      key TEXT PRIMARY KEY, value_json TEXT, updated_at TEXT
+    )
+  `).run();
+
+  const added = [];
+  async function ensureColumn(table, column, ddl) {
+    const info = await db.prepare(`PRAGMA table_info(${table})`).all().catch(() => ({ results:[] }));
+    const exists = (info.results || []).some((row) => row.name === column);
+    if (!exists) {
+      await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`).run();
+      added.push(`${table}.${column}`);
+    }
+  }
+
+  await ensureColumn("strategy_stats", "max_activated_levels", "INTEGER");
+  await ensureColumn("strategy_stats", "avg_used_capital_pct", "REAL");
+  await ensureColumn("strategy_stats", "best_result_pct", "REAL");
+  await ensureColumn("strategy_stats", "worst_drawdown_pct", "REAL");
+  await ensureColumn("strategy_stats", "closed_full_capital_result_pct", "REAL");
+  await ensureColumn("strategy_stats", "active_unrealized_full_capital_pct", "REAL");
+
+  return { ok:true, repaired:added.length > 0, added };
+}
+
+function deriveTradeStatus(plan) {
+  if (plan.status === "take_hit") return "take_hit";
+  const activatedLevels = Number(plan.activatedLevels || 0);
+  const currentPnlPct = Number(plan.currentPnlPct);
+  if (activatedLevels <= 0) return "waiting_entry";
+  if (Number.isFinite(currentPnlPct) && currentPnlPct < 0) return "drawdown";
+  if (activatedLevels > 1) return "averaging";
+  return "active";
 }
 
 async function getMonitorState(db) {
@@ -182,6 +243,7 @@ async function handleStrategyPlanApi(url, env) {
 }
 async function handleStrategyTradesApi(url, env) {
   const db = strategyDb(env); if (!db) return strategyDbUnavailable({ trades:[] });
+  await ensureStrategySchema(db);
   const symbol = String(url.searchParams.get("symbol") || "").toUpperCase();
   const limit = clampLimit(url.searchParams.get("limit"), 50, 100);
   const stmt = symbol
@@ -191,6 +253,7 @@ async function handleStrategyTradesApi(url, env) {
 }
 async function handleStrategyActiveApi(env) {
   const db = strategyDb(env); if (!db) return strategyDbUnavailable({ trades:[] });
+  await ensureStrategySchema(db);
   const res = await db.prepare(`SELECT * FROM virtual_trades WHERE status IN ('active','averaging','drawdown') ORDER BY updated_at DESC`).all();
   return json({ ok:true, dbAvailable:true, trades:(res.results || []).map(rowToTrade) }, 200, { cacheControl:"no-store" });
 }
@@ -224,6 +287,7 @@ async function handleStrategyStatusApi(env) {
     }, 200, { cacheControl:"no-store" });
   }
 
+  await ensureStrategySchema(db);
   const monitorState = { ...baseMonitorState, ...(await getMonitorState(db)) };
   const backfillState = { lastRunAt:null, offset:0, totalJobs:0, processedJobs:0, batchSize:5, timeframes:STRATEGY_TIMEFRAMES, entryModes:STRATEGY_ENTRY_MODES, universeSize:0, universeSource:null, universeWarning:null, lastError:null, ...(await getBackfillState(db)) };
 
@@ -275,9 +339,11 @@ async function handleStrategyRunMonitorApi(request, env) {
     return json({ ok:false, message:"Invalid strategy admin key" }, 403, { cacheControl:"no-store" });
   }
 
-  if (!env.DB) {
+  const db = strategyDb(env);
+  if (!db) {
     return json({ ok:false, dbAvailable:false, message:"D1 database is not configured" }, 200, { cacheControl:"no-store" });
   }
+  await ensureStrategySchema(db);
 
   try {
     const result = await runStrategyMonitorBatch(env);
@@ -295,6 +361,7 @@ async function handleStrategyBackfillApi(request, env) {
   if (providedKey !== adminKey) return json({ ok:false, message:"Invalid strategy admin key" }, 403, { cacheControl:"no-store" });
   const db = strategyDb(env);
   if (!db) return json({ ok:false, dbAvailable:false }, 200, { cacheControl:"no-store" });
+  await ensureStrategySchema(db);
 
   try {
     const result = await runStrategyBackfillBatch(db, url);
@@ -309,6 +376,38 @@ async function handleStrategyBackfillApi(request, env) {
   }
 }
 
+async function handleStrategyRepairSchemaApi(request, env) {
+  const url = new URL(request.url);
+  const adminKey = env.STRATEGY_ADMIN_KEY;
+  const providedKey = url.searchParams.get("key") || request.headers.get("x-strategy-admin-key");
+  if (!adminKey || providedKey !== adminKey) return json({ ok:false, message:"Invalid strategy admin key" }, 403, { cacheControl:"no-store" });
+  const db = strategyDb(env);
+  if (!db) return json({ ok:false, dbAvailable:false }, 200, { cacheControl:"no-store" });
+  const result = await ensureStrategySchema(db);
+  return json({ ok:true, dbAvailable:true, ...result }, 200, { cacheControl:"no-store" });
+}
+
+async function handleStrategyRebuildStatsApi(request, env) {
+  const url = new URL(request.url);
+  const adminKey = env.STRATEGY_ADMIN_KEY;
+  const providedKey = url.searchParams.get("key") || request.headers.get("x-strategy-admin-key");
+  if (!adminKey || providedKey !== adminKey) return json({ ok:false, message:"Invalid strategy admin key" }, 403, { cacheControl:"no-store" });
+  const db = strategyDb(env);
+  if (!db) return json({ ok:false, dbAvailable:false }, 200, { cacheControl:"no-store" });
+  await ensureStrategySchema(db);
+  const groups = (await db.prepare(`
+    SELECT DISTINCT base_symbol AS symbol, timeframe, entry_mode AS entryMode, exchange
+    FROM virtual_trades
+    WHERE base_symbol IS NOT NULL AND timeframe IS NOT NULL AND entry_mode IS NOT NULL AND exchange IS NOT NULL
+  `).all()).results || [];
+  let rebuilt = 0;
+  for (const group of groups) {
+    await refreshStrategyStats(db, group.symbol, group.timeframe, Number(group.entryMode), group.exchange);
+    rebuilt += 1;
+  }
+  return json({ ok:true, dbAvailable:true, groups:groups.length, rebuilt }, 200, { cacheControl:"no-store" });
+}
+
 function requestedList(value, fallback, normalize = (x) => x) {
   const raw = String(value || "").trim();
   return raw ? [normalize(raw)] : fallback;
@@ -316,6 +415,7 @@ function requestedList(value, fallback, normalize = (x) => x) {
 
 async function runStrategyBackfillBatch(envOrDb, options = {}) {
   const db = strategyDb(envOrDb) || envOrDb;
+  if (db) await ensureStrategySchema(db);
   const params = options instanceof URL ? options.searchParams : new URLSearchParams();
   if (!(options instanceof URL) && options && typeof options === "object") for (const [key, value] of Object.entries(options)) if (value != null) params.set(key, String(value));
   const limit = clampLimit(params.get("limit"), 5, 20);
@@ -462,6 +562,7 @@ function aggregateStrategyStats(rows) {
 }
 async function handleStrategyStatsApi(url, env) {
   const db = strategyDb(env); if (!db) return strategyDbUnavailable({ stats:[], aggregate:aggregateStrategyStats([]) });
+  await ensureStrategySchema(db);
   const symbol = String(url.searchParams.get("symbol") || "").toUpperCase();
   const stmt = symbol ? db.prepare(`SELECT * FROM strategy_stats WHERE symbol=? ORDER BY timeframe, entry_mode`).bind(baseFromSymbol(symbol)) : db.prepare(`SELECT * FROM strategy_stats ORDER BY symbol, timeframe, entry_mode`);
   const res = await stmt.all();
@@ -471,6 +572,7 @@ async function handleStrategyStatsApi(url, env) {
 
 async function handleStrategyRadarStatsApi(url, env) {
   const db = strategyDb(env); if (!db) return strategyDbUnavailable({ stats:{} });
+  await ensureStrategySchema(db);
   const symbols = String(url.searchParams.get("symbols") || "").split(",").map(baseFromSymbol).filter(Boolean);
   const timeframe = String(url.searchParams.get("timeframe") || "").trim();
   if (!symbols.length) return json({ ok:true, dbAvailable:true, stats:{} }, 200, { cacheControl:"no-store" });
@@ -482,16 +584,89 @@ async function handleStrategyRadarStatsApi(url, env) {
       const tf = row.timeframe;
       out[symbol] ||= {};
       const total = Number(row.total_trades || 0), takes = Number(row.take_hits || 0);
-      out[symbol][tf] = { bestEntryMode:Number(row.entry_mode), totalTrades:total, takeHits:takes, winrate:total ? takes / total * 100 : 0, maxActivatedLevels:Number(row.max_activated_levels || 0), avgDrawdownPct:row.avg_drawdown_pct, avgResultPct:row.avg_result_pct, estimatedFullCapitalResultPct:Number(row.avg_result_pct || 0) * total, activeTrade:(activeRows.find((t)=>t.timeframe===tf) ? rowToTrade(activeRows.find((t)=>t.timeframe===tf)) : null) };
+      out[symbol][tf] = { bestEntryMode:Number(row.entry_mode), totalTrades:total, takeHits:takes, winrate:total ? takes / total * 100 : 0, maxActivatedLevels:Number(row.max_activated_levels || 0), avgDrawdownPct:row.avg_drawdown_pct, avgResultPct:row.avg_result_pct, estimatedFullCapitalResultPct:Number(row.closed_full_capital_result_pct ?? (Number(row.avg_result_pct || 0) * total)), activeUnrealizedFullCapitalResultPct:row.active_unrealized_full_capital_pct, activeTrade:(activeRows.find((t)=>t.timeframe===tf) ? rowToTrade(activeRows.find((t)=>t.timeframe===tf)) : null) };
+    }
+    const fallback = await aggregateRadarStatsFromTrades(db, symbol, timeframe);
+    for (const [tf, summary] of fallback.entries()) {
+      out[symbol] ||= {};
+      if (!out[symbol][tf] || Number(out[symbol][tf].totalTrades || 0) <= 0) out[symbol][tf] = summary;
+      else if (!out[symbol][tf].activeTrade && summary.activeTrade) {
+        out[symbol][tf].activeTrade = summary.activeTrade;
+        out[symbol][tf].activeUnrealizedFullCapitalResultPct = summary.activeUnrealizedFullCapitalResultPct;
+      }
     }
   }
   return json({ ok:true, dbAvailable:true, stats:out }, 200, { cacheControl:"no-store" });
+}
+
+function summarizeRadarRows(rows, tf, bestEntryMode) {
+  const activeStatuses = new Set(["active", "averaging", "drawdown"]);
+  const selected = rows.filter((row) => row.timeframe === tf && Number(row.entry_mode) === Number(bestEntryMode));
+  const activeRows = selected.filter((row) => activeStatuses.has(row.status));
+  const closedRows = selected.filter((row) => row.status === "take_hit");
+  const finite = (value) => { const number = Number(value); return Number.isFinite(number) ? number : null; };
+  const avg = (field, sourceRows = selected) => {
+    const values = sourceRows.map((row) => finite(row[field])).filter(Number.isFinite);
+    return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+  };
+  const closedFullCapitalResultPct = closedRows.map((row) => finite(row.result_on_full_capital_pct)).filter(Number.isFinite).reduce((a, b) => a + b, 0);
+  const activeUnrealizedFullCapitalResultPct = activeRows.reduce((total, row) => {
+    const pnl = finite(row.current_pnl_pct);
+    const used = finite(row.used_capital_pct);
+    return Number.isFinite(pnl) && Number.isFinite(used) ? total + pnl * (used / 100) : total;
+  }, 0);
+  const totalTrades = selected.length || activeRows.length;
+  const takeHits = closedRows.length;
+  return {
+    bestEntryMode:Number(bestEntryMode),
+    totalTrades,
+    takeHits,
+    winrate:totalTrades ? takeHits / totalTrades * 100 : 0,
+    maxActivatedLevels:Math.max(0, ...selected.map((row) => Number(row.activated_levels || 0))),
+    avgDrawdownPct:avg("max_drawdown_pct"),
+    avgResultPct:avg("result_pct", closedRows),
+    estimatedFullCapitalResultPct:closedFullCapitalResultPct,
+    activeUnrealizedFullCapitalResultPct,
+    activeTrade:activeRows[0] ? rowToTrade(activeRows[0]) : null,
+  };
+}
+
+async function aggregateRadarStatsFromTrades(db, symbol, timeframe = "") {
+  const rows = (await db.prepare(`
+    SELECT *
+    FROM virtual_trades
+    WHERE base_symbol=?
+      ${timeframe ? "AND timeframe=?" : ""}
+    ORDER BY updated_at DESC
+  `).bind(...(timeframe ? [symbol, timeframe] : [symbol])).all().catch(() => ({ results:[] }))).results || [];
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = `${row.timeframe}:${row.entry_mode}`;
+    const current = grouped.get(key) || { timeframe:row.timeframe, entryMode:Number(row.entry_mode), rows:[] };
+    current.rows.push(row);
+    grouped.set(key, current);
+  }
+  const byTimeframe = new Map();
+  for (const group of grouped.values()) {
+    const summary = summarizeRadarRows(group.rows, group.timeframe, group.entryMode);
+    const current = byTimeframe.get(group.timeframe);
+    if (!current || compareRadarSummary(summary, current) < 0) byTimeframe.set(group.timeframe, summary);
+  }
+  return byTimeframe;
+}
+
+function compareRadarSummary(a, b) {
+  return (Number(b.takeHits || 0) - Number(a.takeHits || 0))
+    || (Number(b.estimatedFullCapitalResultPct || 0) - Number(a.estimatedFullCapitalResultPct || 0))
+    || (Number(b.totalTrades || 0) - Number(a.totalTrades || 0))
+    || (Number(a.avgDrawdownPct ?? 0) - Number(b.avgDrawdownPct ?? 0));
 }
 async function runStrategyMonitorBatch(env) {
   const db = strategyDb(env); if (!db) {
     console.log("Strategy DB is not configured. Skipping scheduled strategy monitor.");
     return;
   }
+  await ensureStrategySchema(db);
   let universe = [];
   let jobs = [];
   let batch = [];
@@ -553,11 +728,12 @@ async function processStrategyJob(db, { asset, timeframe, entryMode }) {
 
 async function upsertStrategyTradeFromPlan(db, { source, symbol, baseSymbol, exchange = "BYBIT", timeframe, entryMode, range, plan, currentPrice }) {
   if (!db || !plan || Number(plan.activatedLevels || 0) <= 0) return { created:false, updated:false };
+  await ensureStrategySchema(db);
   const id = source === "backfill" && plan.id ? plan.id : strategyTradeId({ symbol, exchange, timeframe, entryMode, range });
   const existing = await db.prepare(`SELECT * FROM virtual_trades WHERE id=?`).bind(id).first().catch(() => null);
   const oldTrade = existing ? rowToTrade(existing) : null;
   const now = new Date().toISOString();
-  const status = plan.status === "take_hit" ? "take_hit" : (Number(plan.maxDrawdownPct || 0) <= -1 ? "drawdown" : (Number(plan.activatedLevels || 0) > 1 ? "averaging" : "active"));
+  const status = deriveTradeStatus(plan);
   const trade = {
     id, symbol, baseSymbol:baseSymbol || baseFromSymbol(symbol), exchange, timeframe, direction:"long", entryMode, range, levels:plan.levels || [], status,
     openedAt:oldTrade?.openedAt || plan.openedAt || now, updatedAt:now, closedAt:status === "take_hit" ? (oldTrade?.closedAt || plan.closedAt || now) : null,
@@ -575,11 +751,40 @@ async function upsertStrategyTradeFromPlan(db, { source, symbol, baseSymbol, exc
   return { created:!existing, updated:!!existing, trade };
 }
 async function refreshStrategyStats(db, symbol, timeframe, entryMode, exchange) {
+  await ensureStrategySchema(db);
   const rows = (await db.prepare(`SELECT * FROM virtual_trades WHERE base_symbol=? AND timeframe=? AND entry_mode=? AND exchange=?`).bind(symbol, timeframe, entryMode, exchange).all()).results || [];
-  const total = rows.length || 0, takeHits = rows.filter(r => r.status === "take_hit").length;
-  const active = rows.filter(r => ["active","averaging"].includes(r.status)).length, dd = rows.filter(r => r.status === "drawdown").length;
-  const avg = (field) => { const vals = rows.map(r => Number(r[field])).filter(Number.isFinite); return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null; };
-  await db.prepare(`INSERT OR REPLACE INTO strategy_stats (key,symbol,timeframe,entry_mode,exchange,total_trades,take_hits,active_trades,drawdown_trades,avg_result_pct,avg_drawdown_pct,avg_time_to_take_minutes,max_activated_levels,avg_used_capital_pct,best_result_pct,worst_drawdown_pct,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(`${exchange}:${symbol}:${timeframe}:${entryMode}`, symbol, timeframe, entryMode, exchange, total, takeHits, active, dd, avg("result_pct"), avg("max_drawdown_pct"), null, Math.max(0, ...rows.map(r=>Number(r.activated_levels||0))), avg("used_capital_pct"), Math.max(...rows.map(r=>Number(r.result_pct)).filter(Number.isFinite), 0), Math.min(...rows.map(r=>Number(r.max_drawdown_pct)).filter(Number.isFinite), 0), new Date().toISOString()).run();
+  const total = rows.length;
+  const takeHits = rows.filter((row) => row.status === "take_hit").length;
+  const activeRows = rows.filter((row) => ["active", "averaging", "drawdown"].includes(row.status));
+  const active = activeRows.length;
+  const drawdown = rows.filter((row) => row.status === "drawdown").length;
+  const finite = (value) => { const number = Number(value); return Number.isFinite(number) ? number : null; };
+  const avg = (field, sourceRows = rows) => {
+    const values = sourceRows.map((row) => finite(row[field])).filter(Number.isFinite);
+    return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+  };
+  const sum = (field, sourceRows = rows) => sourceRows.map((row) => finite(row[field])).filter(Number.isFinite).reduce((a, b) => a + b, 0);
+  const closedRows = rows.filter((row) => row.status === "take_hit");
+  const activeUnrealizedFullCapitalResultPct = activeRows.reduce((totalValue, row) => {
+    const pnl = finite(row.current_pnl_pct);
+    const used = finite(row.used_capital_pct);
+    if (!Number.isFinite(pnl) || !Number.isFinite(used)) return totalValue;
+    return totalValue + pnl * (used / 100);
+  }, 0);
+  const resultValues = rows.map((row) => finite(row.result_pct)).filter(Number.isFinite);
+  const drawdownValues = rows.map((row) => finite(row.max_drawdown_pct)).filter(Number.isFinite);
+  await db.prepare(`
+    INSERT OR REPLACE INTO strategy_stats (
+      key,symbol,timeframe,entry_mode,exchange,total_trades,take_hits,active_trades,drawdown_trades,
+      avg_result_pct,avg_drawdown_pct,avg_time_to_take_minutes,max_activated_levels,avg_used_capital_pct,
+      best_result_pct,worst_drawdown_pct,closed_full_capital_result_pct,active_unrealized_full_capital_pct,updated_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `).bind(
+    `${exchange}:${symbol}:${timeframe}:${entryMode}`, symbol, timeframe, entryMode, exchange, total, takeHits, active, drawdown,
+    avg("result_pct", closedRows), avg("max_drawdown_pct"), null, Math.max(0, ...rows.map((row) => Number(row.activated_levels || 0))),
+    avg("used_capital_pct"), resultValues.length ? Math.max(...resultValues) : null, drawdownValues.length ? Math.min(...drawdownValues) : null,
+    sum("result_on_full_capital_pct", closedRows), activeUnrealizedFullCapitalResultPct, new Date().toISOString()
+  ).run();
 }
 
 const RADAR_UNIVERSE = [
@@ -1921,4 +2126,4 @@ function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ re
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
 
 
-export const __strategyTestInternals = { runStrategyMonitorBatch, runStrategyBackfillBatch, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches };
+export const __strategyTestInternals = { runStrategyMonitorBatch, runStrategyBackfillBatch, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRebuildStatsApi };
