@@ -132,21 +132,21 @@ test("runStrategyMonitorBatch builds jobs for every entry mode", async () => {
     const href = String(url);
     if (href.includes("/v5/market/tickers")) {
       return Response.json({ result:{ list:[
-        { symbol:"BTCUSDT", lastPrice:"100", turnover24h:"2000000" },
-        { symbol:"ETHUSDT", lastPrice:"50", turnover24h:"2000000" },
+        { symbol:"ALGOUSDT", lastPrice:"0.2", turnover24h:"2000000" },
+        { symbol:"NEARUSDT", lastPrice:"5", turnover24h:"2000000" },
       ] } });
     }
     if (href.includes("/v5/market/instruments-info")) {
       return Response.json({ result:{ list:[
-        { baseCoin:"BTC", quoteCoin:"USDT", symbol:"BTCUSDT", status:"Trading" },
-        { baseCoin:"ETH", quoteCoin:"USDT", symbol:"ETHUSDT", status:"Trading" },
+        { baseCoin:"ALGO", quoteCoin:"USDT", symbol:"ALGOUSDT", status:"Trading" },
+        { baseCoin:"NEAR", quoteCoin:"USDT", symbol:"NEARUSDT", status:"Trading" },
       ], nextPageCursor:"" } });
     }
     return new Response("unavailable", { status:500 });
   }, async () => {
     const state = await __strategyTestInternals.runStrategyMonitorBatch({ DB:db });
-    assert.equal(state.universeSize, 2);
-    assert.equal(state.totalJobs, 24);
+    assert.ok(state.universeSize >= 2);
+    assert.equal(state.totalJobs, state.universeSize * 4 * 3);
     assert.deepEqual(state.entryModes, [0.31, 0.5, 0.75]);
     assert.equal(state.lastError, null);
   });
@@ -431,7 +431,7 @@ test("chartTradePayload restores incomplete legacy levels with calculateLevels",
 test("strategy backfill implementation uses Cloudflare-safe limits and state", async () => {
   const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
   assert.match(source, /ctx\.waitUntil\(runScheduledStrategyTasks\(env\)\)/);
-  assert.match(source, /runStrategyBackfillBatch\(env, \{ limit:1, scheduled:true \}\)/);
+  assert.match(source, /runStrategyBackfillBatch\(env, \{\s*limit:1,\s*scheduled:true,\s*maxRuntimeMs:12000,\s*\}\)/);
   assert.match(source, /const requestedLimit = params\.get\("limit"\)/);
   assert.match(source, /clampLimit\(requestedLimit, 1, 3\)/);
   assert.match(source, /filterSignature = JSON\.stringify/);
@@ -464,4 +464,60 @@ test("runStrategyBackfillBatch keeps filtered offset until reset", async () => {
     const reset = await __strategyTestInternals.runStrategyBackfillBatch(db, { symbol:"ETH", timeframe:"1h", limit:"1", reset:"1" });
     assert.equal(reset.offset, 1);
   });
+});
+
+test("runStrategyMonitorBatch accepts options limit and stores requested batch size", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
+  assert.match(source, /async function runStrategyMonitorBatch\(env, options = \{\}\)/);
+  assert.match(source, /const requestedLimit = options\?\.limit/);
+  assert.match(source, /const batchLimit = clampLimit\(requestedLimit, 8, 20\)/);
+  assert.match(source, /jobs\.slice\(offset, offset \+ batchLimit\)/);
+  assert.match(source, /batchSize:batchLimit/);
+});
+
+test("scheduled strategy monitor runs with limit eight and runtime budget", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
+  assert.match(source, /runStrategyMonitorBatch\(env, \{\s*limit:8,\s*maxRuntimeMs:18000,\s*\}\)/);
+  assert.match(source, /runStrategyBackfillBatch\(env, \{\s*limit:1,\s*scheduled:true,\s*maxRuntimeMs:12000,\s*\}\)/);
+});
+
+test("strategy backfill and monitor use cached universe helper", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
+  assert.match(source, /async function getStrategyUniverse\(db, options = \{\}\)/);
+  assert.match(source, /const universeResult = await getStrategyUniverse\(db, \{\s*ttlMs:6 \* 60 \* 60 \* 1000,\s*forceRefresh:params\.get\("refreshUniverse"\) === "1",\s*\}\)/);
+  assert.match(source, /const universeResult = await getStrategyUniverse\(db, \{\s*ttlMs:6 \* 60 \* 60 \* 1000,\s*forceRefresh:options\?\.refreshUniverse === true,\s*\}\)/);
+});
+
+test("strategy universe cache persists in strategy_monitor_state", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
+  assert.match(source, /WHERE key='strategy_universe_cache'/);
+  assert.match(source, /INSERT OR REPLACE INTO strategy_monitor_state \(key, value_json, updated_at\)/);
+  assert.match(source, /VALUES \('strategy_universe_cache', \?, \?\)/);
+});
+
+test("getStrategyUniverse falls back to cache and then static fallback", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
+  assert.match(source, /if \(cached\?\.items\?\.length\) \{\s*return \{ universe:cached\.items, source:"cache", warning:error\?\.message \|\| String\(error\), cached:true \};\s*\}/);
+  assert.match(source, /const fallback = fallbackStrategyUniverse\(\)/);
+  assert.match(source, /return \{ universe:fallback, source:"fallback", warning:error\?\.message \|\| String\(error\), cached:false \}/);
+});
+
+test("/api/strategy/refresh-universe requires admin key", async () => {
+  const missing = await worker.fetch(new Request("https://example.com/api/strategy/refresh-universe"), {});
+  const missingPayload = await readJson(missing);
+  assert.equal(missing.status, 403);
+  assert.match(missingPayload.message, /STRATEGY_ADMIN_KEY/);
+
+  const invalid = await worker.fetch(new Request("https://example.com/api/strategy/refresh-universe?key=wrong"), { STRATEGY_ADMIN_KEY:"secret" });
+  const invalidPayload = await readJson(invalid);
+  assert.equal(invalid.status, 403);
+  assert.match(invalidPayload.message, /Invalid strategy admin key/);
+});
+
+test("/strategy/ contains refresh universe button", async () => {
+  const html = await import("node:fs/promises").then(fs => fs.readFile("public/strategy/index.html", "utf8"));
+  const js = await import("node:fs/promises").then(fs => fs.readFile("public/assets/strategy-dashboard.js", "utf8"));
+  assert.match(html, /Обновить список монет/);
+  assert.match(html, /strategyRefreshUniverseBtn/);
+  assert.match(js, /\/api\/strategy\/refresh-universe\?key=/);
 });

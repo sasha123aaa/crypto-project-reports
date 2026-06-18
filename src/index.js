@@ -33,6 +33,7 @@ export default {
     if (url.pathname === "/api/strategy/rebuild-stats") return handleStrategyRebuildStatsApi(request, env);
     if (url.pathname === "/api/strategy/active") return handleStrategyActiveApi(env);
     if (url.pathname === "/api/strategy/status") return handleStrategyStatusApi(env);
+    if (url.pathname === "/api/strategy/refresh-universe") return handleStrategyRefreshUniverseApi(request, env);
     if (url.pathname === "/api/strategy/run-monitor") return handleStrategyRunMonitorApi(request, env);
     if (url.pathname === "/api/strategy/backfill") return handleStrategyBackfillApi(request, env);
     if (url.pathname === "/api/bull-radar") {
@@ -62,11 +63,18 @@ export default {
 };
 
 async function runScheduledStrategyTasks(env) {
-  const monitor = await runStrategyMonitorBatch(env, { limit:8 }).catch((error) => ({
+  const monitor = await runStrategyMonitorBatch(env, {
+    limit:8,
+    maxRuntimeMs:18000,
+  }).catch((error) => ({
     error:error?.message || String(error),
   }));
 
-  const backfill = await runStrategyBackfillBatch(env, { limit:1, scheduled:true }).catch((error) => ({
+  const backfill = await runStrategyBackfillBatch(env, {
+    limit:1,
+    scheduled:true,
+    maxRuntimeMs:12000,
+  }).catch((error) => ({
     error:error?.message || String(error),
   }));
 
@@ -219,6 +227,71 @@ async function putMonitorState(db, state) {
   await db.prepare(
     `INSERT OR REPLACE INTO strategy_monitor_state (key,value_json,updated_at) VALUES ('main',?,?)`
   ).bind(JSON.stringify(state), new Date().toISOString()).run();
+}
+
+
+async function getStrategyUniverseCache(db) {
+  const row = await db.prepare(`
+    SELECT value_json, updated_at
+    FROM strategy_monitor_state
+    WHERE key='strategy_universe_cache'
+  `).first().catch(() => null);
+
+  if (!row?.value_json) return null;
+
+  try {
+    return {
+      ...JSON.parse(row.value_json),
+      updatedAt:row.updated_at,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function putStrategyUniverseCache(db, payload) {
+  await db.prepare(`
+    INSERT OR REPLACE INTO strategy_monitor_state (key, value_json, updated_at)
+    VALUES ('strategy_universe_cache', ?, ?)
+  `).bind(
+    JSON.stringify(payload),
+    new Date().toISOString()
+  ).run();
+}
+
+async function getStrategyUniverse(db, options = {}) {
+  const ttlMs = Number(options.ttlMs || 6 * 60 * 60 * 1000);
+  const forceRefresh = options.forceRefresh === true;
+
+  if (!forceRefresh) {
+    const cached = await getStrategyUniverseCache(db);
+
+    if (cached?.items?.length && cached.updatedAt) {
+      const ageMs = Date.now() - new Date(cached.updatedAt).getTime();
+
+      if (Number.isFinite(ageMs) && ageMs < ttlMs) {
+        return { universe:cached.items, source:cached.source || "cache", warning:cached.warning || null, cached:true };
+      }
+    }
+  }
+
+  try {
+    const universe = await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
+
+    await putStrategyUniverseCache(db, { items:universe, source:"bybit", warning:null });
+
+    return { universe, source:"bybit", warning:null, cached:false };
+  } catch (error) {
+    const cached = await getStrategyUniverseCache(db);
+
+    if (cached?.items?.length) {
+      return { universe:cached.items, source:"cache", warning:error?.message || String(error), cached:true };
+    }
+
+    const fallback = fallbackStrategyUniverse();
+
+    return { universe:fallback, source:"fallback", warning:error?.message || String(error), cached:false };
+  }
 }
 
 async function getBackfillState(db) {
@@ -394,9 +467,11 @@ async function handleStrategyStatusApi(env) {
     dbAvailable:true,
     monitorActive:true,
     monitorState,
-    backfillState:{ lastRunAt:backfillState.lastRunAt, offset:backfillState.offset, totalJobs:backfillState.totalJobs, processedJobs:backfillState.processedJobs, batchSize:backfillState.batchSize, timeframes:backfillState.timeframes, entryModes:backfillState.entryModes, universeSize:backfillState.universeSize, universeSource:backfillState.universeSource || null, universeWarning:backfillState.universeWarning || null, filterSignature:backfillState.filterSignature || null, errors:backfillState.errors || 0, lastJobError:backfillState.lastJobError || null, lastError:backfillState.lastError, createdTrades:backfillState.createdTrades || 0, updatedTrades:backfillState.updatedTrades || 0, takeHits:backfillState.takeHits || 0, activeTrades:backfillState.activeTrades || 0, drawdownTrades:backfillState.drawdownTrades || 0 },
+    backfillState:{ lastRunAt:backfillState.lastRunAt, offset:backfillState.offset, totalJobs:backfillState.totalJobs, processedJobs:backfillState.processedJobs, batchSize:backfillState.batchSize, timeframes:backfillState.timeframes, entryModes:backfillState.entryModes, universeSize:backfillState.universeSize, universeSource:backfillState.universeSource || null, universeWarning:backfillState.universeWarning || null, universeCached:Boolean(backfillState.universeCached), filterSignature:backfillState.filterSignature || null, errors:backfillState.errors || 0, lastJobError:backfillState.lastJobError || null, lastError:backfillState.lastError, createdTrades:backfillState.createdTrades || 0, updatedTrades:backfillState.updatedTrades || 0, takeHits:backfillState.takeHits || 0, activeTrades:backfillState.activeTrades || 0, drawdownTrades:backfillState.drawdownTrades || 0 },
     universeSource:monitorState.universeSource || null,
     universeWarning:monitorState.universeWarning || null,
+    universeCached:Boolean(monitorState.universeCached),
+    backfillUniverseCached:Boolean(backfillState.universeCached),
     backfillUniverseSource:backfillState.universeSource || null,
     backfillUniverseWarning:backfillState.universeWarning || null,
     totals:{
@@ -405,6 +480,29 @@ async function handleStrategyStatusApi(env) {
       takeHits:Number(takes?.count || 0),
       drawdownTrades:Number(drawdown?.count || 0),
     },
+  }, 200, { cacheControl:"no-store" });
+}
+
+async function handleStrategyRefreshUniverseApi(request, env) {
+  const url = new URL(request.url);
+  const adminKey = env.STRATEGY_ADMIN_KEY;
+  const providedKey = url.searchParams.get("key") || request.headers.get("x-strategy-admin-key");
+
+  if (!adminKey) return json({ ok:false, message:"STRATEGY_ADMIN_KEY is not configured" }, 403, { cacheControl:"no-store" });
+  if (providedKey !== adminKey) return json({ ok:false, message:"Invalid strategy admin key" }, 403, { cacheControl:"no-store" });
+
+  const db = strategyDb(env);
+  if (!db) return json({ ok:false, dbAvailable:false, message:"D1 database is not configured" }, 200, { cacheControl:"no-store" });
+  await ensureStrategySchema(db);
+
+  const result = await getStrategyUniverse(db, { forceRefresh:true });
+  return json({
+    ok:true,
+    dbAvailable:true,
+    count:result.universe.length,
+    source:result.source,
+    warning:result.warning,
+    cached:result.cached,
   }, 200, { cacheControl:"no-store" });
 }
 
@@ -579,15 +677,21 @@ async function runStrategyBackfillBatch(envOrDb, options = {}) {
   const entryModes = requestedList(params.get("entryMode"), STRATEGY_ENTRY_MODES, Number);
   let universe = [];
   let universeWarning = null;
+  let universeSource = null;
+  let universeCached = false;
   if (symbolParam) {
     universe = [{ symbol:symbolParam.endsWith("USDT") ? symbolParam : `${symbolParam}USDT`, ticker:baseFromSymbol(symbolParam) }];
+    universeSource = "symbol";
   } else {
-    try {
-      universe = await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
-    } catch (error) {
-      universeWarning = error?.message || String(error);
-      universe = fallbackStrategyUniverse();
-    }
+    const universeResult = await getStrategyUniverse(db, {
+      ttlMs:6 * 60 * 60 * 1000,
+      forceRefresh:params.get("refreshUniverse") === "1",
+    });
+
+    universe = universeResult.universe;
+    universeWarning = universeResult.warning;
+    universeSource = universeResult.source;
+    universeCached = universeResult.cached;
   }
   const jobs = universe.flatMap((asset) => timeframes.flatMap((timeframe) => entryModes.map((entryMode) => ({ asset, timeframe, entryMode }))));
   const previous = await getBackfillState(db);
@@ -634,8 +738,9 @@ async function runStrategyBackfillBatch(envOrDb, options = {}) {
     timeframes,
     entryModes,
     universeSize:universe.length,
-    universeSource:universeWarning ? "fallback" : "bybit",
+    universeSource,
     universeWarning,
+    universeCached,
     filterSignature,
     errors:totals.errors || 0,
     lastJobError:totals.lastJobError || null,
@@ -868,41 +973,62 @@ function compareRadarSummary(a, b) {
     || (Number(b.totalTrades || 0) - Number(a.totalTrades || 0))
     || (Number(a.avgDrawdownPct ?? 0) - Number(b.avgDrawdownPct ?? 0));
 }
-async function runStrategyMonitorBatch(env) {
+async function runStrategyMonitorBatch(env, options = {}) {
   const db = strategyDb(env); if (!db) {
     console.log("Strategy DB is not configured. Skipping scheduled strategy monitor.");
     return;
   }
   await ensureStrategySchema(db);
+  const requestedLimit = options?.limit;
+  const batchLimit = clampLimit(requestedLimit, 8, 20);
+  const startedAt = Date.now();
+  const maxRuntimeMs = Number(options?.maxRuntimeMs || 18000);
   let universe = [];
+  let universeSource = null;
+  let universeWarning = null;
+  let universeCached = false;
   let jobs = [];
   let batch = [];
   let nextOffset = 0;
+  let processedJobs = 0;
+  let stoppedByBudget = false;
   try {
-    let universeWarning = null;
-    try {
-      universe = await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
-    } catch (error) {
-      universeWarning = error?.message || String(error);
-      universe = fallbackStrategyUniverse();
-    }
+    const universeResult = await getStrategyUniverse(db, {
+      ttlMs:6 * 60 * 60 * 1000,
+      forceRefresh:options?.refreshUniverse === true,
+    });
+
+    universe = universeResult.universe;
+    universeWarning = universeResult.warning;
+    universeSource = universeResult.source;
+    universeCached = universeResult.cached;
     jobs = universe.flatMap((asset) => STRATEGY_TIMEFRAMES.flatMap((timeframe) => STRATEGY_ENTRY_MODES.map((entryMode) => ({ asset, timeframe, entryMode }))));
     const monitorState = await getMonitorState(db);
     const offset = Math.max(0, Number(monitorState?.offset) || 0);
-    batch = jobs.slice(offset, offset + STRATEGY_BATCH_SIZE);
-    for (const job of batch) await processStrategyJob(db, job).catch((error) => console.log("Strategy monitor job failed", error?.message || error));
-    nextOffset = offset + batch.length >= jobs.length ? 0 : offset + batch.length;
+    batch = jobs.slice(offset, offset + batchLimit);
+    for (const job of batch) {
+      if (Date.now() - startedAt > maxRuntimeMs) {
+        stoppedByBudget = true;
+        break;
+      }
+
+      await processStrategyJob(db, job).catch((error) => console.log("Strategy monitor job failed", error?.message || error));
+      processedJobs += 1;
+    }
+    nextOffset = offset + processedJobs >= jobs.length ? 0 : offset + processedJobs;
     const state = {
       lastRunAt:new Date().toISOString(),
       offset:nextOffset,
       totalJobs:jobs.length,
-      batchSize:STRATEGY_BATCH_SIZE,
-      processedJobs:batch.length,
+      batchSize:batchLimit,
+      processedJobs:processedJobs,
+      stoppedByBudget:Boolean(stoppedByBudget),
       timeframes:STRATEGY_TIMEFRAMES,
       entryModes:STRATEGY_ENTRY_MODES,
       universeSize:universe.length,
-      universeSource:universeWarning ? "fallback" : "bybit",
+      universeSource,
       universeWarning,
+      universeCached,
       lastError:null,
     };
     await putMonitorState(db, state);
@@ -913,13 +1039,15 @@ async function runStrategyMonitorBatch(env) {
       lastRunAt:new Date().toISOString(),
       offset:nextOffset,
       totalJobs:jobs.length,
-      batchSize:STRATEGY_BATCH_SIZE,
-      processedJobs:batch.length,
+      batchSize:batchLimit,
+      processedJobs:processedJobs,
+      stoppedByBudget:Boolean(stoppedByBudget),
       timeframes:STRATEGY_TIMEFRAMES,
       entryModes:STRATEGY_ENTRY_MODES,
       universeSize:universe.length,
-      universeSource:null,
-      universeWarning:null,
+      universeSource,
+      universeWarning,
+      universeCached,
       lastError:error?.message || String(error),
     }).catch(() => {});
     throw error;
@@ -2333,4 +2461,4 @@ function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ re
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
 
 
-export const __strategyTestInternals = { runScheduledStrategyTasks, runStrategyMonitorBatch, runStrategyBackfillBatch, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi };
+export const __strategyTestInternals = { runScheduledStrategyTasks, runStrategyMonitorBatch, runStrategyBackfillBatch, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi };
