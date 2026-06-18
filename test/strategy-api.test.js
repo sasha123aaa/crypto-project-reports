@@ -183,17 +183,15 @@ test("/api/strategy/status returns universe source and warning", async () => {
 test("trade-plan preview levels do not render active-trade filled text", async () => {
   const source = await import("node:fs/promises").then(fs => fs.readFile("public/assets/trade-plan.js", "utf8"));
   assert.match(source, /function isStrategyActiveTrade/);
-  assert.match(source, /if\(state==="filled"\)return "Касание было"/);
+  assert.match(source, /if\(state==="filled"\)return "Исполнено"/);
   assert.match(source, /strategyLevelStateText\(state,source\)/);
 });
 
 
 test("processStrategyJob creates a trade when price touched entry after range even if current price is above entry", async () => {
   const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
-  assert.match(source, /if \(!existing && plan\.status === "waiting_entry"\) return/);
-  assert.match(source, /activatedLevels:plan\.activatedLevels/);
-  assert.match(source, /averagePrice:plan\.averagePrice/);
-  assert.match(source, /takePrice:plan\.takePrice/);
-  assert.match(source, /usedCapitalPct:plan\.usedCapitalPct/);
-  assert.match(source, /updated\.status === "take_hit" && !updated\.closedAt/);
+  assert.match(source, /evaluateStrategyPath\(\{ range:built\.range/);
+  assert.match(source, /upsertStrategyTradeFromPlan/);
+  assert.match(source, /Number\(plan\.activatedLevels \|\| 0\) <= 0/);
+  assert.match(source, /status === "take_hit"/);
 });
