@@ -26,6 +26,7 @@ export default {
     if (url.pathname === "/api/strategy/stats") return handleStrategyStatsApi(url, env);
     if (url.pathname === "/api/strategy/active") return handleStrategyActiveApi(env);
     if (url.pathname === "/api/strategy/status") return handleStrategyStatusApi(env);
+    if (url.pathname === "/api/strategy/run-monitor") return handleStrategyRunMonitorApi(request, env);
     if (url.pathname === "/api/bull-radar") {
       return handleBullRadarApi(url);
     }
@@ -55,7 +56,7 @@ export default {
 
 const STRATEGY_TIMEFRAMES = ["15m", "1h", "4h", "1d"];
 const STRATEGY_ENTRY_MODES = [0.31, 0.5, 0.75];
-const STRATEGY_BATCH_SIZE = 12;
+const STRATEGY_BATCH_SIZE = 20;
 
 function strategyDb(env) { return env?.DB || env?.STRATEGY_DB || null; }
 function hasStrategyDb(env) { return !!strategyDb(env); }
@@ -159,6 +160,15 @@ async function handleStrategyActiveApi(env) {
 
 async function handleStrategyStatusApi(env) {
   const db = strategyDb(env);
+  const baseMonitorState = {
+    lastRunAt:null,
+    totalJobs:0,
+    processedJobs:0,
+    batchSize:STRATEGY_BATCH_SIZE,
+    timeframes:STRATEGY_TIMEFRAMES,
+    entryModes:STRATEGY_ENTRY_MODES,
+    lastError:null,
+  };
 
   if (!db) {
     return json({
@@ -166,12 +176,17 @@ async function handleStrategyStatusApi(env) {
       dbAvailable:false,
       monitorActive:false,
       message:"D1 database is not configured. Strategy memory works only as live plan calculation.",
-      timeframes:STRATEGY_TIMEFRAMES,
-      entryModes:STRATEGY_ENTRY_MODES,
+      monitorState:baseMonitorState,
+      totals:{
+        totalTrades:0,
+        activeTrades:0,
+        takeHits:0,
+        drawdownTrades:0,
+      },
     }, 200, { cacheControl:"no-store" });
   }
 
-  const monitorState = await getMonitorState(db);
+  const monitorState = { ...baseMonitorState, ...(await getMonitorState(db)) };
 
   const active = await db.prepare(
     `SELECT COUNT(*) AS count FROM virtual_trades WHERE status IN ('active','averaging','drawdown')`
@@ -200,9 +215,32 @@ async function handleStrategyStatusApi(env) {
       takeHits:Number(takes?.count || 0),
       drawdownTrades:Number(drawdown?.count || 0),
     },
-    timeframes:STRATEGY_TIMEFRAMES,
-    entryModes:STRATEGY_ENTRY_MODES,
   }, 200, { cacheControl:"no-store" });
+}
+
+async function handleStrategyRunMonitorApi(request, env) {
+  const url = new URL(request.url);
+  const adminKey = env.STRATEGY_ADMIN_KEY;
+  const providedKey = url.searchParams.get("key") || request.headers.get("x-strategy-admin-key");
+
+  if (!adminKey) {
+    return json({ ok:false, message:"STRATEGY_ADMIN_KEY is not configured" }, 403, { cacheControl:"no-store" });
+  }
+
+  if (providedKey !== adminKey) {
+    return json({ ok:false, message:"Invalid strategy admin key" }, 403, { cacheControl:"no-store" });
+  }
+
+  if (!env.DB) {
+    return json({ ok:false, dbAvailable:false, message:"D1 database is not configured" }, 200, { cacheControl:"no-store" });
+  }
+
+  try {
+    const result = await runStrategyMonitorBatch(env);
+    return json({ ok:true, dbAvailable:true, result }, 200, { cacheControl:"no-store" });
+  } catch (error) {
+    return json({ ok:false, dbAvailable:true, message:error?.message || "Strategy monitor failed" }, 500, { cacheControl:"no-store" });
+  }
 }
 
 async function handleStrategyStatsApi(url, env) {
@@ -228,7 +266,7 @@ async function runStrategyMonitorBatch(env) {
     batch = jobs.slice(offset, offset + STRATEGY_BATCH_SIZE);
     for (const job of batch) await processStrategyJob(db, job).catch((error) => console.log("Strategy monitor job failed", error?.message || error));
     nextOffset = offset + batch.length >= jobs.length ? 0 : offset + batch.length;
-    await putMonitorState(db, {
+    const state = {
       lastRunAt:new Date().toISOString(),
       offset:nextOffset,
       totalJobs:jobs.length,
@@ -237,7 +275,10 @@ async function runStrategyMonitorBatch(env) {
       timeframes:STRATEGY_TIMEFRAMES,
       entryModes:STRATEGY_ENTRY_MODES,
       universeSize:universe.length,
-    });
+      lastError:null,
+    };
+    await putMonitorState(db, state);
+    return state;
   } catch (error) {
     await putMonitorState(db, {
       ...(await getMonitorState(db)),

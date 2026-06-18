@@ -11,10 +11,11 @@ binding = "ASSETS"
 #    npx wrangler d1 create crypto_strategy_trades
 # 2. Вставить реальный database_id в этот блок
 # 3. Применить миграции:
-#    npx wrangler d1 migrations apply crypto_strategy_trades
+#    npx wrangler d1 migrations apply crypto_strategy_trades --remote
 #
-# Если реального database_id нет, binding должен оставаться закомментированным,
-# чтобы Cloudflare Workers deploy проходил без D1.
+# Если database_id равен REPLACE_WITH_REAL_D1_DATABASE_ID, binding должен оставаться закомментированным,
+# чтобы деплой без D1 проходил безопасно. После вставки реального database_id блок можно раскомментировать.
+#
 # [[d1_databases]]
 # binding = "DB"
 # database_name = "crypto_strategy_trades"
