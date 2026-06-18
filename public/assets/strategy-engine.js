@@ -236,3 +236,13 @@ export function evaluateVirtualTrade({ trade, candles, currentPrice } = {}) {
   if ((hadEntry || activated.length) && takePrice && price >= takePrice) status = "take_hit";
   return { ...trade, status, currentPrice:price, activatedLevels:activated.length || Number(trade?.activatedLevels) || 0, averagePrice, takePrice, dynamicTakeMode:take.dynamicTakeMode, usedCapitalPct:activated.reduce((s, l) => s + (Number(l.capitalPct) || 0), 0) || trade?.usedCapitalPct || 0, currentPnlPct, maxDrawdownPct:drawdown, resultPct:status === "take_hit" ? currentPnlPct : trade?.resultPct ?? null, resultOnFullCapitalPct:status === "take_hit" ? currentPnlPct * ((activated.reduce((s,l)=>s+(Number(l.capitalPct)||0),0))/100) : trade?.resultOnFullCapitalPct ?? null };
 }
+
+if (typeof window !== "undefined") {
+  window.StrategyEngine = {
+    getStrategyConfig,
+    calculateCapitalPlan,
+    calculateLevels,
+    buildStrategyPlan,
+    evaluateStrategyPath,
+  };
+}
