@@ -21,7 +21,7 @@
 
 ## Подключение памяти стратегии через Cloudflare D1
 
-Сейчас сайт может показывать расчет стратегии без базы данных.
+Сайт может показывать расчет стратегии без базы данных.
 
 Чтобы включить сохранение виртуальных сделок:
 
@@ -42,53 +42,35 @@ database_name = "crypto_strategy_trades"
 database_id = "REAL_DATABASE_ID"
 ```
 
-4. Применить миграции в удаленную базу:
+4. Применить миграции:
 
 ```bash
 npx wrangler d1 migrations apply crypto_strategy_trades --remote
 ```
 
-5. Сделать деплой:
-
-```bash
-npx wrangler deploy --config wrangler.toml
-```
-
-6. Проверить статус:
-
-```text
-/api/strategy/status
-```
-
-Если все подключено правильно, в ответе будет:
-
-```json
-{
-  "dbAvailable": true,
-  "monitorActive": true
-}
-```
-
-Если база не подключена, сайт продолжит работать, но будет показывать только расчет плана без сохранения сделок.
-
-## Ручной запуск монитора стратегии
-
-Для ручной проверки можно задать секрет:
+5. Задать секрет для ручного запуска монитора:
 
 ```bash
 npx wrangler secret put STRATEGY_ADMIN_KEY
 ```
 
-После деплоя можно запустить монитор:
+6. Сделать деплой:
+
+```bash
+npx wrangler deploy --config wrangler.toml
+```
+
+7. Проверить статус:
+
+```text
+/api/strategy/status
+```
+
+8. Ручной запуск монитора:
 
 ```text
 /api/strategy/run-monitor?key=YOUR_SECRET
 ```
 
-После запуска проверить:
+Если D1 не подключен, сайт продолжает работать, но показывает только расчет плана без сохранения сделок.
 
-```text
-/api/strategy/status
-/api/strategy/active
-/api/strategy/stats?symbol=CRV
-```
