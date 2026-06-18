@@ -143,3 +143,16 @@ test("evaluateStrategyPath reports no path when B candle is missing", () => {
   const state = evaluateStrategyPath({ range:{ ...range, bTime:99 }, levels:calculateLevels({ range, entryMode:0.5 }), candles:[{ time:1, close:200 }], currentPrice:200 });
   assert.equal(state.pathFound, false);
 });
+
+test("buildStrategyPlan levelStates mark 0.31 entry and first two averages executed after B low touch", () => {
+  const candles = [
+    { time:1, open:100, high:205, low:95, close:200 },
+    { time:2, open:200, high:202, low:198, close:200 },
+    { time:3, open:200, high:170, low:118, close:180 },
+    { time:4, open:180, high:210, low:175, close:205 },
+  ];
+  const plan = buildStrategyPlan({ range, entryMode:0.31, candles, currentPrice:205 });
+  assert.deepEqual(plan.levelStates.slice(0, 3).map((level) => level.state), ["executed", "executed", "executed"]);
+  assert.equal(plan.levels[1].state, "executed");
+  assert.equal(plan.levelStates[1].executedAt, 3);
+});
