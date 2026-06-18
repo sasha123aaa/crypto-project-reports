@@ -104,7 +104,7 @@ class FakeStmt {
   }
   async all() { return { results:[] }; }
   async run() {
-    if (this.sql.includes("strategy_monitor_state")) {
+    if (this.sql.includes("INSERT OR REPLACE INTO strategy_monitor_state")) {
       const key = this.sql.includes("'main'") ? "main" : this.args[0];
       const value = this.sql.includes("'main'") ? this.args[0] : this.args[1];
       this.db.state[key] = JSON.parse(value);
@@ -194,4 +194,95 @@ test("processStrategyJob creates a trade when price touched entry after range ev
   assert.match(source, /upsertStrategyTradeFromPlan/);
   assert.match(source, /Number\(plan\.activatedLevels \|\| 0\) <= 0/);
   assert.match(source, /status === "take_hit"/);
+});
+
+class MemoryStrategyDb {
+  constructor() {
+    this.strategyStatsColumns = new Set(["key","symbol","timeframe","entry_mode","exchange","total_trades","take_hits","active_trades","drawdown_trades","avg_result_pct","avg_drawdown_pct","avg_time_to_take_minutes","updated_at"]);
+    this.trades = [];
+    this.stats = [];
+    this.events = [];
+    this.state = {};
+  }
+  prepare(sql) { return new MemoryStrategyStmt(this, sql); }
+}
+class MemoryStrategyStmt {
+  constructor(db, sql) { this.db = db; this.sql = sql; this.args = []; }
+  bind(...args) { this.args = args; return this; }
+  async all() {
+    if (this.sql.includes("PRAGMA table_info(strategy_stats)")) return { results:[...this.db.strategyStatsColumns].map((name) => ({ name })) };
+    if (this.sql.includes("SELECT DISTINCT") && this.sql.includes("FROM virtual_trades")) {
+      const seen = new Set();
+      const results = [];
+      for (const t of this.db.trades) {
+        if (!t.base_symbol || !t.timeframe || t.entry_mode == null || !t.exchange) continue;
+        const key = `${t.base_symbol}:${t.timeframe}:${t.entry_mode}:${t.exchange}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push({ symbol:t.base_symbol, timeframe:t.timeframe, entryMode:t.entry_mode, exchange:t.exchange });
+      }
+      return { results };
+    }
+    if (this.sql.includes("FROM virtual_trades")) {
+      const [symbol, timeframe, entryMode, exchange] = this.args;
+      return { results:this.db.trades.filter((t) => t.base_symbol === symbol && (!this.sql.includes("AND timeframe=?") || t.timeframe === timeframe) && (!this.sql.includes("AND entry_mode=?") || Number(t.entry_mode) === Number(entryMode)) && (!this.sql.includes("AND exchange=?") || t.exchange === exchange)) };
+    }
+    if (this.sql.includes("FROM strategy_stats")) return { results:this.db.stats.filter((s) => !this.args[0] || s.symbol === this.args[0]) };
+    return { results:[] };
+  }
+  async first() { return null; }
+  async run() {
+    if (this.sql.includes("ALTER TABLE strategy_stats ADD COLUMN")) this.db.strategyStatsColumns.add(this.sql.match(/ADD COLUMN (\w+)/)?.[1]);
+    if (this.sql.includes("INSERT OR REPLACE INTO virtual_trades")) {
+      const [id,symbol,base_symbol,exchange,timeframe,direction,entry_mode,range_json,levels_json,status,opened_at,updated_at,closed_at,entry_price,average_price,take_price,current_price,activated_levels,used_capital_pct,max_drawdown_pct,current_pnl_pct,result_pct,result_on_full_capital_pct] = this.args;
+      this.db.trades = this.db.trades.filter((t) => t.id !== id);
+      this.db.trades.push({ id,symbol,base_symbol,exchange,timeframe,direction,entry_mode,range_json,levels_json,status,opened_at,updated_at,closed_at,entry_price,average_price,take_price,current_price,activated_levels,used_capital_pct,max_drawdown_pct,current_pnl_pct,result_pct,result_on_full_capital_pct });
+    }
+    if (this.sql.includes("INSERT OR IGNORE INTO virtual_trade_events")) this.db.events.push(this.args);
+    if (this.sql.includes("INSERT OR REPLACE INTO strategy_stats")) {
+      const [key,symbol,timeframe,entry_mode,exchange,total_trades,take_hits,active_trades,drawdown_trades,avg_result_pct,avg_drawdown_pct,avg_time_to_take_minutes,max_activated_levels,avg_used_capital_pct,best_result_pct,worst_drawdown_pct,closed_full_capital_result_pct,active_unrealized_full_capital_pct,updated_at] = this.args;
+      this.db.stats = this.db.stats.filter((s) => s.key !== key);
+      this.db.stats.push({ key,symbol,timeframe,entry_mode,exchange,total_trades,take_hits,active_trades,drawdown_trades,avg_result_pct,avg_drawdown_pct,avg_time_to_take_minutes,max_activated_levels,avg_used_capital_pct,best_result_pct,worst_drawdown_pct,closed_full_capital_result_pct,active_unrealized_full_capital_pct,updated_at });
+    }
+    return { success:true };
+  }
+}
+
+test("ensureStrategySchema adds missing strategy_stats columns", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?schema=${Date.now()}-${Math.random()}`);
+  const db = new MemoryStrategyDb();
+  const result = await __strategyTestInternals.ensureStrategySchema(db);
+  assert.equal(result.repaired, true);
+  assert.ok(result.added.includes("strategy_stats.max_activated_levels"));
+  assert.ok(db.strategyStatsColumns.has("active_unrealized_full_capital_pct"));
+});
+
+test("/api/strategy/repair-schema requires admin key", async () => {
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/repair-schema?key=wrong"), { STRATEGY_ADMIN_KEY:"secret", DB:new MemoryStrategyDb() });
+  assert.equal(response.status, 403);
+});
+
+test("/api/strategy/rebuild-stats rebuilds stats from virtual_trades", async () => {
+  const db = new MemoryStrategyDb();
+  db.trades.push({ id:"1", symbol:"XLMUSDT", base_symbol:"XLM", exchange:"BYBIT", timeframe:"15m", entry_mode:0.5, status:"take_hit", activated_levels:2, used_capital_pct:50, max_drawdown_pct:-2, result_pct:3, result_on_full_capital_pct:1.5 });
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/rebuild-stats?key=secret"), { STRATEGY_ADMIN_KEY:"secret", DB:db });
+  const payload = await readJson(response);
+  assert.equal(response.status, 200);
+  assert.equal(payload.rebuilt, 1);
+  assert.equal(db.stats[0].closed_full_capital_result_pct, 1.5);
+});
+
+test("/api/strategy/radar-stats returns activeTrade when strategy_stats is empty", async () => {
+  const db = new MemoryStrategyDb();
+  db.trades.push({ id:"a", symbol:"ASTERUSDT", base_symbol:"ASTER", exchange:"BYBIT", timeframe:"4h", entry_mode:0.5, status:"active", range_json:"null", levels_json:"[]", activated_levels:1, used_capital_pct:25, max_drawdown_pct:-2, current_pnl_pct:1.2 });
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/radar-stats?symbols=ASTER&timeframe=4h"), { DB:db });
+  const payload = await readJson(response);
+  assert.equal(payload.stats.ASTER["4h"].activeTrade.status, "active");
+  assert.equal(payload.stats.ASTER["4h"].totalTrades, 1);
+});
+
+test("trade status ignores historical drawdown when current PnL is positive", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?status=${Date.now()}-${Math.random()}`);
+  assert.equal(__strategyTestInternals.deriveTradeStatus({ activatedLevels:1, currentPnlPct:2, maxDrawdownPct:-5 }), "active");
+  assert.equal(__strategyTestInternals.deriveTradeStatus({ activatedLevels:2, currentPnlPct:2, maxDrawdownPct:-5 }), "averaging");
 });

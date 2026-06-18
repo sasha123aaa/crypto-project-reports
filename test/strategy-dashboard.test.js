@@ -19,3 +19,18 @@ test("navigation contains /strategy/", () => {
   assert.match(siteNavJs, /Стратегия/);
   assert.match(homeHtml, /\/strategy\//);
 });
+
+const bullRadarJs = await readFile(new URL("../public/assets/bull-radar.js", import.meta.url), "utf8");
+const strategyHtml = await readFile(new URL("../public/strategy/index.html", import.meta.url), "utf8");
+
+test("bull radar distinguishes active trades from missing history", () => {
+  assert.match(bullRadarJs, /Активная сделка/);
+  assert.match(bullRadarJs, /if\(!st\) return "Истории нет"/);
+  assert.match(bullRadarJs, /if\(Number\(st\.totalTrades\|\|0\)<=0&&st\.activeTrade\)/);
+});
+
+test("strategy dashboard exposes rebuild stats action", () => {
+  assert.match(strategyHtml, /strategyRebuildBtn/);
+  assert.match(strategyHtml, /Пересобрать статистику/);
+  assert.match(dashboardJs, /\/api\/strategy\/rebuild-stats\?key=/);
+});
