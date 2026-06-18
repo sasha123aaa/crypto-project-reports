@@ -223,6 +223,16 @@ class MemoryStrategyStmt {
       }
       return { results };
     }
+    if (this.sql.includes("FROM virtual_trades") && this.sql.includes("WHERE status IN")) {
+      const statuses = [...this.sql.matchAll(/'([^']+)'/g)].map((match) => match[1]);
+      return { results:this.db.trades.filter((t) => statuses.includes(t.status)) };
+    }
+    if (this.sql.includes("FROM virtual_trades") && this.sql.includes("ORDER BY updated_at DESC LIMIT 1000")) {
+      return { results:this.db.trades.slice(-1000).reverse() };
+    }
+    if (this.sql.includes("json_extract(range_json")) {
+      throw new Error("json_extract unavailable in MemoryStrategyDb");
+    }
     if (this.sql.includes("FROM virtual_trades")) {
       const [symbol, timeframe, entryMode, exchange] = this.args;
       return { results:this.db.trades.filter((t) => t.base_symbol === symbol && (!this.sql.includes("AND timeframe=?") || t.timeframe === timeframe) && (!this.sql.includes("AND entry_mode=?") || Number(t.entry_mode) === Number(entryMode)) && (!this.sql.includes("AND exchange=?") || t.exchange === exchange)) };
@@ -239,6 +249,14 @@ class MemoryStrategyStmt {
       this.db.trades.push({ id,symbol,base_symbol,exchange,timeframe,direction,entry_mode,range_json,levels_json,status,opened_at,updated_at,closed_at,entry_price,average_price,take_price,current_price,activated_levels,used_capital_pct,max_drawdown_pct,current_pnl_pct,result_pct,result_on_full_capital_pct });
     }
     if (this.sql.includes("INSERT OR IGNORE INTO virtual_trade_events")) this.db.events.push(this.args);
+    if (this.sql.includes("UPDATE virtual_trades SET status=?")) {
+      const [status, updated_at, id] = this.args;
+      const trade = this.db.trades.find((t) => t.id === id);
+      if (trade) {
+        trade.status = status;
+        trade.updated_at = updated_at;
+      }
+    }
     if (this.sql.includes("INSERT OR REPLACE INTO strategy_stats")) {
       const [key,symbol,timeframe,entry_mode,exchange,total_trades,take_hits,active_trades,drawdown_trades,avg_result_pct,avg_drawdown_pct,avg_time_to_take_minutes,max_activated_levels,avg_used_capital_pct,best_result_pct,worst_drawdown_pct,closed_full_capital_result_pct,active_unrealized_full_capital_pct,updated_at] = this.args;
       this.db.stats = this.db.stats.filter((s) => s.key !== key);
@@ -279,12 +297,54 @@ test("/api/strategy/radar-stats returns activeTrade when strategy_stats is empty
   const payload = await readJson(response);
   assert.equal(payload.stats.ASTER["4h"].activeTrade.status, "active");
   assert.equal(payload.stats.ASTER["4h"].totalTrades, 1);
+  assert.equal(payload.stats.ASTER["4h"].estimatedFullCapitalResultPct, 0.3);
+});
+
+test("/api/strategy/radar-stats estimated result sums closed and active result", async () => {
+  const db = new MemoryStrategyDb();
+  db.trades.push({ id:"closed", symbol:"BTCUSDT", base_symbol:"BTC", exchange:"BYBIT", timeframe:"4h", entry_mode:0.5, status:"take_hit", range_json:"null", levels_json:"[]", activated_levels:1, used_capital_pct:25, max_drawdown_pct:-1, result_pct:4, result_on_full_capital_pct:1 });
+  db.trades.push({ id:"active", symbol:"BTCUSDT", base_symbol:"BTC", exchange:"BYBIT", timeframe:"4h", entry_mode:0.5, status:"active", range_json:"null", levels_json:"[]", activated_levels:1, used_capital_pct:50, max_drawdown_pct:-1, current_pnl_pct:2 });
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/radar-stats?symbols=BTC&timeframe=4h"), { DB:db });
+  const payload = await readJson(response);
+  assert.equal(payload.stats.BTC["4h"].closedFullCapitalResultPct, 1);
+  assert.equal(payload.stats.BTC["4h"].activeUnrealizedFullCapitalPct, 1);
+  assert.equal(payload.stats.BTC["4h"].estimatedFullCapitalResultPct, 2);
 });
 
 test("trade status ignores historical drawdown when current PnL is positive", async () => {
   const { __strategyTestInternals } = await import(`../src/index.js?status=${Date.now()}-${Math.random()}`);
   assert.equal(__strategyTestInternals.deriveTradeStatus({ activatedLevels:1, currentPnlPct:2, maxDrawdownPct:-5 }), "active");
   assert.equal(__strategyTestInternals.deriveTradeStatus({ activatedLevels:2, currentPnlPct:2, maxDrawdownPct:-5 }), "averaging");
+});
+
+test("normalizeTradeStatus fixes stale drawdown statuses", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?normalize=${Date.now()}-${Math.random()}`);
+  assert.equal(__strategyTestInternals.normalizeTradeStatus({ status:"drawdown", activatedLevels:1, currentPnlPct:2 }).status, "active");
+  assert.equal(__strategyTestInternals.normalizeTradeStatus({ status:"drawdown", activatedLevels:2, currentPnlPct:2 }).status, "averaging");
+  assert.equal(__strategyTestInternals.normalizeTradeStatus({ status:"drawdown", activatedLevels:1, currentPnlPct:-1 }).status, "drawdown");
+});
+
+test("/api/strategy/repair-trades requires admin key", async () => {
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/repair-trades?key=wrong"), { STRATEGY_ADMIN_KEY:"secret", DB:new MemoryStrategyDb() });
+  assert.equal(response.status, 403);
+});
+
+test("/api/strategy/repair-trades updates wrong statuses", async () => {
+  const db = new MemoryStrategyDb();
+  db.trades.push({ id:"bad-active", symbol:"XLMUSDT", base_symbol:"XLM", exchange:"BYBIT", timeframe:"15m", entry_mode:0.5, status:"drawdown", range_json:"null", levels_json:"[]", activated_levels:1, used_capital_pct:20, max_drawdown_pct:-2, current_pnl_pct:1.1 });
+  db.trades.push({ id:"bad-avg", symbol:"XLMUSDT", base_symbol:"XLM", exchange:"BYBIT", timeframe:"15m", entry_mode:0.5, status:"drawdown", range_json:"null", levels_json:"[]", activated_levels:2, used_capital_pct:30, max_drawdown_pct:-3, current_pnl_pct:0.5 });
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/repair-trades?key=secret"), { STRATEGY_ADMIN_KEY:"secret", DB:db });
+  const payload = await readJson(response);
+  assert.equal(response.status, 200);
+  assert.equal(payload.checked, 2);
+  assert.equal(payload.updated, 2);
+  assert.equal(db.trades.find((t) => t.id === "bad-active").status, "active");
+  assert.equal(db.trades.find((t) => t.id === "bad-avg").status, "averaging");
+});
+
+test("/api/strategy/duplicates requires admin key", async () => {
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/duplicates?key=wrong"), { STRATEGY_ADMIN_KEY:"secret", DB:new MemoryStrategyDb() });
+  assert.equal(response.status, 403);
 });
 
 test("/api/strategy/radar-stats returns NEAR-like active trade when strategy_stats is empty", async () => {
@@ -318,6 +378,19 @@ test("bull radar source deep-merges strategy stats and loads stats during scan",
   assert.match(source, /strategyRadarStats\[key\]\[tf\]=value/);
   assert.doesNotMatch(source, /strategyRadarStats=\{\.\.\.strategyRadarStats,\.\.\.payload\.stats\}/);
   assert.match(source, /await loadStrategyRadarStatsForRows\(rawRows\);\n\s*renderAll\(\);/);
+});
+
+test("radar and strategy UI render Russian strategy statuses", async () => {
+  const fs = await import("node:fs/promises");
+  const radar = await fs.readFile("public/assets/bull-radar.js", "utf8");
+  const dashboard = await fs.readFile("public/assets/strategy-dashboard.js", "utf8");
+  const tradePlan = await fs.readFile("public/assets/trade-plan.js", "utf8");
+  for (const source of [radar, dashboard, tradePlan]) {
+    assert.match(source, /function strategyStatusRu/);
+    assert.match(source, /В просадке/);
+    assert.match(source, /Усреднение/);
+    assert.match(source, /Ждет вход/);
+  }
 });
 
 test("trade-plan levelStates take precedence over activatedLevels", async () => {
