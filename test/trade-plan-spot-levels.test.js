@@ -42,3 +42,10 @@ test("logarithmic spot plan uses the same fib mode for the active take", () => {
   assert.equal(plan.takeFib, 1.4);
   assert.ok(Math.abs(plan.levels.take.value - 10 * (0.1 ** 1.4)) < 1e-12);
 });
+
+
+test("strategy preview touched levels are rendered as candle touches", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("public/assets/trade-plan.js", "utf8"));
+  assert.match(source, /return "Касание было"/);
+  assert.doesNotMatch(source, /return "Цена ниже уровня"/);
+});

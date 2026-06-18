@@ -1,4 +1,4 @@
-import { buildStrategyPlan, calculateAveragePrice, calculateDynamicTake } from "../../public/assets/strategy-engine.js";
+import { buildStrategyPlan, calculateAveragePrice, calculateDynamicTake, evaluateStrategyPath } from "../../public/assets/strategy-engine.js";
 
 function finite(value) {
   const n = Number(value);
@@ -107,8 +107,15 @@ function replayPlan({ plan, range, candles, startIndex, tradeId, timeframe, entr
 
   if (!openedAt) return null;
   if (status !== "take_hit" && filled.length > 1) status = maxDrawdownPct <= -1 ? "drawdown" : "averaging";
-  const currentPnlPct = averagePrice && currentPrice ? (currentPrice - averagePrice) / averagePrice * 100 : null;
-  return { status, openedAt, closedAt, entryPrice:finite(levels[0]?.price), averagePrice, takePrice, currentPrice, activatedLevels:filled.length, usedCapitalPct, maxDrawdownPct, currentPnlPct, resultPct, resultOnFullCapitalPct, events };
+  const pathState = evaluateStrategyPath({ range, levels, candles, currentPrice });
+  const currentPnlPct = pathState.currentPnlPct ?? (averagePrice && currentPrice ? (currentPrice - averagePrice) / averagePrice * 100 : null);
+  const finalStatus = pathState.activatedLevels > 0 ? pathState.status : status;
+  const finalTakePrice = pathState.takePrice ?? takePrice;
+  const finalAveragePrice = pathState.averagePrice ?? averagePrice;
+  const finalUsedCapitalPct = pathState.usedCapitalPct || usedCapitalPct;
+  const finalResultPct = finalStatus === "take_hit" && finalAveragePrice && finalTakePrice ? (finalTakePrice - finalAveragePrice) / finalAveragePrice * 100 : resultPct;
+  const finalResultOnFullCapitalPct = finalStatus === "take_hit" && finalResultPct != null ? finalResultPct * (finalUsedCapitalPct / 100) : resultOnFullCapitalPct;
+  return { status:finalStatus, openedAt, closedAt:finalStatus === "take_hit" ? closedAt : null, entryPrice:finite(levels[0]?.price), averagePrice:finalAveragePrice, takePrice:finalTakePrice, currentPrice:pathState.currentPrice ?? currentPrice, activatedLevels:pathState.activatedLevels || filled.length, usedCapitalPct:finalUsedCapitalPct, maxDrawdownPct:pathState.maxDrawdownPct ?? maxDrawdownPct, currentPnlPct, resultPct:finalResultPct, resultOnFullCapitalPct:finalResultOnFullCapitalPct, events };
 }
 
 export function replayStrategyOnCandles({ symbol, baseSymbol, exchange = "BYBIT", timeframe, entryMode, rangeDetector, candles, capital = 100 } = {}) {

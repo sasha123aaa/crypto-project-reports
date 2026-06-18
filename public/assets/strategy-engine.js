@@ -91,14 +91,100 @@ export function calculateDynamicTake({ range, filledLevels = [], candles, curren
   if (!(price > 0 && avg > 0)) return { takePrice:null, dynamicTakeMode:true };
   return { takePrice: price + (avg - price) * 0.29, dynamicTakeMode:true };
 }
+
+function candleTimeValue(value) {
+  if (value == null) return null;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : value;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return n < 1e12 ? n * 1000 : n;
+}
+function findRangeBIndex(range, candles = []) {
+  if (!Array.isArray(candles) || !candles.length || range?.bTime == null) return -1;
+  const target = candleTimeValue(range.bTime);
+  let fallback = -1;
+  for (let i = 0; i < candles.length; i += 1) {
+    const value = candleTimeValue(candles[i]?.time);
+    if (value == null || target == null) continue;
+    if (value === target || String(candles[i]?.time) === String(range.bTime)) return i;
+    if (typeof value === "number" && typeof target === "number" && value <= target) fallback = i;
+  }
+  return fallback;
+}
+export function evaluateStrategyPath({ range, levels, candles, currentPrice, capital = 100 } = {}) {
+  const rows = Array.isArray(candles) ? candles : [];
+  const activeLevels = Array.isArray(levels) ? levels : calculateLevels({ range });
+  const current = lastPrice(rows, currentPrice);
+  const bIndex = findRangeBIndex(range, rows);
+  if (bIndex < 0 || bIndex >= rows.length - 1) return { pathFound:false, status:"waiting_entry", currentPrice:current, activatedLevels:0, averagePrice:null, usedCapitalPct:0, takePrice:null, dynamicTakeMode:false, currentPnlPct:null, maxDrawdownPct:0 };
+
+  const filled = [];
+  let averagePrice = null;
+  let usedCapitalPct = 0;
+  let takePrice = null;
+  let dynamicTakeMode = false;
+  let currentPnlPct = null;
+  let maxDrawdownPct = 0;
+  let status = "waiting_entry";
+  let lastSeenPrice = current;
+
+  for (let i = bIndex + 1; i < rows.length; i += 1) {
+    const candle = rows[i];
+    const low = finite(candle?.low);
+    const high = finite(candle?.high);
+    const close = finite(candle?.close) ?? high ?? low;
+    if (close != null) lastSeenPrice = close;
+
+    for (let levelIndex = filled.length; levelIndex < activeLevels.length; levelIndex += 1) {
+      const level = activeLevels[levelIndex];
+      const levelValue = finite(level?.price);
+      if (levelValue > 0 && low != null && low <= levelValue) {
+        filled.push(level);
+        averagePrice = calculateAveragePrice(filled);
+        usedCapitalPct = filled.reduce((sum, l) => sum + (finite(l?.capitalPct) || 0), 0);
+        const take = calculateDynamicTake({ range, filledLevels:filled, candles:rows.slice(0, i + 1), currentPrice:close });
+        takePrice = take.takePrice;
+        dynamicTakeMode = take.dynamicTakeMode;
+        status = filled.length > 1 ? "averaging" : "active";
+      } else {
+        break;
+      }
+    }
+
+    if (!filled.length) continue;
+    if (averagePrice && low != null) maxDrawdownPct = Math.min(maxDrawdownPct, (low - averagePrice) / averagePrice * 100);
+    if (takePrice > 0 && high != null && high >= takePrice) {
+      status = "take_hit";
+      lastSeenPrice = takePrice;
+      break;
+    }
+    if (maxDrawdownPct < 0 && close != null && averagePrice && close < averagePrice) status = "drawdown";
+  }
+
+  const markPrice = current ?? lastSeenPrice;
+  currentPnlPct = averagePrice && markPrice ? (markPrice - averagePrice) / averagePrice * 100 : null;
+  if (status !== "take_hit" && filled.length > 1 && status !== "drawdown") status = "averaging";
+  return { pathFound:true, currentPrice:markPrice, activatedLevels:filled.length, averagePrice, usedCapitalPct, takePrice, dynamicTakeMode, currentPnlPct, maxDrawdownPct, status, capital };
+}
+
 export function buildStrategyPlan({ range, entryMode = 0.5, currentPrice, candles, capital = 100 } = {}) {
   const price = lastPrice(candles, currentPrice);
   const levels = calculateLevels({ range, entryMode });
+  const capitalPlan = calculateCapitalPlan({ entryMode, capital });
+  const pathState = evaluateStrategyPath({ range, levels, candles, currentPrice:price, capital });
+  if (pathState.pathFound && pathState.activatedLevels > 0) {
+    return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", currentPrice:price, levels, activatedLevels:pathState.activatedLevels, averagePrice:pathState.averagePrice, usedCapitalPct:pathState.usedCapitalPct, takePrice:pathState.takePrice, dynamicTakeMode:pathState.dynamicTakeMode, currentPnlPct:pathState.currentPnlPct, maxDrawdownPct:pathState.maxDrawdownPct, status:pathState.status, pathBased:true, capitalPlan };
+  }
   const side = rangeTopBottom(range)?.bullish !== false ? "long" : "short";
   const activated = levels.filter((l) => price != null && side === "long" && price <= Number(l.price));
   const avg = calculateAveragePrice(activated);
   const take = calculateDynamicTake({ range, filledLevels:activated, candles, currentPrice:price });
-  return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", currentPrice:price, levels, activatedLevels:activated.length, averagePrice:avg, usedCapitalPct:activated.reduce((s, l) => s + l.capitalPct, 0), takePrice:take.takePrice, dynamicTakeMode:take.dynamicTakeMode, capitalPlan:calculateCapitalPlan({ entryMode, capital }) };
+  const currentPnlPct = avg && price ? (price - avg) / avg * 100 : null;
+  const status = activated.length > 1 ? (currentPnlPct < 0 ? "drawdown" : "averaging") : activated.length === 1 ? (currentPnlPct < 0 ? "drawdown" : "active") : "waiting_entry";
+  return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", currentPrice:price, levels, activatedLevels:activated.length, averagePrice:avg, usedCapitalPct:activated.reduce((s, l) => s + l.capitalPct, 0), takePrice:take.takePrice, dynamicTakeMode:take.dynamicTakeMode, currentPnlPct, maxDrawdownPct:currentPnlPct == null ? 0 : Math.min(0, currentPnlPct), status, pathBased:false, capitalPlan };
 }
 export function evaluateVirtualTrade({ trade, candles, currentPrice } = {}) {
   const price = lastPrice(candles, currentPrice) ?? finite(trade?.currentPrice);
