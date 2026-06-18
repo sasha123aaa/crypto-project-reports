@@ -26,27 +26,14 @@
         </div>
 
         <label class="radar-field">
-          <span class="radar-label">Вход по Фибо</span>
-          <div class="radar-range-inputs">
-            <input id="entry-fib-range" type="range" min="0.30" max="0.99" step="0.01" value="0.50" />
-            <input id="entry-fib-number" type="number" min="0.30" max="0.99" step="0.01" value="0.50" />
-          </div>
-        </label>
-
-        <label class="radar-field">
-          <span class="radar-label">Количество усреднений</span>
-          <select id="average-count">
-            <option value="0">0</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3" selected>3</option>
+          <span class="radar-label">Режим стратегии</span>
+          <select id="radar-strategy-mode">
+            <option value="auto" selected>Авто: лучший по истории</option>
+            <option value="0.31">0.31</option>
+            <option value="0.5">0.50</option>
+            <option value="0.75">0.75</option>
           </select>
         </label>
-
-        <div class="radar-field wide">
-          <span class="radar-label">Уровни усреднений по Фибо</span>
-          <div class="radar-avg-grid" id="average-fibs"></div>
-        </div>
 
         <div class="radar-field wide">
           <span class="radar-label">Биржи</span>
@@ -117,11 +104,12 @@
               <th data-sort="change24hPct">24ч %</th>
               <th data-sort="distanceToEntry">Расстояние до входа</th>
               <th data-sort="rangePct">Диапазон %</th>
+              <th data-sort="strategyMode">Режим</th>
               <th data-sort="entry">Вход</th>
-              <th data-sort="avg1">Уср. 1</th>
-              <th data-sort="avg2">Уср. 2</th>
-              <th data-sort="avg3">Уср. 3</th>
+              <th data-sort="nextAverage">Ближ. уср.</th>
               <th data-sort="take">Тейк</th>
+              <th data-sort="activatedLevels">Исполнено</th>
+              <th data-sort="usedCapitalPct">Задействовано</th>
               <th data-sort="potential">Потенциал</th>
               <th data-sort="volume24h">Объем 24ч</th>
               <th data-sort="status">Статус</th>
@@ -137,7 +125,8 @@
 
   <script src="/assets/site-nav.js"></script>
   <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+  <script type="module" src="/assets/strategy-engine.js"></script>
   <script src="/assets/trade-plan-chart.js"></script>
-  <script src="/assets/bull-radar.js"></script>
+  <script type="module" src="/assets/bull-radar.js"></script>
 </body>
 </html>
