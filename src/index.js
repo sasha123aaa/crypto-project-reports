@@ -60,13 +60,20 @@ const STRATEGY_BATCH_SIZE = 20;
 
 function strategyDb(env) { return env?.DB || env?.STRATEGY_DB || null; }
 function hasStrategyDb(env) { return !!strategyDb(env); }
-function strategyDbUnavailable() {
+function strategyDbUnavailable(extra = {}) {
   return jsonResponse({
     ok:false,
     available:false,
+    dbAvailable:false,
     reason:"D1 database is not configured",
-    message:"Память стратегии пока не подключена. Создайте D1 и добавьте database_id в wrangler.toml."
+    message:"Память стратегии пока не подключена. Создайте D1 и добавьте database_id в wrangler.toml.",
+    ...extra,
   }, { status:200 });
+}
+function clampLimit(value, fallback = 50, max = 100) {
+  const limit = Number(value || fallback);
+  if (!Number.isFinite(limit) || limit <= 0) return fallback;
+  return Math.min(Math.floor(limit), max);
 }
 function baseFromSymbol(symbol) { return String(symbol || "").toUpperCase().replace(/USDT$/, ""); }
 function strategyTradeId({ symbol, exchange, timeframe, entryMode, range }) {
@@ -147,15 +154,18 @@ async function handleStrategyPlanApi(url, env) {
   } catch (error) { return json({ error:"Strategy plan unavailable", reason:error.message }, 502, { cacheControl:"no-store" }); }
 }
 async function handleStrategyTradesApi(url, env) {
-  const db = strategyDb(env); if (!db) return strategyDbUnavailable();
+  const db = strategyDb(env); if (!db) return strategyDbUnavailable({ trades:[] });
   const symbol = String(url.searchParams.get("symbol") || "").toUpperCase();
-  const stmt = symbol ? db.prepare(`SELECT * FROM virtual_trades WHERE base_symbol=? OR symbol=? ORDER BY updated_at DESC LIMIT 100`).bind(baseFromSymbol(symbol), symbol.endsWith("USDT") ? symbol : `${symbol}USDT`) : db.prepare(`SELECT * FROM virtual_trades ORDER BY updated_at DESC LIMIT 100`);
-  const res = await stmt.all(); return json({ trades:(res.results || []).map(rowToTrade) }, 200, { cacheControl:"no-store" });
+  const limit = clampLimit(url.searchParams.get("limit"), 50, 100);
+  const stmt = symbol
+    ? db.prepare(`SELECT * FROM virtual_trades WHERE base_symbol=? OR symbol=? ORDER BY updated_at DESC LIMIT ?`).bind(baseFromSymbol(symbol), symbol.endsWith("USDT") ? symbol : `${symbol}USDT`, limit)
+    : db.prepare(`SELECT * FROM virtual_trades ORDER BY updated_at DESC LIMIT ?`).bind(limit);
+  const res = await stmt.all(); return json({ ok:true, dbAvailable:true, trades:(res.results || []).map(rowToTrade) }, 200, { cacheControl:"no-store" });
 }
 async function handleStrategyActiveApi(env) {
-  const db = strategyDb(env); if (!db) return strategyDbUnavailable();
+  const db = strategyDb(env); if (!db) return strategyDbUnavailable({ trades:[] });
   const res = await db.prepare(`SELECT * FROM virtual_trades WHERE status IN ('active','averaging','drawdown') ORDER BY updated_at DESC`).all();
-  return json({ trades:(res.results || []).map(rowToTrade) }, 200, { cacheControl:"no-store" });
+  return json({ ok:true, dbAvailable:true, trades:(res.results || []).map(rowToTrade) }, 200, { cacheControl:"no-store" });
 }
 
 async function handleStrategyStatusApi(env) {
@@ -243,11 +253,58 @@ async function handleStrategyRunMonitorApi(request, env) {
   }
 }
 
+function aggregateStrategyStats(rows) {
+  const sum = (field) => rows.reduce((total, row) => total + Number(row[field] || 0), 0);
+  const weightedAverage = (field) => {
+    let weight = 0;
+    let total = 0;
+    for (const row of rows) {
+      const value = Number(row[field]);
+      const rowWeight = Math.max(1, Number(row.total_trades || 0));
+      if (Number.isFinite(value)) { total += value * rowWeight; weight += rowWeight; }
+    }
+    return weight ? total / weight : null;
+  };
+  const bestBy = (groupField) => {
+    const grouped = new Map();
+    for (const row of rows) {
+      const key = String(row[groupField] ?? "");
+      if (!key) continue;
+      const current = grouped.get(key) || { key, takeHits:0, totalTrades:0 };
+      current.takeHits += Number(row.take_hits || 0);
+      current.totalTrades += Number(row.total_trades || 0);
+      grouped.set(key, current);
+    }
+    return [...grouped.values()].sort((a, b) => (b.takeHits - a.takeHits) || (b.totalTrades - a.totalTrades))[0]?.key || null;
+  };
+  const symbols = new Map();
+  for (const row of rows) {
+    const key = String(row.symbol || "");
+    if (!key) continue;
+    const current = symbols.get(key) || { symbol:key, takeHits:0, totalTrades:0 };
+    current.takeHits += Number(row.take_hits || 0);
+    current.totalTrades += Number(row.total_trades || 0);
+    symbols.set(key, current);
+  }
+  return {
+    totalTrades:sum("total_trades"),
+    takeHits:sum("take_hits"),
+    activeTrades:sum("active_trades"),
+    drawdownTrades:sum("drawdown_trades"),
+    avgResultPct:weightedAverage("avg_result_pct"),
+    avgDrawdownPct:weightedAverage("avg_drawdown_pct"),
+    bestTimeframe:bestBy("timeframe"),
+    bestEntryMode:bestBy("entry_mode"),
+    bestSymbolsByTakeHits:[...symbols.values()].sort((a, b) => (b.takeHits - a.takeHits) || (b.totalTrades - a.totalTrades)).slice(0, 5),
+  };
+}
 async function handleStrategyStatsApi(url, env) {
-  const db = strategyDb(env); if (!db) return strategyDbUnavailable();
+  const db = strategyDb(env); if (!db) return strategyDbUnavailable({ stats:[], aggregate:aggregateStrategyStats([]) });
   const symbol = String(url.searchParams.get("symbol") || "").toUpperCase();
   const stmt = symbol ? db.prepare(`SELECT * FROM strategy_stats WHERE symbol=? ORDER BY timeframe, entry_mode`).bind(baseFromSymbol(symbol)) : db.prepare(`SELECT * FROM strategy_stats ORDER BY symbol, timeframe, entry_mode`);
-  const res = await stmt.all(); return json({ stats:res.results || [] }, 200, { cacheControl:"no-store" });
+  const res = await stmt.all();
+  const stats = res.results || [];
+  return json({ ok:true, dbAvailable:true, stats, aggregate:aggregateStrategyStats(stats) }, 200, { cacheControl:"no-store" });
 }
 async function runStrategyMonitorBatch(env) {
   const db = strategyDb(env); if (!db) {

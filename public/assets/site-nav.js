@@ -18,6 +18,7 @@
     if (path.startsWith("/reports")) return "report";
     if (path.startsWith("/trade-plan")) return "trade-plan";
     if (path.startsWith("/bull-radar")) return "bull-radar";
+    if (path.startsWith("/strategy")) return "strategy";
     return "home";
   }
 
@@ -31,6 +32,11 @@
 
     if (target === "bull-radar") {
       window.location.assign("/bull-radar/");
+      return;
+    }
+
+    if (target === "strategy") {
+      window.location.assign("/strategy/");
       return;
     }
 
@@ -80,6 +86,10 @@
 
             <button type="button" data-target="bull-radar" class="${page === "bull-radar" ? "active radar" : "radar"}">
               Бычий радар
+            </button>
+
+            <button type="button" data-target="strategy" class="${page === "strategy" ? "active" : ""}">
+              Стратегия
             </button>
 
             ${page !== "home" ? `<button type="button" data-target="home" class="ghost">Главная</button>` : ""}
