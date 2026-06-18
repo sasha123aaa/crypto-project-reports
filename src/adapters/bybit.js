@@ -26,6 +26,16 @@ let bybitSpotTickersCache = {
   bySymbol: new Map(),
 };
 
+function emptyTickersSnapshot(error = null) {
+  return {
+    storedAt: Date.now(),
+    rows: [],
+    bySymbol: new Map(),
+    unavailable: true,
+    error,
+  };
+}
+
 function toFiniteNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
@@ -106,7 +116,10 @@ export async function fetchBybitSpotTickersSnapshot(options = {}) {
   });
 
   if (!response.ok) {
-    throw new Error(`Bybit tickers HTTP ${response.status}`);
+    const error = `Bybit tickers HTTP ${response.status}`;
+    const recoverable = response.status === 403 || response.status === 429 || response.status >= 500;
+    if (options.nonFatal && recoverable) return emptyTickersSnapshot(error);
+    throw new Error(error);
   }
 
   const json = await response.json();
@@ -159,7 +172,8 @@ export async function fetchBybitSpotUsdtUniverse(options = {}) {
     return bybitSpotUniverseCache.rows;
   }
 
-  const tickersSnapshot = await fetchBybitSpotTickersSnapshot({ ttlMs: Math.min(ttlMs, 60 * 1000) });
+  const tickersSnapshot = await fetchBybitSpotTickersSnapshot({ ttlMs: Math.min(ttlMs, 60 * 1000), nonFatal: true });
+  if (tickersSnapshot.unavailable) throw new Error(tickersSnapshot.error || "Bybit tickers unavailable");
   let cursor = "";
   const rows = [];
 
@@ -1014,4 +1028,9 @@ export async function getTechnicalBias(routeInput) {
       higher_tf: phraseForHigher([timeframes["1d"], timeframes["1w"], timeframes["1M"]]),
     },
   };
+}
+
+export function __resetBybitAdapterCaches() {
+  bybitSpotUniverseCache = { storedAt:0, rows:[], minTurnover24h:null, maxUniverse:null };
+  bybitSpotTickersCache = { storedAt:0, rows:[], bySymbol:new Map() };
 }

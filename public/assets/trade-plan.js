@@ -115,7 +115,8 @@ function formatPrice(value){return money(Number(value))}
 function formatStrategyPct(value){const n=Number(value);if(!Number.isFinite(n))return "—";return `${n>=0?"+":""}${n.toFixed(2)}%`}
 
 function strategyLevelState(level,index,source){const activeCount=Number(source?.activatedLevels||0);if(index<activeCount)return "filled";const currentPrice=Number(source?.currentPrice),price=Number(level?.price);if(Number.isFinite(currentPrice)&&Number.isFinite(price)){const distancePct=((currentPrice-price)/currentPrice)*100;if(distancePct>=0&&distancePct<=1)return "near"}return "waiting"}
-function strategyLevelStateText(state){if(state==="filled")return "Сработал";if(state==="near")return "Близко";return "Ждет"}
+function isStrategyActiveTrade(source){return source?.sourceType==="active-trade"||Boolean(source?.id&&source?.status&&source?.openedAt)}
+function strategyLevelStateText(state,source){const activeTrade=isStrategyActiveTrade(source);if(!activeTrade){if(state==="filled")return "Цена ниже уровня";if(state==="near")return "Близко к уровню";return "План"}if(state==="filled")return "Сработал";if(state==="near")return "Близко";return "Ждет"}
 function strategyLevelStateClass(state){if(state==="filled")return "is-filled";if(state==="near")return "is-near";return "is-waiting"}
 function renderStrategyLevels(source){const body=document.getElementById("strategyLevelsBody"),hint=document.getElementById("strategyLevelsHint");if(!body)return;const levels=Array.isArray(source?.levels)?source.levels:[];if(hint)hint.textContent=source?.entryMode?`Режим входа ${source.entryMode}`:"Режим не выбран";if(!levels.length){body.innerHTML=`<tr><td colspan="6">Уровни стратегии пока недоступны</td></tr>`;return}body.innerHTML=levels.map((level,index)=>{const state=strategyLevelState(level,index,source),label=level.label||(index===0?"Вход":`Уср. ${index}`);return `
       <tr class="${strategyLevelStateClass(state)}">
@@ -124,7 +125,7 @@ function renderStrategyLevels(source){const body=document.getElementById("strate
         <td>${escapeHtml(formatPrice(level.price))}</td>
         <td>${escapeHtml(formatStrategyPct(level.capitalPct))}</td>
         <td>${escapeHtml(String(level.qtyMultiplier??"—"))}</td>
-        <td><span>${escapeHtml(strategyLevelStateText(state))}</span></td>
+        <td><span>${escapeHtml(strategyLevelStateText(state,source))}</span></td>
       </tr>
     `}).join("")}
 function renderStrategyStats(payload){

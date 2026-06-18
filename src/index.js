@@ -3,7 +3,7 @@ import { resolveProject } from "./lib/project-resolution.js";
 import { buildReport } from "./lib/build-report.js";
 import { buildReportShell } from "./lib/report-shell.js";
 import { applySectionSelection, isSectionSelected } from "./lib/section-selection.js";
-import { activeRangeForCandles, analysisCandlesForRange, detectRangesWithPreview, fetchMarketCandlesWithFallback, fetchBybitSpotUsdtUniverse, getTechnicalBias, RANGE_PARAMS } from "./adapters/bybit.js";
+import { activeRangeForCandles, analysisCandlesForRange, detectRangesWithPreview, fetchMarketCandlesWithFallback, fetchBybitSpotUsdtUniverse, __resetBybitAdapterCaches, getTechnicalBias, RANGE_PARAMS } from "./adapters/bybit.js";
 import { createMarketSymbols, marketTechnicalRoutes } from "./lib/market-symbols.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
@@ -219,7 +219,7 @@ async function handleStrategyStatusApi(env) {
   }
 
   const monitorState = { ...baseMonitorState, ...(await getMonitorState(db)) };
-  const backfillState = { lastRunAt:null, offset:0, totalJobs:0, processedJobs:0, batchSize:5, timeframes:STRATEGY_TIMEFRAMES, entryModes:STRATEGY_ENTRY_MODES, universeSize:0, lastError:null, ...(await getBackfillState(db)) };
+  const backfillState = { lastRunAt:null, offset:0, totalJobs:0, processedJobs:0, batchSize:5, timeframes:STRATEGY_TIMEFRAMES, entryModes:STRATEGY_ENTRY_MODES, universeSize:0, universeSource:null, universeWarning:null, lastError:null, ...(await getBackfillState(db)) };
 
   const active = await db.prepare(
     `SELECT COUNT(*) AS count FROM virtual_trades WHERE status IN ('active','averaging','drawdown')`
@@ -242,7 +242,11 @@ async function handleStrategyStatusApi(env) {
     dbAvailable:true,
     monitorActive:true,
     monitorState,
-    backfillState:{ lastRunAt:backfillState.lastRunAt, offset:backfillState.offset, totalJobs:backfillState.totalJobs, processedJobs:backfillState.processedJobs, batchSize:backfillState.batchSize, timeframes:backfillState.timeframes, entryModes:backfillState.entryModes, universeSize:backfillState.universeSize, lastError:backfillState.lastError },
+    backfillState:{ lastRunAt:backfillState.lastRunAt, offset:backfillState.offset, totalJobs:backfillState.totalJobs, processedJobs:backfillState.processedJobs, batchSize:backfillState.batchSize, timeframes:backfillState.timeframes, entryModes:backfillState.entryModes, universeSize:backfillState.universeSize, universeSource:backfillState.universeSource || null, universeWarning:backfillState.universeWarning || null, lastError:backfillState.lastError },
+    universeSource:monitorState.universeSource || null,
+    universeWarning:monitorState.universeWarning || null,
+    backfillUniverseSource:backfillState.universeSource || null,
+    backfillUniverseWarning:backfillState.universeWarning || null,
     totals:{
       totalTrades:Number(total?.count || 0),
       activeTrades:Number(active?.count || 0),
@@ -309,9 +313,18 @@ async function runStrategyBackfillBatch(db, url) {
   const symbolParam = String(url.searchParams.get("symbol") || "").trim().toUpperCase();
   const timeframes = requestedList(url.searchParams.get("timeframe"), STRATEGY_TIMEFRAMES);
   const entryModes = requestedList(url.searchParams.get("entryMode"), STRATEGY_ENTRY_MODES, Number);
-  const universe = symbolParam
-    ? [{ symbol:symbolParam.endsWith("USDT") ? symbolParam : `${symbolParam}USDT`, ticker:baseFromSymbol(symbolParam) }]
-    : await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
+  let universe = [];
+  let universeWarning = null;
+  if (symbolParam) {
+    universe = [{ symbol:symbolParam.endsWith("USDT") ? symbolParam : `${symbolParam}USDT`, ticker:baseFromSymbol(symbolParam) }];
+  } else {
+    try {
+      universe = await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
+    } catch (error) {
+      universeWarning = error?.message || String(error);
+      universe = fallbackStrategyUniverse();
+    }
+  }
   const jobs = universe.flatMap((asset) => timeframes.flatMap((timeframe) => entryModes.map((entryMode) => ({ asset, timeframe, entryMode }))));
   const previous = await getBackfillState(db);
   const forced = Boolean(symbolParam || url.searchParams.get("timeframe") || url.searchParams.get("entryMode"));
@@ -339,6 +352,8 @@ async function runStrategyBackfillBatch(db, url) {
     timeframes,
     entryModes,
     universeSize:universe.length,
+    universeSource:universeWarning ? "fallback" : "bybit",
+    universeWarning,
     lastError:null,
   };
   await putBackfillState(db, state);
@@ -449,8 +464,14 @@ async function runStrategyMonitorBatch(env) {
   let batch = [];
   let nextOffset = 0;
   try {
-    universe = await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
-    jobs = universe.flatMap((asset) => STRATEGY_TIMEFRAMES.map((timeframe) => ({ asset, timeframe })));
+    let universeWarning = null;
+    try {
+      universe = await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
+    } catch (error) {
+      universeWarning = error?.message || String(error);
+      universe = fallbackStrategyUniverse();
+    }
+    jobs = universe.flatMap((asset) => STRATEGY_TIMEFRAMES.flatMap((timeframe) => STRATEGY_ENTRY_MODES.map((entryMode) => ({ asset, timeframe, entryMode }))));
     const monitorState = await getMonitorState(db);
     const offset = Math.max(0, Number(monitorState?.offset) || 0);
     batch = jobs.slice(offset, offset + STRATEGY_BATCH_SIZE);
@@ -465,6 +486,8 @@ async function runStrategyMonitorBatch(env) {
       timeframes:STRATEGY_TIMEFRAMES,
       entryModes:STRATEGY_ENTRY_MODES,
       universeSize:universe.length,
+      universeSource:universeWarning ? "fallback" : "bybit",
+      universeWarning,
       lastError:null,
     };
     await putMonitorState(db, state);
@@ -480,19 +503,21 @@ async function runStrategyMonitorBatch(env) {
       timeframes:STRATEGY_TIMEFRAMES,
       entryModes:STRATEGY_ENTRY_MODES,
       universeSize:universe.length,
+      universeSource:null,
+      universeWarning:null,
       lastError:error?.message || String(error),
     }).catch(() => {});
     throw error;
   }
 }
-async function processStrategyJob(db, { asset, timeframe }) {
-  const built = await buildStrategyPlanForMarket({ symbol:asset.symbol, exchange:"BYBIT", timeframe, entryMode:0.5 });
+async function processStrategyJob(db, { asset, timeframe, entryMode }) {
+  const built = await buildStrategyPlanForMarket({ symbol:asset.symbol, exchange:"BYBIT", timeframe, entryMode });
   if (!built.plan || !built.range?.bullish) return;
-  for (const entryMode of STRATEGY_ENTRY_MODES) {
-    const plan = buildStrategyPlan({ range:built.range, entryMode, currentPrice:built.currentPrice, candles:built.candles, capital:100 });
+  {
+    const plan = built.plan;
     const id = strategyTradeId({ symbol:asset.symbol, exchange:"BYBIT", timeframe, entryMode, range:built.range });
     const existing = await db.prepare(`SELECT * FROM virtual_trades WHERE id=?`).bind(id).first();
-    if (!existing && plan.activatedLevels <= 0) continue;
+    if (!existing && plan.activatedLevels <= 0) return;
     const oldTrade = existing ? rowToTrade(existing) : { id, symbol:asset.symbol, baseSymbol:asset.ticker, exchange:"BYBIT", timeframe, direction:"long", entryMode, range:built.range, levels:plan.levels, status:"active", openedAt:new Date().toISOString(), maxDrawdownPct:0 };
     const updated = evaluateVirtualTrade({ trade:{ ...oldTrade, levels:plan.levels, range:built.range }, candles:built.candles, currentPrice:built.currentPrice });
     updated.updatedAt = new Date().toISOString();
@@ -529,6 +554,17 @@ const RADAR_UNIVERSE = [
   "ENA", "ONDO", "RENDER", "FET", "RUNE", "STX", "IMX",
   "ETC", "XRP", "ADA", "HBAR", "KAS", "TRX", "LTC"
 ];
+
+function fallbackStrategyUniverse() {
+  return RADAR_UNIVERSE.map((ticker) => ({
+    ticker,
+    slug: ticker.toLowerCase(),
+    name: ticker,
+    symbol: `${ticker}USDT`,
+    exchange: "BYBIT",
+    universeSource: "fallback",
+  }));
+}
 
 const RADAR_META = Object.freeze({
   BTC: { slug:"btc", ticker:"BTC", name:"Bitcoin", coingeckoId:"bitcoin" },
@@ -1846,3 +1882,6 @@ function resolveReportCacheControl(dataStatus){
 }
 function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ return new Response(JSON.stringify(data,null,2),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":cacheControl}}); }
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
+
+
+export const __strategyTestInternals = { runStrategyMonitorBatch, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches };
