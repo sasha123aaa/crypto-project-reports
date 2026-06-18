@@ -326,3 +326,31 @@ test("trade-plan levelStates take precedence over activatedLevels", async () => 
   assert.match(source, /if\(stateFromSource==="executed"\|\|stateFromSource==="filled"\)return "filled"/);
   assert.match(source, /return "Исполнено"/);
 });
+
+test("chartTradePayload preserves ratio capitalPct and qtyMultiplier", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?chartPayload=${Date.now()}-${Math.random()}`);
+  const payload = __strategyTestInternals.chartTradePayload({
+    id:"t1", status:"active", entryMode:0.5, activatedLevels:1,
+    levels:[{ label:"Entry", price:90, ratio:0.5, capitalPct:8, qtyMultiplier:1.2 }],
+  });
+  assert.equal(payload.levels[0].ratio, 0.5);
+  assert.equal(payload.levels[0].capitalPct, 8);
+  assert.equal(payload.levels[0].qtyMultiplier, 1.2);
+  assert.equal(payload.levelStates[0].ratio, 0.5);
+  assert.equal(payload.levelStates[0].capitalPct, 8);
+  assert.equal(payload.levelStates[0].qtyMultiplier, 1.2);
+  assert.equal(payload.levels[0].state, "executed");
+});
+
+test("chartTradePayload restores incomplete legacy levels with calculateLevels", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?restoreLevels=${Date.now()}-${Math.random()}`);
+  const payload = __strategyTestInternals.chartTradePayload({
+    id:"legacy", status:"active", entryMode:0.5, activatedLevels:1,
+    range:{ bullish:true, aPrice:100, bPrice:200 },
+    levels:[{ label:"Вход", price:150 }],
+  });
+  assert.ok(payload.levels.length >= 10);
+  assert.ok(payload.levels.every((level) => level.ratio != null));
+  assert.ok(payload.levels.every((level) => level.capitalPct != null));
+  assert.ok(payload.levels.every((level) => level.qtyMultiplier != null));
+});

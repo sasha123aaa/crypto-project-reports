@@ -16,7 +16,7 @@ import { orchestrateReportSources, publishReportReadiness } from "./lib/report-r
 import { brandingFromCoinGeckoAsset, isHttpsUrl, mergeBranding } from "./lib/branding.js";
 export { mergeBranding } from "./lib/branding.js";
 import { getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, REPORT_CACHE_VERSION, responseFromSnapshot, responseSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "./lib/report-cache.js";
-import { buildStrategyPlan, evaluateVirtualTrade, evaluateStrategyPath } from "../public/assets/strategy-engine.js";
+import { buildStrategyPlan, evaluateVirtualTrade, evaluateStrategyPath, calculateLevels } from "../public/assets/strategy-engine.js";
 import { replayStrategyOnCandles } from "./lib/strategy-replay.js";
 
 export default {
@@ -210,11 +210,40 @@ async function addTradeEvent(db, tradeId, eventType, price, levelIndex = null, p
   const now = payload?.eventTime || payload?.candleTime || new Date().toISOString();
   await db.prepare(`INSERT OR IGNORE INTO virtual_trade_events (id,trade_id,event_type,event_time,price,level_index,payload_json) VALUES (?,?,?,?,?,?,?)`).bind(strategyEventId(tradeId, eventType, levelIndex), tradeId, eventType, now, price, levelIndex, JSON.stringify(payload)).run();
 }
+function tradeLevelsNeedRestore(levels) {
+  return !Array.isArray(levels) || levels.some((level) =>
+    level?.ratio == null || level?.capitalPct == null || level?.qtyMultiplier == null
+  );
+}
+function levelsForChartTrade(trade) {
+  const storedLevels = Array.isArray(trade?.levels) ? trade.levels : [];
+  if (trade?.range && tradeLevelsNeedRestore(storedLevels)) {
+    try {
+      const restoredLevels = calculateLevels({ range:trade.range, entryMode:trade.entryMode });
+      if (Array.isArray(restoredLevels) && restoredLevels.length) return restoredLevels;
+    } catch (error) {
+      console.warn("Failed to restore strategy levels", error);
+    }
+  }
+  return storedLevels;
+}
 function chartTradePayload(trade) {
   if (!trade) return null;
+  const activatedLevels = Number(trade.activatedLevels || 0);
+  const levels = levelsForChartTrade(trade);
+  const mappedLevels = levels.map((level, index) => ({
+    ...level,
+    index,
+    label:level.label || (index === 0 ? "Вход" : `Уср. ${index}`),
+    price:level.price,
+    ratio:level.ratio,
+    capitalPct:level.capitalPct,
+    qtyMultiplier:level.qtyMultiplier,
+    state:index < activatedLevels ? "executed" : (level.state || "waiting"),
+  }));
   return { id:trade.id, status:trade.status, entryMode:trade.entryMode, averagePrice:trade.averagePrice, takePrice:trade.takePrice, currentPrice:trade.currentPrice, usedCapitalPct:trade.usedCapitalPct, activatedLevels:trade.activatedLevels, maxDrawdownPct:trade.maxDrawdownPct, currentPnlPct:trade.currentPnlPct,
-    levels:(trade.levels || []).map((level, index) => ({ label:index === 0 ? "Вход" : `Уср. ${index}`, price:level.price, state:index < Number(trade.activatedLevels || 0) ? "executed" : "waiting" })),
-    levelStates:(trade.levels || []).map((level, index) => ({ index, label:index === 0 ? "Вход" : `Уср. ${index}`, price:level.price, state:index < Number(trade.activatedLevels || 0) ? "executed" : "waiting", executed:index < Number(trade.activatedLevels || 0) })) };
+    levels:mappedLevels,
+    levelStates:mappedLevels.map((level, index) => ({ ...level, index, state:index < activatedLevels ? "executed" : (level.state || "waiting"), executed:index < activatedLevels })) };
 }
 async function buildStrategyPlanForMarket({ symbol, exchange = "BYBIT", timeframe = "4h", entryMode = 0.5 }) {
   const routes = [{ exchange, symbol, source:`${exchange} spot` }];
@@ -2148,4 +2177,4 @@ function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ re
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
 
 
-export const __strategyTestInternals = { runStrategyMonitorBatch, runStrategyBackfillBatch, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRebuildStatsApi };
+export const __strategyTestInternals = { runStrategyMonitorBatch, runStrategyBackfillBatch, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRebuildStatsApi };
