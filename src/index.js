@@ -26,6 +26,7 @@ export default {
     if (url.pathname === "/api/strategy/trades") return handleStrategyTradesApi(url, env);
     if (url.pathname === "/api/strategy/stats") return handleStrategyStatsApi(url, env);
     if (url.pathname === "/api/strategy/radar-stats") return handleStrategyRadarStatsApi(url, env);
+    if (url.pathname === "/api/strategy/debug-symbol") return handleStrategyDebugSymbolApi(url, env);
     if (url.pathname === "/api/strategy/repair-schema") return handleStrategyRepairSchemaApi(request, env);
     if (url.pathname === "/api/strategy/rebuild-stats") return handleStrategyRebuildStatsApi(request, env);
     if (url.pathname === "/api/strategy/active") return handleStrategyActiveApi(env);
@@ -212,17 +213,19 @@ async function addTradeEvent(db, tradeId, eventType, price, levelIndex = null, p
 function chartTradePayload(trade) {
   if (!trade) return null;
   return { id:trade.id, status:trade.status, entryMode:trade.entryMode, averagePrice:trade.averagePrice, takePrice:trade.takePrice, currentPrice:trade.currentPrice, usedCapitalPct:trade.usedCapitalPct, activatedLevels:trade.activatedLevels, maxDrawdownPct:trade.maxDrawdownPct, currentPnlPct:trade.currentPnlPct,
-    levels:(trade.levels || []).map((level, index) => ({ label:index === 0 ? "Вход" : `Уср. ${index}`, price:level.price, state:index < Number(trade.activatedLevels || 0) ? "filled" : "waiting" })) };
+    levels:(trade.levels || []).map((level, index) => ({ label:index === 0 ? "Вход" : `Уср. ${index}`, price:level.price, state:index < Number(trade.activatedLevels || 0) ? "executed" : "waiting" })),
+    levelStates:(trade.levels || []).map((level, index) => ({ index, label:index === 0 ? "Вход" : `Уср. ${index}`, price:level.price, state:index < Number(trade.activatedLevels || 0) ? "executed" : "waiting", executed:index < Number(trade.activatedLevels || 0) })) };
 }
 async function buildStrategyPlanForMarket({ symbol, exchange = "BYBIT", timeframe = "4h", entryMode = 0.5 }) {
   const routes = [{ exchange, symbol, source:`${exchange} spot` }];
   const candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50, timeoutMs:4500 });
   if (!candleResult.route || !candleResult.candles.length) throw new Error("Candles unavailable");
-  const rangeData = activePreviewRangeForCandles(candleResult.candles);
-  const range = rangePayload(rangeData.range, rangeData.analysisCandles);
+  const { analysisCandles, range:rawRange } = activeRangeForCandles(candleResult.candles);
+  const range = rawRange ? rangePayload(rawRange, analysisCandles) : null;
+  const rangeSource = "active_range";
   const currentPrice = Number(candleResult.candles.at(-1)?.close);
   const plan = range?.bullish ? buildStrategyPlan({ range, entryMode, currentPrice, candles:candleResult.candles, capital:100 }) : null;
-  return { symbol:candleResult.symbol, exchange:candleResult.exchange, timeframe, range, currentPrice, candles:candleResult.candles, plan, activeTrade:null, updated_at:new Date().toISOString() };
+  return { symbol:candleResult.symbol, exchange:candleResult.exchange, timeframe, range, rangeSource, currentPrice, candles:candleResult.candles, plan, activeTrade:null, updated_at:new Date().toISOString() };
 }
 async function handleStrategyPlanApi(url, env) {
   try {
@@ -233,6 +236,7 @@ async function handleStrategyPlanApi(url, env) {
     payload.ok = true;
     payload.dbAvailable = hasStrategyDb(env);
     payload.activeTrade = null;
+    payload.debug = { rangeSource:payload.rangeSource, rangeATime:payload.range?.aTime, rangeBTime:payload.range?.bTime, pathBased:payload.plan?.pathBased, activatedLevels:payload.plan?.activatedLevels, levelStates:payload.plan?.levelStates?.map((x) => ({ index:x.index, label:x.label, state:x.state, price:x.price, executedAt:x.executedAt || null })) };
     const db = strategyDb(env);
     if (db) {
       const row = await db.prepare(`SELECT * FROM virtual_trades WHERE symbol=? AND timeframe=? AND exchange=? AND entry_mode=? AND status IN ('active','averaging','drawdown') ORDER BY updated_at DESC LIMIT 1`).bind(payload.symbol, payload.timeframe, payload.exchange, Number(url.searchParams.get("entryMode") || 0.5)).first().catch(() => null);
@@ -597,6 +601,24 @@ async function handleStrategyRadarStatsApi(url, env) {
     }
   }
   return json({ ok:true, dbAvailable:true, stats:out }, 200, { cacheControl:"no-store" });
+}
+
+async function handleStrategyDebugSymbolApi(url, env) {
+  const db = strategyDb(env);
+  if (!db) return strategyDbUnavailable({ tradesCount:0, statsCount:0, radarStats:{}, activeTrades:[] });
+  await ensureStrategySchema(db);
+  const symbol = baseFromSymbol(String(url.searchParams.get("symbol") || "").toUpperCase());
+  const timeframe = String(url.searchParams.get("timeframe") || "").trim();
+  if (!symbol) return json({ ok:false, error:"Missing symbol" }, 400, { cacheControl:"no-store" });
+  const tradeArgs = timeframe ? [symbol, timeframe] : [symbol];
+  const trades = (await db.prepare(`SELECT * FROM virtual_trades WHERE base_symbol=?${timeframe ? " AND timeframe=?" : ""} ORDER BY updated_at DESC`).bind(...tradeArgs).all().catch(() => ({ results:[] }))).results || [];
+  const statsRows = (await db.prepare(`SELECT * FROM strategy_stats WHERE symbol=?${timeframe ? " AND timeframe=?" : ""} ORDER BY updated_at DESC`).bind(...tradeArgs).all().catch(() => ({ results:[] }))).results || [];
+  const radarUrl = new URL("https://local/api/strategy/radar-stats");
+  radarUrl.searchParams.set("symbols", symbol);
+  if (timeframe) radarUrl.searchParams.set("timeframe", timeframe);
+  const radarResponse = await handleStrategyRadarStatsApi(radarUrl, env);
+  const radarPayload = await radarResponse.json().catch(() => ({}));
+  return json({ ok:true, symbol, timeframe:timeframe || null, tradesCount:trades.length, statsCount:statsRows.length, radarStats:radarPayload.stats || {}, activeTrades:trades.filter((row) => ["active","averaging","drawdown"].includes(row.status)).map(rowToTrade) }, 200, { cacheControl:"no-store" });
 }
 
 function summarizeRadarRows(rows, tf, bestEntryMode) {

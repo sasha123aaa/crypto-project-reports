@@ -286,3 +286,43 @@ test("trade status ignores historical drawdown when current PnL is positive", as
   assert.equal(__strategyTestInternals.deriveTradeStatus({ activatedLevels:1, currentPnlPct:2, maxDrawdownPct:-5 }), "active");
   assert.equal(__strategyTestInternals.deriveTradeStatus({ activatedLevels:2, currentPnlPct:2, maxDrawdownPct:-5 }), "averaging");
 });
+
+test("/api/strategy/radar-stats returns NEAR-like active trade when strategy_stats is empty", async () => {
+  const db = new MemoryStrategyDb();
+  db.trades.push({ id:"near-active", symbol:"NEARUSDT", base_symbol:"NEAR", exchange:"BYBIT", timeframe:"15m", entry_mode:0.5, status:"averaging", range_json:"null", levels_json:"[]", activated_levels:2, used_capital_pct:40, max_drawdown_pct:-1.7, current_pnl_pct:-0.5 });
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/radar-stats?symbols=NEAR&timeframe=15m"), { DB:db });
+  const payload = await readJson(response);
+  assert.equal(response.status, 200);
+  assert.equal(payload.stats.NEAR["15m"].totalTrades, 1);
+  assert.equal(payload.stats.NEAR["15m"].takeHits, 0);
+  assert.equal(payload.stats.NEAR["15m"].activeTrade.symbol, "NEARUSDT");
+  assert.equal(payload.stats.NEAR["15m"].maxActivatedLevels, 2);
+});
+
+test("/api/strategy/debug-symbol summarizes trades, stats and radar stats", async () => {
+  const db = new MemoryStrategyDb();
+  db.trades.push({ id:"near-active", symbol:"NEARUSDT", base_symbol:"NEAR", exchange:"BYBIT", timeframe:"15m", entry_mode:0.5, status:"active", range_json:"null", levels_json:"[]", activated_levels:1, used_capital_pct:20, max_drawdown_pct:-1, current_pnl_pct:0.2 });
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/debug-symbol?symbol=NEAR&timeframe=15m"), { DB:db });
+  const payload = await readJson(response);
+  assert.equal(response.status, 200);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.symbol, "NEAR");
+  assert.equal(payload.tradesCount, 1);
+  assert.equal(payload.activeTrades[0].status, "active");
+  assert.equal(payload.radarStats.NEAR["15m"].totalTrades, 1);
+});
+
+test("bull radar source deep-merges strategy stats and loads stats during scan", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("public/assets/bull-radar.js", "utf8"));
+  assert.match(source, /function mergeStrategyRadarStats/);
+  assert.match(source, /strategyRadarStats\[key\]\[tf\]=value/);
+  assert.doesNotMatch(source, /strategyRadarStats=\{\.\.\.strategyRadarStats,\.\.\.payload\.stats\}/);
+  assert.match(source, /await loadStrategyRadarStatsForRows\(rawRows\);\n\s*renderAll\(\);/);
+});
+
+test("trade-plan levelStates take precedence over activatedLevels", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("public/assets/trade-plan.js", "utf8"));
+  assert.match(source, /source\?\.levelStates\?\.\[index\]\?\.state/);
+  assert.match(source, /if\(stateFromSource==="executed"\|\|stateFromSource==="filled"\)return "filled"/);
+  assert.match(source, /return "Исполнено"/);
+});
