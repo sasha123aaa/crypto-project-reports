@@ -34,3 +34,14 @@ test("strategy dashboard exposes rebuild stats action", () => {
   assert.match(strategyHtml, /Пересобрать статистику/);
   assert.match(dashboardJs, /\/api\/strategy\/rebuild-stats\?key=/);
 });
+
+test("strategy backfill UI uses safe loop controls", () => {
+  assert.match(dashboardJs, /let backfillLoopActive=false/);
+  assert.match(dashboardJs, /let backfillLoopAbort=false/);
+  assert.match(dashboardJs, /limit:"1"/);
+  assert.match(dashboardJs, /maxRuntimeMs:"18000"/);
+  assert.match(dashboardJs, /Number\(payload\.offset\|\|0\)===0&&Number\(payload\.totalJobs\|\|0\)>0/);
+  assert.match(dashboardJs, /Cloudflare остановил слишком большую пачку/);
+  assert.match(strategyHtml, /strategyBackfillStopBtn/);
+  assert.match(strategyHtml, /Остановить/);
+});

@@ -427,3 +427,41 @@ test("chartTradePayload restores incomplete legacy levels with calculateLevels",
   assert.ok(payload.levels.every((level) => level.capitalPct != null));
   assert.ok(payload.levels.every((level) => level.qtyMultiplier != null));
 });
+
+test("strategy backfill implementation uses Cloudflare-safe limits and state", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
+  assert.match(source, /ctx\.waitUntil\(runScheduledStrategyTasks\(env\)\)/);
+  assert.match(source, /runStrategyBackfillBatch\(env, \{ limit:1, scheduled:true \}\)/);
+  assert.match(source, /const requestedLimit = params\.get\("limit"\)/);
+  assert.match(source, /clampLimit\(requestedLimit, 1, 3\)/);
+  assert.match(source, /filterSignature = JSON\.stringify/);
+  assert.match(source, /params\.get\("reset"\) === "1"/);
+  assert.match(source, /processStrategyBackfillJob\(db, job, \{ deadlineMs \}\)/);
+  assert.match(source, /timeoutMs:3500/);
+  assert.match(source, /totals\.lastJobError = result\.error/);
+});
+
+test("runStrategyBackfillBatch defaults to one job and clamps limit to three", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?backfillLimit=${Date.now()}-${Math.random()}`);
+  const db = new FakeDb();
+  await withMockFetch(async () => new Response("unavailable", { status:500 }), async () => {
+    const one = await __strategyTestInternals.runStrategyBackfillBatch(db, { symbol:"BTC", timeframe:"1h", entryMode:"0.5", maxRuntimeMs:"18000" });
+    assert.equal(one.backfillState.batchSize, 1);
+    assert.equal(one.backfillState.filterSignature, JSON.stringify({ symbol:"BTC", timeframes:["1h"], entryModes:[0.5] }));
+    const three = await __strategyTestInternals.runStrategyBackfillBatch(db, { symbol:"BTC", timeframe:"1h", entryMode:"0.5", limit:"99", maxRuntimeMs:"18000" });
+    assert.equal(three.backfillState.batchSize, 3);
+  });
+});
+
+test("runStrategyBackfillBatch keeps filtered offset until reset", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?backfillOffset=${Date.now()}-${Math.random()}`);
+  const db = new FakeDb();
+  await withMockFetch(async () => new Response("unavailable", { status:500 }), async () => {
+    const first = await __strategyTestInternals.runStrategyBackfillBatch(db, { symbol:"ETH", timeframe:"1h", limit:"1" });
+    assert.equal(first.offset, 1);
+    const second = await __strategyTestInternals.runStrategyBackfillBatch(db, { symbol:"ETH", timeframe:"1h", limit:"1" });
+    assert.equal(second.offset, 2);
+    const reset = await __strategyTestInternals.runStrategyBackfillBatch(db, { symbol:"ETH", timeframe:"1h", limit:"1", reset:"1" });
+    assert.equal(reset.offset, 1);
+  });
+});
