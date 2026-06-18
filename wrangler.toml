@@ -16,10 +16,10 @@ binding = "ASSETS"
 # Если database_id равен REPLACE_WITH_REAL_D1_DATABASE_ID, binding должен оставаться закомментированным,
 # чтобы деплой без D1 проходил безопасно. После вставки реального database_id блок можно раскомментировать.
 #
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "crypto_strategy_trades"
-# database_id = "REPLACE_WITH_REAL_D1_DATABASE_ID"
+[[d1_databases]]
+binding = "DB"
+database_name = "crypto_strategy_trades"
+database_id = "b19260fe-eca4-426c-be74-f96d3151d460"
 
 [triggers]
 crons = ["*/15 * * * *"]
