@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getStrategyConfig, calculateLevels, calculateAveragePrice, calculateCapitalPlan, calculateDynamicTake, buildStrategyPlan, evaluateVirtualTrade } from "../public/assets/strategy-engine.js";
+import { getStrategyConfig, calculateLevels, calculateAveragePrice, calculateCapitalPlan, calculateDynamicTake, buildStrategyPlan, evaluateVirtualTrade, evaluateStrategyPath } from "../public/assets/strategy-engine.js";
 
 const range = { aTime:1, bTime:2, aPrice:100, bPrice:200, bullish:true };
 const sampleRange = range;
@@ -110,4 +110,36 @@ test("drawdown updates max drawdown", () => {
   const updated = evaluateVirtualTrade({ trade:{ status:"active", entryMode:0.5, range, levels, activatedLevels:1, averagePrice:150, maxDrawdownPct:-2 }, currentPrice:120 });
   assert.equal(updated.status, "drawdown");
   assert.ok(updated.maxDrawdownPct < -2);
+});
+
+
+test("buildStrategyPlan counts levels touched after B even when current price recovered above entry", () => {
+  const candles = [
+    { time:1, open:100, high:205, low:95, close:200 },
+    { time:2, open:200, high:202, low:198, close:200 },
+    { time:3, open:200, high:180, low:140, close:160 },
+    { time:4, open:160, high:165, low:118, close:155 },
+    { time:5, open:155, high:170, low:154, close:160 },
+  ];
+  const plan = buildStrategyPlan({ range, entryMode:0.5, candles, currentPrice:160 });
+  assert.equal(plan.pathBased, true);
+  assert.equal(plan.activatedLevels, 2);
+  assert.ok(plan.averagePrice);
+  assert.ok(plan.usedCapitalPct > 0);
+});
+
+test("buildStrategyPlan marks take_hit when price touches entry and then high reaches take", () => {
+  const candles = [
+    { time:1, open:100, high:205, low:95, close:200 },
+    { time:2, open:200, high:202, low:198, close:200 },
+    { time:3, open:200, high:193, low:140, close:192 },
+  ];
+  const plan = buildStrategyPlan({ range, entryMode:0.5, candles, currentPrice:192 });
+  assert.equal(plan.status, "take_hit");
+  assert.equal(plan.activatedLevels, 1);
+});
+
+test("evaluateStrategyPath reports no path when B candle is missing", () => {
+  const state = evaluateStrategyPath({ range:{ ...range, bTime:99 }, levels:calculateLevels({ range, entryMode:0.5 }), candles:[{ time:1, close:200 }], currentPrice:200 });
+  assert.equal(state.pathFound, false);
 });

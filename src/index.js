@@ -517,10 +517,12 @@ async function processStrategyJob(db, { asset, timeframe, entryMode }) {
     const plan = built.plan;
     const id = strategyTradeId({ symbol:asset.symbol, exchange:"BYBIT", timeframe, entryMode, range:built.range });
     const existing = await db.prepare(`SELECT * FROM virtual_trades WHERE id=?`).bind(id).first();
+    if (!existing && plan.status === "waiting_entry") return;
     if (!existing && plan.activatedLevels <= 0) return;
-    const oldTrade = existing ? rowToTrade(existing) : { id, symbol:asset.symbol, baseSymbol:asset.ticker, exchange:"BYBIT", timeframe, direction:"long", entryMode, range:built.range, levels:plan.levels, status:"active", openedAt:new Date().toISOString(), maxDrawdownPct:0 };
-    const updated = evaluateVirtualTrade({ trade:{ ...oldTrade, levels:plan.levels, range:built.range }, candles:built.candles, currentPrice:built.currentPrice });
-    updated.updatedAt = new Date().toISOString();
+    const now = new Date().toISOString();
+    const oldTrade = existing ? rowToTrade(existing) : { id, symbol:asset.symbol, baseSymbol:asset.ticker, exchange:"BYBIT", timeframe, direction:"long", entryMode, range:built.range, levels:plan.levels, status:plan.status === "take_hit" ? "take_hit" : plan.status, openedAt:now, maxDrawdownPct:plan.maxDrawdownPct ?? 0, activatedLevels:plan.activatedLevels, averagePrice:plan.averagePrice, takePrice:plan.takePrice, usedCapitalPct:plan.usedCapitalPct, currentPnlPct:plan.currentPnlPct };
+    const updated = existing ? evaluateVirtualTrade({ trade:{ ...oldTrade, levels:plan.levels, range:built.range }, candles:built.candles, currentPrice:built.currentPrice }) : { ...oldTrade, currentPrice:plan.currentPrice ?? built.currentPrice };
+    updated.updatedAt = now;
     if (updated.status === "take_hit" && !updated.closedAt) updated.closedAt = updated.updatedAt;
     updated.entryPrice = updated.entryPrice || plan.levels[0]?.price || null;
     await putTrade(db, updated);
@@ -1884,4 +1886,4 @@ function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ re
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
 
 
-export const __strategyTestInternals = { runStrategyMonitorBatch, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches };
+export const __strategyTestInternals = { runStrategyMonitorBatch, processStrategyJob, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches };
