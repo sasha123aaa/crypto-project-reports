@@ -57,11 +57,21 @@ export default {
       console.log("Strategy DB is not configured. Skipping scheduled strategy monitor.");
       return;
     }
-    ctx.waitUntil(runStrategyMonitorBatch(env));
-    ctx.waitUntil(runStrategyBackfillBatch(env, { limit:3 }));
+    ctx.waitUntil(runScheduledStrategyTasks(env));
   },
 };
 
+async function runScheduledStrategyTasks(env) {
+  const monitor = await runStrategyMonitorBatch(env, { limit:8 }).catch((error) => ({
+    error:error?.message || String(error),
+  }));
+
+  const backfill = await runStrategyBackfillBatch(env, { limit:1, scheduled:true }).catch((error) => ({
+    error:error?.message || String(error),
+  }));
+
+  return { monitor, backfill };
+}
 
 const STRATEGY_TIMEFRAMES = ["15m", "1h", "4h", "1d"];
 const STRATEGY_ENTRY_MODES = [0.31, 0.5, 0.75];
@@ -349,7 +359,7 @@ async function handleStrategyStatusApi(env) {
       monitorActive:false,
       message:"D1 database is not configured. Strategy memory works only as live plan calculation.",
       monitorState:baseMonitorState,
-      backfillState:{ lastRunAt:null, offset:0, totalJobs:0, processedJobs:0, batchSize:5, lastError:null },
+      backfillState:{ lastRunAt:null, offset:0, totalJobs:0, processedJobs:0, batchSize:1, errors:0, lastJobError:null, lastError:null },
       totals:{
         totalTrades:0,
         activeTrades:0,
@@ -361,7 +371,7 @@ async function handleStrategyStatusApi(env) {
 
   await ensureStrategySchema(db);
   const monitorState = { ...baseMonitorState, ...(await getMonitorState(db)) };
-  const backfillState = { lastRunAt:null, offset:0, totalJobs:0, processedJobs:0, batchSize:5, timeframes:STRATEGY_TIMEFRAMES, entryModes:STRATEGY_ENTRY_MODES, universeSize:0, universeSource:null, universeWarning:null, lastError:null, ...(await getBackfillState(db)) };
+  const backfillState = { lastRunAt:null, offset:0, totalJobs:0, processedJobs:0, batchSize:1, timeframes:STRATEGY_TIMEFRAMES, entryModes:STRATEGY_ENTRY_MODES, universeSize:0, universeSource:null, universeWarning:null, lastError:null, ...(await getBackfillState(db)) };
 
   const active = await db.prepare(
     `SELECT COUNT(*) AS count FROM virtual_trades WHERE status IN ('active','averaging','drawdown')`
@@ -384,7 +394,7 @@ async function handleStrategyStatusApi(env) {
     dbAvailable:true,
     monitorActive:true,
     monitorState,
-    backfillState:{ lastRunAt:backfillState.lastRunAt, offset:backfillState.offset, totalJobs:backfillState.totalJobs, processedJobs:backfillState.processedJobs, batchSize:backfillState.batchSize, timeframes:backfillState.timeframes, entryModes:backfillState.entryModes, universeSize:backfillState.universeSize, universeSource:backfillState.universeSource || null, universeWarning:backfillState.universeWarning || null, lastError:backfillState.lastError, createdTrades:backfillState.createdTrades || 0, updatedTrades:backfillState.updatedTrades || 0, takeHits:backfillState.takeHits || 0, activeTrades:backfillState.activeTrades || 0, drawdownTrades:backfillState.drawdownTrades || 0 },
+    backfillState:{ lastRunAt:backfillState.lastRunAt, offset:backfillState.offset, totalJobs:backfillState.totalJobs, processedJobs:backfillState.processedJobs, batchSize:backfillState.batchSize, timeframes:backfillState.timeframes, entryModes:backfillState.entryModes, universeSize:backfillState.universeSize, universeSource:backfillState.universeSource || null, universeWarning:backfillState.universeWarning || null, filterSignature:backfillState.filterSignature || null, errors:backfillState.errors || 0, lastJobError:backfillState.lastJobError || null, lastError:backfillState.lastError, createdTrades:backfillState.createdTrades || 0, updatedTrades:backfillState.updatedTrades || 0, takeHits:backfillState.takeHits || 0, activeTrades:backfillState.activeTrades || 0, drawdownTrades:backfillState.drawdownTrades || 0 },
     universeSource:monitorState.universeSource || null,
     universeWarning:monitorState.universeWarning || null,
     backfillUniverseSource:backfillState.universeSource || null,
@@ -559,7 +569,11 @@ async function runStrategyBackfillBatch(envOrDb, options = {}) {
   if (db) await ensureStrategySchema(db);
   const params = options instanceof URL ? options.searchParams : new URLSearchParams();
   if (!(options instanceof URL) && options && typeof options === "object") for (const [key, value] of Object.entries(options)) if (value != null) params.set(key, String(value));
-  const limit = clampLimit(params.get("limit"), 5, 20);
+  const requestedLimit = params.get("limit");
+  const limit = clampLimit(requestedLimit, 1, 3);
+  const startedAt = Date.now();
+  const maxRuntimeMs = Number(params.get("maxRuntimeMs") || 18000);
+  const deadlineMs = startedAt + maxRuntimeMs;
   const symbolParam = String(params.get("symbol") || "").trim().toUpperCase();
   const timeframes = requestedList(params.get("timeframe"), STRATEGY_TIMEFRAMES);
   const entryModes = requestedList(params.get("entryMode"), STRATEGY_ENTRY_MODES, Number);
@@ -577,14 +591,31 @@ async function runStrategyBackfillBatch(envOrDb, options = {}) {
   }
   const jobs = universe.flatMap((asset) => timeframes.flatMap((timeframe) => entryModes.map((entryMode) => ({ asset, timeframe, entryMode }))));
   const previous = await getBackfillState(db);
-  const forced = Boolean(symbolParam || params.get("timeframe") || params.get("entryMode"));
-  const offset = forced ? 0 : Math.max(0, Number(previous?.offset) || 0);
+  const filterSignature = JSON.stringify({
+    symbol:symbolParam || "",
+    timeframes,
+    entryModes,
+  });
+  const previousSignature = previous?.filterSignature || "";
+  const resetRequested = params.get("reset") === "1";
+  const offset = resetRequested || previousSignature !== filterSignature
+    ? 0
+    : Math.max(0, Number(previous?.offset) || 0);
   const batch = jobs.slice(offset, offset + limit);
   const totals = { processedJobs:0, createdTrades:0, updatedTrades:0, takeHits:0, activeTrades:0, drawdownTrades:0 };
 
   for (const job of batch) {
-    const result = await processStrategyBackfillJob(db, job).catch((error) => ({ error:error?.message || String(error) }));
+    if (Date.now() - startedAt > maxRuntimeMs) {
+      totals.stoppedByBudget = true;
+      break;
+    }
+
+    const result = await processStrategyBackfillJob(db, job, { deadlineMs }).catch((error) => ({ error:error?.message || String(error) }));
     totals.processedJobs += 1;
+    if (result.error) {
+      totals.errors = (totals.errors || 0) + 1;
+      totals.lastJobError = result.error;
+    }
     totals.createdTrades += Number(result.createdTrades || 0);
     totals.updatedTrades += Number(result.updatedTrades || 0);
     totals.takeHits += Number(result.takeHits || 0);
@@ -592,18 +623,23 @@ async function runStrategyBackfillBatch(envOrDb, options = {}) {
     totals.drawdownTrades += Number(result.drawdownTrades || 0);
   }
 
-  const nextOffset = offset + batch.length >= jobs.length ? 0 : offset + batch.length;
+  const completedJobs = totals.processedJobs;
+  const nextOffset = offset + completedJobs >= jobs.length ? 0 : offset + completedJobs;
   const state = {
     lastRunAt:new Date().toISOString(),
     offset:nextOffset,
     totalJobs:jobs.length,
-    processedJobs:batch.length,
+    processedJobs:completedJobs,
     batchSize:limit,
     timeframes,
     entryModes,
     universeSize:universe.length,
     universeSource:universeWarning ? "fallback" : "bybit",
     universeWarning,
+    filterSignature,
+    errors:totals.errors || 0,
+    lastJobError:totals.lastJobError || null,
+    stoppedByBudget:Boolean(totals.stoppedByBudget),
     lastError:null,
     createdTrades:totals.createdTrades,
     updatedTrades:totals.updatedTrades,
@@ -615,9 +651,13 @@ async function runStrategyBackfillBatch(envOrDb, options = {}) {
   return { ...totals, offset:nextOffset, totalJobs:jobs.length, backfillState:state };
 }
 
-async function processStrategyBackfillJob(db, { asset, timeframe, entryMode }) {
+async function processStrategyBackfillJob(db, { asset, timeframe, entryMode }, options = {}) {
   const routes = [{ exchange:"BYBIT", symbol:asset.symbol, source:"BYBIT spot" }];
-  const candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:80, timeoutMs:6000 });
+  const candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, {
+    minCandles:80,
+    timeoutMs:3500,
+    deadlineMs:options.deadlineMs,
+  });
   const candles = candleResult.candles || [];
   if (!candleResult.route || candles.length < 20) return {};
   const replay = replayStrategyOnCandles({
@@ -2293,4 +2333,4 @@ function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ re
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
 
 
-export const __strategyTestInternals = { runStrategyMonitorBatch, runStrategyBackfillBatch, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi };
+export const __strategyTestInternals = { runScheduledStrategyTasks, runStrategyMonitorBatch, runStrategyBackfillBatch, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi };
