@@ -17,6 +17,7 @@ import { brandingFromCoinGeckoAsset, isHttpsUrl, mergeBranding } from "./lib/bra
 export { mergeBranding } from "./lib/branding.js";
 import { getCachedReport, getFallbackReport, getPersistentReport, getPersistentResolution, REPORT_CACHE_VERSION, responseFromSnapshot, responseSnapshot, runSingleFlight, setCachedReport, setPersistentReport, setPersistentResolution } from "./lib/report-cache.js";
 import { buildStrategyPlan, evaluateVirtualTrade } from "../public/assets/strategy-engine.js";
+import { replayStrategyOnCandles } from "./lib/strategy-replay.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -27,6 +28,7 @@ export default {
     if (url.pathname === "/api/strategy/active") return handleStrategyActiveApi(env);
     if (url.pathname === "/api/strategy/status") return handleStrategyStatusApi(env);
     if (url.pathname === "/api/strategy/run-monitor") return handleStrategyRunMonitorApi(request, env);
+    if (url.pathname === "/api/strategy/backfill") return handleStrategyBackfillApi(request, env);
     if (url.pathname === "/api/bull-radar") {
       return handleBullRadarApi(url);
     }
@@ -57,6 +59,7 @@ export default {
 const STRATEGY_TIMEFRAMES = ["15m", "1h", "4h", "1d"];
 const STRATEGY_ENTRY_MODES = [0.31, 0.5, 0.75];
 const STRATEGY_BATCH_SIZE = 20;
+const STRATEGY_BACKFILL_STATE_KEY = "strategy_backfill";
 
 function strategyDb(env) { return env?.DB || env?.STRATEGY_DB || null; }
 function hasStrategyDb(env) { return !!strategyDb(env); }
@@ -115,6 +118,24 @@ async function putMonitorState(db, state) {
   await db.prepare(
     `INSERT OR REPLACE INTO strategy_monitor_state (key,value_json,updated_at) VALUES ('main',?,?)`
   ).bind(JSON.stringify(state), new Date().toISOString()).run();
+}
+
+async function getBackfillState(db) {
+  const row = await db.prepare(
+    `SELECT value_json FROM strategy_monitor_state WHERE key=? LIMIT 1`
+  ).bind(STRATEGY_BACKFILL_STATE_KEY).first().catch(() => null);
+
+  try {
+    return row?.value_json ? JSON.parse(row.value_json) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function putBackfillState(db, state) {
+  await db.prepare(
+    `INSERT OR REPLACE INTO strategy_monitor_state (key,value_json,updated_at) VALUES (?,?,?)`
+  ).bind(STRATEGY_BACKFILL_STATE_KEY, JSON.stringify(state), new Date().toISOString()).run();
 }
 
 async function addTradeEvent(db, tradeId, eventType, price, levelIndex = null, payload = {}) {
@@ -187,6 +208,7 @@ async function handleStrategyStatusApi(env) {
       monitorActive:false,
       message:"D1 database is not configured. Strategy memory works only as live plan calculation.",
       monitorState:baseMonitorState,
+      backfillState:{ lastRunAt:null, offset:0, totalJobs:0, processedJobs:0, batchSize:5, lastError:null },
       totals:{
         totalTrades:0,
         activeTrades:0,
@@ -197,6 +219,7 @@ async function handleStrategyStatusApi(env) {
   }
 
   const monitorState = { ...baseMonitorState, ...(await getMonitorState(db)) };
+  const backfillState = { lastRunAt:null, offset:0, totalJobs:0, processedJobs:0, batchSize:5, timeframes:STRATEGY_TIMEFRAMES, entryModes:STRATEGY_ENTRY_MODES, universeSize:0, lastError:null, ...(await getBackfillState(db)) };
 
   const active = await db.prepare(
     `SELECT COUNT(*) AS count FROM virtual_trades WHERE status IN ('active','averaging','drawdown')`
@@ -219,6 +242,7 @@ async function handleStrategyStatusApi(env) {
     dbAvailable:true,
     monitorActive:true,
     monitorState,
+    backfillState:{ lastRunAt:backfillState.lastRunAt, offset:backfillState.offset, totalJobs:backfillState.totalJobs, processedJobs:backfillState.processedJobs, batchSize:backfillState.batchSize, timeframes:backfillState.timeframes, entryModes:backfillState.entryModes, universeSize:backfillState.universeSize, lastError:backfillState.lastError },
     totals:{
       totalTrades:Number(total?.count || 0),
       activeTrades:Number(active?.count || 0),
@@ -251,6 +275,115 @@ async function handleStrategyRunMonitorApi(request, env) {
   } catch (error) {
     return json({ ok:false, dbAvailable:true, message:error?.message || "Strategy monitor failed" }, 500, { cacheControl:"no-store" });
   }
+}
+
+async function handleStrategyBackfillApi(request, env) {
+  const url = new URL(request.url);
+  const adminKey = env.STRATEGY_ADMIN_KEY;
+  const providedKey = url.searchParams.get("key") || request.headers.get("x-strategy-admin-key");
+  if (!adminKey) return json({ ok:false, message:"STRATEGY_ADMIN_KEY is not configured" }, 403, { cacheControl:"no-store" });
+  if (providedKey !== adminKey) return json({ ok:false, message:"Invalid strategy admin key" }, 403, { cacheControl:"no-store" });
+  const db = strategyDb(env);
+  if (!db) return json({ ok:false, dbAvailable:false }, 200, { cacheControl:"no-store" });
+
+  try {
+    const result = await runStrategyBackfillBatch(db, url);
+    return json({ ok:true, dbAvailable:true, ...result }, 200, { cacheControl:"no-store" });
+  } catch (error) {
+    await putBackfillState(db, {
+      ...(await getBackfillState(db)),
+      lastRunAt:new Date().toISOString(),
+      lastError:error?.message || String(error),
+    }).catch(() => {});
+    return json({ ok:false, dbAvailable:true, message:error?.message || "Strategy backfill failed" }, 500, { cacheControl:"no-store" });
+  }
+}
+
+function requestedList(value, fallback, normalize = (x) => x) {
+  const raw = String(value || "").trim();
+  return raw ? [normalize(raw)] : fallback;
+}
+
+async function runStrategyBackfillBatch(db, url) {
+  const limit = clampLimit(url.searchParams.get("limit"), 5, 20);
+  const symbolParam = String(url.searchParams.get("symbol") || "").trim().toUpperCase();
+  const timeframes = requestedList(url.searchParams.get("timeframe"), STRATEGY_TIMEFRAMES);
+  const entryModes = requestedList(url.searchParams.get("entryMode"), STRATEGY_ENTRY_MODES, Number);
+  const universe = symbolParam
+    ? [{ symbol:symbolParam.endsWith("USDT") ? symbolParam : `${symbolParam}USDT`, ticker:baseFromSymbol(symbolParam) }]
+    : await fetchBybitSpotUsdtUniverse({ minTurnover24h:1_000_000, maxUniverse:200 });
+  const jobs = universe.flatMap((asset) => timeframes.flatMap((timeframe) => entryModes.map((entryMode) => ({ asset, timeframe, entryMode }))));
+  const previous = await getBackfillState(db);
+  const forced = Boolean(symbolParam || url.searchParams.get("timeframe") || url.searchParams.get("entryMode"));
+  const offset = forced ? 0 : Math.max(0, Number(previous?.offset) || 0);
+  const batch = jobs.slice(offset, offset + limit);
+  const totals = { processedJobs:0, createdTrades:0, updatedTrades:0, takeHits:0, activeTrades:0, drawdownTrades:0 };
+
+  for (const job of batch) {
+    const result = await processStrategyBackfillJob(db, job).catch((error) => ({ error:error?.message || String(error) }));
+    totals.processedJobs += 1;
+    totals.createdTrades += Number(result.createdTrades || 0);
+    totals.updatedTrades += Number(result.updatedTrades || 0);
+    totals.takeHits += Number(result.takeHits || 0);
+    totals.activeTrades += Number(result.activeTrades || 0);
+    totals.drawdownTrades += Number(result.drawdownTrades || 0);
+  }
+
+  const nextOffset = offset + batch.length >= jobs.length ? 0 : offset + batch.length;
+  const state = {
+    lastRunAt:new Date().toISOString(),
+    offset:nextOffset,
+    totalJobs:jobs.length,
+    processedJobs:batch.length,
+    batchSize:limit,
+    timeframes,
+    entryModes,
+    universeSize:universe.length,
+    lastError:null,
+  };
+  await putBackfillState(db, state);
+  return { ...totals, offset:nextOffset, totalJobs:jobs.length, backfillState:state };
+}
+
+async function processStrategyBackfillJob(db, { asset, timeframe, entryMode }) {
+  const routes = [{ exchange:"BYBIT", symbol:asset.symbol, source:"BYBIT spot" }];
+  const candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:80, timeoutMs:6000 });
+  const candles = candleResult.candles || [];
+  if (!candleResult.route || candles.length < 20) return {};
+  const replay = replayStrategyOnCandles({
+    symbol:candleResult.symbol || asset.symbol,
+    baseSymbol:asset.ticker || baseFromSymbol(asset.symbol),
+    exchange:"BYBIT",
+    timeframe,
+    entryMode,
+    candles,
+    capital:100,
+    rangeDetector:(history) => {
+      const rangeData = activePreviewRangeForCandles(history);
+      return { range:rangePayload(rangeData.range, rangeData.analysisCandles), analysisCandles:rangeData.analysisCandles };
+    },
+  });
+  let createdTrades = 0, updatedTrades = 0;
+  for (const trade of replay.trades) {
+    const existing = await db.prepare(`SELECT id FROM virtual_trades WHERE id=?`).bind(trade.id).first().catch(() => null);
+    await putTrade(db, trade);
+    if (existing) {
+      updatedTrades += 1;
+    } else {
+      createdTrades += 1;
+      for (const item of replay.events.filter((eventItem) => eventItem.tradeId === trade.id)) {
+        await addTradeEvent(db, trade.id, item.eventType, item.price, item.levelIndex, {
+          ...item.payload,
+          source:"backfill",
+          timeframe,
+          entryMode,
+          candleTime:item.payload?.candleTime || item.eventTime,
+        });
+      }
+    }
+    await refreshStrategyStats(db, trade.baseSymbol, timeframe, entryMode, "BYBIT");
+  }
+  return { createdTrades, updatedTrades, ...replay.summary };
 }
 
 function aggregateStrategyStats(rows) {
