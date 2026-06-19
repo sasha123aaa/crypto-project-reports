@@ -22,4 +22,7 @@ database_name = "crypto_strategy_trades"
 database_id = "b19260fe-eca4-426c-be74-f96d3151d460"
 
 [triggers]
-crons = ["*/15 * * * *"]
+crons = [
+  "*/15 * * * *",
+  "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
+]

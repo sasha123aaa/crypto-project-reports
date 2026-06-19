@@ -55,31 +55,35 @@ export default {
   },
   async scheduled(event, env, ctx) {
     if (!hasStrategyDb(env)) {
-      console.log("Strategy DB is not configured. Skipping scheduled strategy monitor.");
+      console.log("Strategy DB is not configured. Scheduled task skipped.");
       return;
     }
-    ctx.waitUntil(runScheduledStrategyTasks(env));
+
+    if (event.cron === STRATEGY_MONITOR_CRON) {
+      ctx.waitUntil(runStrategyMonitorBatch(env, {
+        limit:8,
+        maxRuntimeMs:18000,
+        triggerSource:"cron-monitor",
+      }));
+      return;
+    }
+
+    if (event.cron === STRATEGY_BACKFILL_CRON) {
+      ctx.waitUntil(runStrategyBackfillBatch(env, {
+        limit:1,
+        maxRuntimeMs:12000,
+        scheduled:true,
+        triggerSource:"cron-backfill",
+      }));
+      return;
+    }
+
+    console.log("Unknown scheduled cron:", event.cron);
   },
 };
 
-async function runScheduledStrategyTasks(env) {
-  const monitor = await runStrategyMonitorBatch(env, {
-    limit:8,
-    maxRuntimeMs:18000,
-  }).catch((error) => ({
-    error:error?.message || String(error),
-  }));
-
-  const backfill = await runStrategyBackfillBatch(env, {
-    limit:1,
-    scheduled:true,
-    maxRuntimeMs:12000,
-  }).catch((error) => ({
-    error:error?.message || String(error),
-  }));
-
-  return { monitor, backfill };
-}
+const STRATEGY_MONITOR_CRON = "*/15 * * * *";
+const STRATEGY_BACKFILL_CRON = "2,7,12,17,22,27,32,37,42,47,52,57 * * * *";
 
 const STRATEGY_TIMEFRAMES = ["15m", "1h", "4h", "1d"];
 const STRATEGY_ENTRY_MODES = [0.31, 0.5, 0.75];
@@ -229,6 +233,30 @@ async function putMonitorState(db, state) {
   ).bind(JSON.stringify(state), new Date().toISOString()).run();
 }
 
+async function acquireStrategyLease(db, key, ttlMs = 60000) {
+  const now = new Date().toISOString();
+  const cutoff = new Date(Date.now() - ttlMs).toISOString();
+  const token = crypto.randomUUID();
+  const result = await db.prepare(`
+    INSERT INTO strategy_monitor_state
+      (key, value_json, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET
+      value_json=excluded.value_json,
+      updated_at=excluded.updated_at
+    WHERE strategy_monitor_state.updated_at < ?
+  `).bind(key, JSON.stringify({ token }), now, cutoff).run();
+
+  return Number(result?.meta?.changes || 0) > 0 ? token : null;
+}
+
+async function releaseStrategyLease(db, key, token) {
+  await db.prepare(`
+    DELETE FROM strategy_monitor_state
+    WHERE key=?
+      AND json_extract(value_json, '$.token')=?
+  `).bind(key, token).run();
+}
 
 async function getStrategyUniverseCache(db) {
   const row = await db.prepare(`
@@ -488,7 +516,7 @@ async function handleStrategyStatusApi(env) {
     dbAvailable:true,
     monitorActive:true,
     monitorState,
-    backfillState:{ lastRunAt:backfillState.lastRunAt, offset:backfillState.offset, totalJobs:backfillState.totalJobs, processedJobs:backfillState.processedJobs, batchSize:backfillState.batchSize, timeframes:backfillState.timeframes, entryModes:backfillState.entryModes, universeSize:backfillState.universeSize, universeSource:backfillState.universeSource || null, universeWarning:backfillState.universeWarning || null, universeCached:Boolean(backfillState.universeCached), filterSignature:backfillState.filterSignature || null, errors:backfillState.errors || 0, lastJobError:backfillState.lastJobError || null, lastError:backfillState.lastError, createdTrades:backfillState.createdTrades || 0, updatedTrades:backfillState.updatedTrades || 0, takeHits:backfillState.takeHits || 0, activeTrades:backfillState.activeTrades || 0, drawdownTrades:backfillState.drawdownTrades || 0 },
+    backfillState:{ lastRunAt:backfillState.lastRunAt, startedAt:backfillState.startedAt || null, completed:backfillState.completed === true, completedAt:backfillState.completedAt || null, offset:backfillState.offset, totalJobs:backfillState.totalJobs, processedTotal:backfillState.processedTotal || 0, processedJobs:backfillState.processedJobs, lastBatchProcessed:backfillState.lastBatchProcessed || 0, attemptedJobs:backfillState.attemptedJobs || 0, batchSize:backfillState.batchSize, triggerSource:backfillState.triggerSource || null, timeframes:backfillState.timeframes, entryModes:backfillState.entryModes, universeSize:backfillState.universeSize, universeSource:backfillState.universeSource || null, universeWarning:backfillState.universeWarning || null, universeCached:Boolean(backfillState.universeCached), filterSignature:backfillState.filterSignature || null, errors:backfillState.errors || 0, lastJobError:backfillState.lastJobError || null, failedJob:backfillState.failedJob || null, lastError:backfillState.lastError, createdTrades:backfillState.createdTrades || 0, updatedTrades:backfillState.updatedTrades || 0, takeHits:backfillState.takeHits || 0, activeTrades:backfillState.activeTrades || 0, drawdownTrades:backfillState.drawdownTrades || 0 },
     universeSource:monitorState.universeSource || null,
     universeWarning:monitorState.universeWarning || null,
     universeCached:Boolean(monitorState.universeCached),
@@ -686,95 +714,155 @@ function requestedList(value, fallback, normalize = (x) => x) {
 async function runStrategyBackfillBatch(envOrDb, options = {}) {
   const db = strategyDb(envOrDb) || envOrDb;
   if (db) await ensureStrategySchema(db);
-  const params = options instanceof URL ? options.searchParams : new URLSearchParams();
-  if (!(options instanceof URL) && options && typeof options === "object") for (const [key, value] of Object.entries(options)) if (value != null) params.set(key, String(value));
-  const requestedLimit = params.get("limit");
-  const limit = clampLimit(requestedLimit, 1, 3);
-  const startedAt = Date.now();
-  const maxRuntimeMs = Number(params.get("maxRuntimeMs") || 18000);
-  const deadlineMs = startedAt + maxRuntimeMs;
-  const symbolParam = String(params.get("symbol") || "").trim().toUpperCase();
-  const timeframes = requestedList(params.get("timeframe"), STRATEGY_TIMEFRAMES);
-  const entryModes = requestedList(params.get("entryMode"), STRATEGY_ENTRY_MODES, Number);
-  let universe = [];
-  let universeWarning = null;
-  let universeSource = null;
-  let universeCached = false;
-  if (symbolParam) {
-    universe = [{ symbol:symbolParam.endsWith("USDT") ? symbolParam : `${symbolParam}USDT`, ticker:baseFromSymbol(symbolParam) }];
-    universeSource = "symbol";
-  } else {
-    const universeResult = await getStrategyUniverse(db, {
-      ttlMs:6 * 60 * 60 * 1000,
-      forceRefresh:params.get("refreshUniverse") === "1",
+  const leaseToken = await acquireStrategyLease(db, "strategy_backfill_lock", 60000);
+
+  if (!leaseToken) {
+    const currentState = await getBackfillState(db);
+
+    return {
+      ok:true,
+      busy:true,
+      skipped:true,
+      reason:"backfill_already_running",
+      backfillState:currentState,
+    };
+  }
+
+  try {
+    const params = options instanceof URL ? options.searchParams : new URLSearchParams();
+    if (!(options instanceof URL) && options && typeof options === "object") for (const [key, value] of Object.entries(options)) if (value != null) params.set(key, String(value));
+    const requestedLimit = params.get("limit");
+    const limit = clampLimit(requestedLimit, 1, 3);
+    const runStartedAt = Date.now();
+    const maxRuntimeMs = Number(params.get("maxRuntimeMs") || 18000);
+    const deadlineMs = runStartedAt + maxRuntimeMs;
+    const symbolParam = String(params.get("symbol") || "").trim().toUpperCase();
+    const timeframes = requestedList(params.get("timeframe"), STRATEGY_TIMEFRAMES);
+    const entryModes = requestedList(params.get("entryMode"), STRATEGY_ENTRY_MODES, Number);
+    let universe = [];
+    let universeWarning = null;
+    let universeSource = null;
+    let universeCached = false;
+    if (symbolParam) {
+      universe = [{ symbol:symbolParam.endsWith("USDT") ? symbolParam : `${symbolParam}USDT`, ticker:baseFromSymbol(symbolParam) }];
+      universeSource = "symbol";
+    } else {
+      const universeResult = await getStrategyUniverse(db, {
+        ttlMs:6 * 60 * 60 * 1000,
+        forceRefresh:params.get("refreshUniverse") === "1",
+      });
+
+      universe = universeResult.universe;
+      universeWarning = universeResult.warning;
+      universeSource = universeResult.source;
+      universeCached = universeResult.cached;
+    }
+    universe = [...universe].sort((a, b) => String(a.symbol).localeCompare(String(b.symbol)));
+    const universeSignature = universe.map((asset) => asset.symbol).sort().join(",");
+    const jobs = universe.flatMap((asset) => timeframes.flatMap((timeframe) => entryModes.map((entryMode) => ({ asset, timeframe, entryMode }))));
+    const previous = await getBackfillState(db);
+    const filterSignature = JSON.stringify({
+      symbol:symbolParam || "",
+      timeframes,
+      entryModes,
+      universeSignature,
     });
+    const sameSignature = previous?.filterSignature === filterSignature;
+    const resetRequested = params.get("reset") === "1";
 
-    universe = universeResult.universe;
-    universeWarning = universeResult.warning;
-    universeSource = universeResult.source;
-    universeCached = universeResult.cached;
-  }
-  const jobs = universe.flatMap((asset) => timeframes.flatMap((timeframe) => entryModes.map((entryMode) => ({ asset, timeframe, entryMode }))));
-  const previous = await getBackfillState(db);
-  const filterSignature = JSON.stringify({
-    symbol:symbolParam || "",
-    timeframes,
-    entryModes,
-  });
-  const previousSignature = previous?.filterSignature || "";
-  const resetRequested = params.get("reset") === "1";
-  const offset = resetRequested || previousSignature !== filterSignature
-    ? 0
-    : Math.max(0, Number(previous?.offset) || 0);
-  const batch = jobs.slice(offset, offset + limit);
-  const totals = { processedJobs:0, createdTrades:0, updatedTrades:0, takeHits:0, activeTrades:0, drawdownTrades:0 };
-
-  for (const job of batch) {
-    if (Date.now() - startedAt > maxRuntimeMs) {
-      totals.stoppedByBudget = true;
-      break;
+    if (!resetRequested && sameSignature && previous?.completed === true) {
+      return {
+        ok:true,
+        skipped:true,
+        reason:"already_completed",
+        completed:true,
+        offset:Number(previous.offset || jobs.length),
+        totalJobs:jobs.length,
+        backfillState:previous,
+      };
     }
 
-    const result = await processStrategyBackfillJob(db, job, { deadlineMs }).catch((error) => ({ error:error?.message || String(error) }));
-    totals.processedJobs += 1;
-    if (result.error) {
-      totals.errors = (totals.errors || 0) + 1;
-      totals.lastJobError = result.error;
-    }
-    totals.createdTrades += Number(result.createdTrades || 0);
-    totals.updatedTrades += Number(result.updatedTrades || 0);
-    totals.takeHits += Number(result.takeHits || 0);
-    totals.activeTrades += Number(result.activeTrades || 0);
-    totals.drawdownTrades += Number(result.drawdownTrades || 0);
-  }
+    const previousSignature = previous?.filterSignature || "";
+    const isNewRun = resetRequested || previousSignature !== filterSignature;
+    const startedAt = isNewRun ? new Date().toISOString() : previous?.startedAt || new Date().toISOString();
+    const offset = isNewRun ? 0 : Math.max(0, Number(previous?.offset) || 0);
+    const processedTotal = isNewRun ? 0 : Math.max(0, Number(previous?.processedTotal) || offset);
+    const batch = jobs.slice(offset, offset + limit);
+    const totals = { processedJobs:0, createdTrades:0, updatedTrades:0, takeHits:0, activeTrades:0, drawdownTrades:0 };
+    let attemptedJobs = 0;
+    let advancedJobs = 0;
 
-  const completedJobs = totals.processedJobs;
-  const nextOffset = offset + completedJobs >= jobs.length ? 0 : offset + completedJobs;
-  const state = {
-    lastRunAt:new Date().toISOString(),
-    offset:nextOffset,
-    totalJobs:jobs.length,
-    processedJobs:completedJobs,
-    batchSize:limit,
-    timeframes,
-    entryModes,
-    universeSize:universe.length,
-    universeSource,
-    universeWarning,
-    universeCached,
-    filterSignature,
-    errors:totals.errors || 0,
-    lastJobError:totals.lastJobError || null,
-    stoppedByBudget:Boolean(totals.stoppedByBudget),
-    lastError:null,
-    createdTrades:totals.createdTrades,
-    updatedTrades:totals.updatedTrades,
-    takeHits:totals.takeHits,
-    activeTrades:totals.activeTrades,
-    drawdownTrades:totals.drawdownTrades,
-  };
-  await putBackfillState(db, state);
-  return { ...totals, offset:nextOffset, totalJobs:jobs.length, backfillState:state };
+    for (const job of batch) {
+      if (Date.now() >= deadlineMs) {
+        totals.stoppedByBudget = true;
+        break;
+      }
+
+      attemptedJobs += 1;
+
+      const result = await processStrategyBackfillJob(db, job, { deadlineMs }).catch((error) => ({
+        error:error?.message || String(error),
+      }));
+
+      if (result.error) {
+        totals.errors = (totals.errors || 0) + 1;
+        totals.lastJobError = result.error;
+        totals.failedJob = {
+          symbol:job.asset?.symbol,
+          timeframe:job.timeframe,
+          entryMode:job.entryMode,
+        };
+        break;
+      }
+
+      advancedJobs += 1;
+      totals.processedJobs = advancedJobs;
+      totals.createdTrades += Number(result.createdTrades || 0);
+      totals.updatedTrades += Number(result.updatedTrades || 0);
+      totals.takeHits += Number(result.takeHits || 0);
+      totals.activeTrades += Number(result.activeTrades || 0);
+      totals.drawdownTrades += Number(result.drawdownTrades || 0);
+    }
+
+    const nextOffset = Math.min(jobs.length, offset + advancedJobs);
+    const completed = jobs.length > 0 && nextOffset >= jobs.length;
+    const completedAt = completed ? new Date().toISOString() : null;
+    const state = {
+      startedAt,
+      lastRunAt:new Date().toISOString(),
+      completed,
+      completedAt,
+      offset:completed ? jobs.length : nextOffset,
+      totalJobs:jobs.length,
+      processedTotal:completed ? jobs.length : Math.max(processedTotal, nextOffset),
+      processedJobs:advancedJobs,
+      lastBatchProcessed:advancedJobs,
+      attemptedJobs,
+      batchSize:limit,
+      triggerSource:params.get("triggerSource") || "manual",
+      timeframes,
+      entryModes,
+      universeSize:universe.length,
+      universeSource,
+      universeWarning,
+      universeCached,
+      filterSignature,
+      errors:totals.errors || 0,
+      lastJobError:totals.lastJobError || null,
+      failedJob:totals.failedJob || null,
+      stoppedByBudget:Boolean(totals.stoppedByBudget),
+      lastError:null,
+      createdTrades:totals.createdTrades,
+      updatedTrades:totals.updatedTrades,
+      takeHits:totals.takeHits,
+      activeTrades:totals.activeTrades,
+      drawdownTrades:totals.drawdownTrades,
+    };
+    await putBackfillState(db, state);
+    return { ok:true, ...totals, attemptedJobs, advancedJobs, completed, offset:state.offset, totalJobs:jobs.length, backfillState:state };
+  } finally {
+    await releaseStrategyLease(db, "strategy_backfill_lock", leaseToken);
+  }
 }
 
 async function processStrategyBackfillJob(db, { asset, timeframe, entryMode }, options = {}) {
@@ -1000,6 +1088,10 @@ async function runStrategyMonitorBatch(env, options = {}) {
     return;
   }
   await ensureStrategySchema(db);
+  const leaseToken = await acquireStrategyLease(db, "strategy_monitor_lock", 60000);
+  if (!leaseToken) {
+    return { ok:true, busy:true, skipped:true, reason:"monitor_already_running", monitorState:await getMonitorState(db) };
+  }
   const requestedLimit = options?.limit;
   const batchLimit = clampLimit(requestedLimit, 8, 20);
   const startedAt = Date.now();
@@ -1072,6 +1164,8 @@ async function runStrategyMonitorBatch(env, options = {}) {
       lastError:error?.message || String(error),
     }).catch(() => {});
     throw error;
+  } finally {
+    await releaseStrategyLease(db, "strategy_monitor_lock", leaseToken);
   }
 }
 async function processStrategyJob(db, { asset, timeframe, entryMode }) {
@@ -2482,4 +2576,4 @@ function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ re
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
 
 
-export const __strategyTestInternals = { runScheduledStrategyTasks, runStrategyMonitorBatch, runStrategyBackfillBatch, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi };
+export const __strategyTestInternals = { STRATEGY_MONITOR_CRON, STRATEGY_BACKFILL_CRON, runStrategyMonitorBatch, runStrategyBackfillBatch, acquireStrategyLease, releaseStrategyLease, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi };
