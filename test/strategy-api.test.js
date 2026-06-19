@@ -551,3 +551,24 @@ test("/api/strategy/trades?status=closed returns only take_hit trades", async ()
   assert.equal(payload.trades.length, 1);
   assert.equal(payload.trades[0].status, "take_hit");
 });
+
+test("strategy lifecycle source contains closedTrade/displayMode and UI avoids closed preview as active", async () => {
+  const fs = await import("node:fs/promises");
+  const server = await fs.readFile("src/index.js", "utf8");
+  const ui = await fs.readFile("public/assets/trade-plan.js", "utf8");
+
+  assert.match(server, /payload\.closedTrade = null/);
+  assert.match(server, /payload\.displayMode = "no_plan"/);
+  assert.match(server, /displayMode = "active_trade"/);
+  assert.match(server, /displayMode = "closed_trade"/);
+  assert.match(server, /displayMode = "completed_preview"/);
+  assert.match(server, /chartTradePayload\(rowToTrade\(activeRow\), "active-trade"\)/);
+  assert.match(server, /chartTradePayload\(rowToTrade\(closedRow\), "closed-trade"\)/);
+
+  assert.match(ui, /sourceKind="closed"/);
+  assert.match(ui, /Завершённая сделка/);
+  assert.match(ui, /Результат сделки/);
+  assert.match(ui, /const nextLevel = isClosed \? null/);
+  assert.match(ui, /payload\?\.plan&&payload\.plan\.status!=="take_hit"/);
+  assert.doesNotMatch(ui, /Расч[её]т плана[\s\S]{0,120}Сделка закрыта по тейку/);
+});

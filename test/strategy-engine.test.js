@@ -156,3 +156,26 @@ test("buildStrategyPlan levelStates mark 0.31 entry and first two averages execu
   assert.equal(plan.levels[1].state, "executed");
   assert.equal(plan.levelStates[1].executedAt, 3);
 });
+
+test("take_hit result is fixed at take price and separated from later market price", () => {
+  const candles = [
+    { time:1, open:100, high:205, low:95, close:200 },
+    { time:2, open:200, high:202, low:198, close:200 },
+    { time:3, open:200, high:180, low:140, close:150 },
+    { time:4, open:150, high:193, low:149, close:192 },
+    { time:5, open:192, high:193, low:80, close:85 },
+  ];
+  const plan = buildStrategyPlan({ range, entryMode:0.5, candles, currentPrice:85 });
+
+  assert.equal(plan.status, "take_hit");
+  assert.ok(plan.resultPct > 0);
+  assert.ok(plan.currentPnlPct > 0);
+  assert.equal(plan.closePrice, plan.takePrice);
+  assert.equal(plan.currentPrice, plan.closePrice);
+  assert.equal(plan.marketPrice, 85);
+  assert.notEqual(plan.marketPrice, plan.closePrice);
+  assert.equal(plan.openedAt, 3);
+  assert.equal(plan.closedAt, 4);
+  assert.equal(plan.realizedResultPct, plan.resultPct);
+  assert.ok(Math.abs(plan.resultOnFullCapitalPct - plan.resultPct * (plan.usedCapitalPct / 100)) < 1e-9);
+});

@@ -160,6 +160,11 @@ export function evaluateStrategyPath({ range, levels, candles, currentPrice, cap
   let maxDrawdownPct = 0;
   let status = "waiting_entry";
   let lastSeenPrice = current;
+  let openedAt = null;
+  let closedAt = null;
+  let closePrice = null;
+  let realizedResultPct = null;
+  let resultOnFullCapitalPct = null;
 
   for (let i = bIndex + 1; i < rows.length; i += 1) {
     const candle = rows[i];
@@ -173,6 +178,7 @@ export function evaluateStrategyPath({ range, levels, candles, currentPrice, cap
       const levelValue = finite(level?.price);
       if (levelValue > 0 && low != null && low <= levelValue) {
         filled.push(level);
+        if (!openedAt) openedAt = candle?.time ?? null;
         averagePrice = calculateAveragePrice(filled);
         usedCapitalPct = filled.reduce((sum, l) => sum + (finite(l?.capitalPct) || 0), 0);
         const take = calculateDynamicTake({ range, filledLevels:filled, candles:rows.slice(0, i + 1), currentPrice:close });
@@ -188,16 +194,20 @@ export function evaluateStrategyPath({ range, levels, candles, currentPrice, cap
     if (averagePrice && low != null) maxDrawdownPct = Math.min(maxDrawdownPct, (low - averagePrice) / averagePrice * 100);
     if (takePrice > 0 && high != null && high >= takePrice) {
       status = "take_hit";
-      lastSeenPrice = takePrice;
+      closePrice = takePrice;
+      closedAt = candle?.time ?? null;
+      realizedResultPct = averagePrice > 0 ? ((takePrice - averagePrice) / averagePrice) * 100 : null;
+      resultOnFullCapitalPct = Number.isFinite(realizedResultPct) ? realizedResultPct * (usedCapitalPct / 100) : null;
       break;
     }
     if (maxDrawdownPct < 0 && close != null && averagePrice && close < averagePrice) status = "drawdown";
   }
 
-  const markPrice = current ?? lastSeenPrice;
-  currentPnlPct = averagePrice && markPrice ? (markPrice - averagePrice) / averagePrice * 100 : null;
+  const marketPrice = current ?? lastSeenPrice;
+  const effectivePrice = status === "take_hit" && Number.isFinite(closePrice) ? closePrice : marketPrice;
+  currentPnlPct = averagePrice && effectivePrice ? (effectivePrice - averagePrice) / averagePrice * 100 : null;
   if (status !== "take_hit" && filled.length > 1 && status !== "drawdown") status = "averaging";
-  return { pathFound:true, currentPrice:markPrice, activatedLevels:filled.length, averagePrice, usedCapitalPct, takePrice, dynamicTakeMode, currentPnlPct, maxDrawdownPct, status, capital, levelStates:buildLevelStates({ levels:activeLevels, filledCount:filled.length, candles:rows, bIndex, currentPrice:markPrice }) };
+  return { pathFound:true, status, currentPrice:effectivePrice, marketPrice, openedAt, closedAt, closePrice, activatedLevels:filled.length, averagePrice, usedCapitalPct, takePrice, dynamicTakeMode, currentPnlPct, realizedResultPct, resultPct:status === "take_hit" ? realizedResultPct : null, resultOnFullCapitalPct, maxDrawdownPct, capital, levelStates:buildLevelStates({ levels:activeLevels, filledCount:filled.length, candles:rows, bIndex, currentPrice:effectivePrice }) };
 }
 
 export function buildStrategyPlan({ range, entryMode = 0.5, currentPrice, candles, capital = 100 } = {}) {
@@ -206,7 +216,7 @@ export function buildStrategyPlan({ range, entryMode = 0.5, currentPrice, candle
   const capitalPlan = calculateCapitalPlan({ entryMode, capital });
   const pathState = evaluateStrategyPath({ range, levels, candles, currentPrice:price, capital });
   if (pathState.pathFound && pathState.activatedLevels > 0) {
-    return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", currentPrice:price, levels:levels.map((level, index) => ({ ...level, state:pathState.levelStates?.[index]?.state || "waiting" })), levelStates:pathState.levelStates || [], activatedLevels:pathState.activatedLevels, averagePrice:pathState.averagePrice, usedCapitalPct:pathState.usedCapitalPct, takePrice:pathState.takePrice, dynamicTakeMode:pathState.dynamicTakeMode, currentPnlPct:pathState.currentPnlPct, maxDrawdownPct:pathState.maxDrawdownPct, status:pathState.status, pathBased:true, capitalPlan };
+    return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", currentPrice:pathState.currentPrice ?? price, marketPrice:pathState.marketPrice, openedAt:pathState.openedAt, closedAt:pathState.closedAt, closePrice:pathState.closePrice, levels:levels.map((level, index) => ({ ...level, state:pathState.levelStates?.[index]?.state || "waiting" })), levelStates:pathState.levelStates || [], activatedLevels:pathState.activatedLevels, averagePrice:pathState.averagePrice, usedCapitalPct:pathState.usedCapitalPct, takePrice:pathState.takePrice, dynamicTakeMode:pathState.dynamicTakeMode, currentPnlPct:pathState.currentPnlPct, realizedResultPct:pathState.realizedResultPct, resultPct:pathState.resultPct, resultOnFullCapitalPct:pathState.resultOnFullCapitalPct, maxDrawdownPct:pathState.maxDrawdownPct, status:pathState.status, pathBased:true, capitalPlan };
   }
   const side = rangeTopBottom(range)?.bullish !== false ? "long" : "short";
   const activated = levels.filter((l) => price != null && side === "long" && price <= Number(l.price));
