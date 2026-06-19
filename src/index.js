@@ -337,7 +337,7 @@ function levelsForChartTrade(trade) {
   }
   return storedLevels;
 }
-function chartTradePayload(trade) {
+function chartTradePayload(trade, sourceType = "active-trade") {
   if (!trade) return null;
   trade = normalizeTradeStatus(trade);
   const activatedLevels = Number(trade.activatedLevels || 0);
@@ -352,7 +352,7 @@ function chartTradePayload(trade) {
     qtyMultiplier:level.qtyMultiplier,
     state:index < activatedLevels ? "executed" : (level.state || "waiting"),
   }));
-  return { id:trade.id, status:trade.status, entryMode:trade.entryMode, averagePrice:trade.averagePrice, takePrice:trade.takePrice, currentPrice:trade.currentPrice, usedCapitalPct:trade.usedCapitalPct, activatedLevels:trade.activatedLevels, maxDrawdownPct:trade.maxDrawdownPct, currentPnlPct:trade.currentPnlPct,
+  return { id:trade.id, status:trade.status, sourceType, entryMode:trade.entryMode, openedAt:trade.openedAt, closedAt:trade.closedAt, closePrice:trade.currentPrice, resultPct:trade.resultPct, resultOnFullCapitalPct:trade.resultOnFullCapitalPct, averagePrice:trade.averagePrice, takePrice:trade.takePrice, currentPrice:trade.currentPrice, usedCapitalPct:trade.usedCapitalPct, activatedLevels:trade.activatedLevels, maxDrawdownPct:trade.maxDrawdownPct, currentPnlPct:trade.currentPnlPct,
     levels:mappedLevels,
     levelStates:mappedLevels.map((level, index) => ({ ...level, index, state:index < activatedLevels ? "executed" : (level.state || "waiting"), executed:index < activatedLevels })) };
 }
@@ -376,11 +376,27 @@ async function handleStrategyPlanApi(url, env) {
     payload.ok = true;
     payload.dbAvailable = hasStrategyDb(env);
     payload.activeTrade = null;
+    payload.closedTrade = null;
+    payload.displayMode = "no_plan";
     payload.debug = { rangeSource:payload.rangeSource, rangeATime:payload.range?.aTime, rangeBTime:payload.range?.bTime, pathBased:payload.plan?.pathBased, activatedLevels:payload.plan?.activatedLevels, levelStates:payload.plan?.levelStates?.map((x) => ({ index:x.index, label:x.label, state:x.state, price:x.price, executedAt:x.executedAt || null })) };
     const db = strategyDb(env);
     if (db) {
-      const row = await db.prepare(`SELECT * FROM virtual_trades WHERE symbol=? AND timeframe=? AND exchange=? AND entry_mode=? AND status IN ('active','averaging','drawdown') ORDER BY updated_at DESC LIMIT 1`).bind(payload.symbol, payload.timeframe, payload.exchange, Number(url.searchParams.get("entryMode") || 0.5)).first().catch(() => null);
-      payload.activeTrade = chartTradePayload(row ? rowToTrade(row) : null);
+      const entryMode = Number(url.searchParams.get("entryMode") || 0.5);
+      const activeRow = await db.prepare(`SELECT * FROM virtual_trades WHERE symbol=? AND timeframe=? AND exchange=? AND entry_mode=? AND status IN ('active','averaging','drawdown') ORDER BY updated_at DESC LIMIT 1`).bind(payload.symbol, payload.timeframe, payload.exchange, entryMode).first().catch(() => null);
+      const expectedTradeId = payload.range ? strategyTradeId({ symbol:payload.symbol, exchange:payload.exchange, timeframe:payload.timeframe, entryMode, range:payload.range }) : null;
+      const closedRow = expectedTradeId ? await db.prepare(`SELECT * FROM virtual_trades WHERE id=? AND status='take_hit' LIMIT 1`).bind(expectedTradeId).first().catch(() => null) : null;
+      if (activeRow) {
+        payload.activeTrade = chartTradePayload(rowToTrade(activeRow), "active-trade");
+        payload.displayMode = "active_trade";
+      } else if (closedRow) {
+        payload.closedTrade = chartTradePayload(rowToTrade(closedRow), "closed-trade");
+        payload.displayMode = "closed_trade";
+      }
+    }
+    if (!payload.activeTrade && !payload.closedTrade) {
+      if (payload.plan?.status === "take_hit") payload.displayMode = "completed_preview";
+      else if (payload.plan) payload.displayMode = "plan_preview";
+      else payload.displayMode = "no_plan";
     }
     return json(payload, 200, { cacheControl:"no-store" });
   } catch (error) { return json({ error:"Strategy plan unavailable", reason:error.message }, 502, { cacheControl:"no-store" }); }
@@ -1077,9 +1093,9 @@ async function upsertStrategyTradeFromPlan(db, { source, symbol, baseSymbol, exc
   const trade = {
     id, symbol, baseSymbol:baseSymbol || baseFromSymbol(symbol), exchange, timeframe, direction:"long", entryMode, range, levels:plan.levels || [], status,
     openedAt:oldTrade?.openedAt || plan.openedAt || now, updatedAt:now, closedAt:status === "take_hit" ? (oldTrade?.closedAt || plan.closedAt || now) : null,
-    entryPrice:plan.entryPrice || plan.levels?.[0]?.price || null, averagePrice:plan.averagePrice ?? null, takePrice:plan.takePrice ?? null, currentPrice:currentPrice ?? plan.currentPrice ?? null,
+    entryPrice:plan.entryPrice || plan.levels?.[0]?.price || null, averagePrice:plan.averagePrice ?? null, takePrice:plan.takePrice ?? null, currentPrice:status === "take_hit" ? (plan.closePrice || plan.takePrice || currentPrice) : (currentPrice ?? plan.currentPrice ?? null),
     activatedLevels:Number(plan.activatedLevels || 0), usedCapitalPct:plan.usedCapitalPct ?? null, maxDrawdownPct:plan.maxDrawdownPct ?? 0, currentPnlPct:plan.currentPnlPct ?? null,
-    resultPct:status === "take_hit" ? (plan.resultPct ?? plan.currentPnlPct ?? null) : (plan.resultPct ?? null), resultOnFullCapitalPct:plan.resultOnFullCapitalPct ?? null,
+    resultPct:status === "take_hit" ? (plan.resultPct ?? plan.realizedResultPct ?? null) : null, resultOnFullCapitalPct:status === "take_hit" ? (plan.resultOnFullCapitalPct ?? null) : null,
   };
   await putTrade(db, trade);
   if (!existing) await addTradeEvent(db, id, "opened", trade.entryPrice || trade.currentPrice, 0, { source, timeframe, entryMode });
