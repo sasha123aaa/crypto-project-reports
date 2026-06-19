@@ -236,6 +236,7 @@ class MemoryStrategyStmt {
       }
       return { results };
     }
+    if (this.sql.trim() === "SELECT * FROM virtual_trades") return { results:this.db.trades };
     if (this.sql.includes("FROM virtual_trades") && this.sql.includes("WHERE status IN")) {
       const statuses = [...this.sql.matchAll(/'([^']+)'/g)].map((match) => match[1]);
       return { results:this.db.trades.filter((t) => statuses.includes(t.status)) };
@@ -272,6 +273,11 @@ class MemoryStrategyStmt {
         trade.status = status;
         trade.updated_at = updated_at;
       }
+    }
+    if (this.sql.includes("SET current_price=?") && this.sql.includes("result_on_full_capital_pct=?")) {
+      const [current_price,current_pnl_pct,result_pct,result_on_full_capital_pct,updated_at,id] = this.args;
+      const trade = this.db.trades.find((t) => t.id === id);
+      if (trade) Object.assign(trade, { current_price,current_pnl_pct,result_pct,result_on_full_capital_pct,updated_at });
     }
     if (this.sql.includes("INSERT OR REPLACE INTO strategy_stats")) {
       const [key,symbol,timeframe,entry_mode,exchange,total_trades,take_hits,active_trades,drawdown_trades,avg_result_pct,avg_drawdown_pct,avg_time_to_take_minutes,max_activated_levels,avg_used_capital_pct,best_result_pct,worst_drawdown_pct,closed_full_capital_result_pct,active_unrealized_full_capital_pct,updated_at] = this.args;
@@ -669,4 +675,45 @@ test("reset backfill code never deletes all virtual_trades unconditionally", asy
   const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
   assert.match(source, /DELETE FROM virtual_trades\s+WHERE id LIKE 'BACKFILL:%'/);
   assert.doesNotMatch(source, /DELETE FROM virtual_trades\s*`\)/);
+});
+
+test("normalizeClosedTradeResult repairs missing and negative closed results", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?closedNormalize=${Date.now()}-${Math.random()}`);
+  const trade = { status:"take_hit", averagePrice:166.36, takePrice:173.0044, currentPrice:160, currentPnlPct:-3.82, resultPct:null, usedCapitalPct:0.06 };
+  const normalized = __strategyTestInternals.normalizeClosedTradeResult(trade);
+  assert.ok(normalized.resultPct > 0);
+  assert.ok(Math.abs(normalized.resultPct - 3.993988939648957) < 1e-9);
+  assert.equal(normalized.currentPrice, 173.0044);
+  assert.equal(normalized.currentPnlPct, normalized.resultPct);
+
+  const negative = __strategyTestInternals.normalizeClosedTradeResult({ ...trade, resultPct:-2.06 });
+  assert.ok(Math.abs(negative.resultPct - 3.993988939648957) < 1e-9);
+});
+
+test("/api/strategy/repair-trades repairs take_hit result fields and rebuilds stats", async () => {
+  const db = new MemoryStrategyDb();
+  db.trades.push({ id:"closed-bad", symbol:"COINXUSDT", base_symbol:"COINX", exchange:"BYBIT", timeframe:"1d", entry_mode:0.5, status:"take_hit", range_json:"null", levels_json:"[]", entry_price:166.36, average_price:166.36, take_price:173.0044, current_price:160, activated_levels:1, used_capital_pct:0.06, max_drawdown_pct:-3, current_pnl_pct:-3.82, result_pct:-2.06, result_on_full_capital_pct:null });
+  db.trades.push({ id:"closed-empty", symbol:"COINXUSDT", base_symbol:"COINX", exchange:"BYBIT", timeframe:"1d", entry_mode:0.5, status:"take_hit", range_json:"null", levels_json:"[]", entry_price:166.36, average_price:166.36, take_price:173.0044, current_price:160, activated_levels:1, used_capital_pct:0.06, max_drawdown_pct:-3, current_pnl_pct:-3.82, result_pct:null, result_on_full_capital_pct:null });
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/repair-trades?key=secret"), { STRATEGY_ADMIN_KEY:"secret", DB:db });
+  const payload = await readJson(response);
+  assert.equal(response.status, 200);
+  assert.equal(payload.checked, 2);
+  assert.equal(payload.repairedTakeResults, 2);
+  assert.equal(payload.groupsRebuilt, 1);
+  for (const trade of db.trades) {
+    assert.equal(trade.current_price, 173.0044);
+    assert.ok(trade.result_pct > 0);
+    assert.equal(trade.current_pnl_pct, trade.result_pct);
+    assert.ok(Number.isFinite(trade.result_on_full_capital_pct));
+  }
+  assert.equal(db.stats.length, 1);
+  assert.ok(db.stats[0].closed_full_capital_result_pct > 0);
+});
+
+test("closed trades dashboard does not fall back to currentPnlPct", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("public/assets/strategy-dashboard.js", "utf8"));
+  assert.doesNotMatch(source, /t\.resultPct\?\?t\.currentPnlPct/);
+  assert.match(source, /closedTradeResultPct\(t\)/);
+  assert.match(source, /Результат сделки/);
+  assert.match(source, /На весь капитал/);
 });
