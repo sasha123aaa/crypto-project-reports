@@ -58,6 +58,8 @@ function replayPlan({ plan, range, candles, startIndex, tradeId, timeframe, entr
   let maxDrawdownPct = 0;
   let resultPct = null;
   let resultOnFullCapitalPct = null;
+  let openedIndex = null;
+  let closedIndex = null;
 
   for (let i = startIndex + 1; i < candles.length; i++) {
     const candle = candles[i];
@@ -77,6 +79,7 @@ function replayPlan({ plan, range, candles, startIndex, tradeId, timeframe, entr
         const payload = { source:"backfill", timeframe, entryMode, candleTime:isoTime(candle?.time), level };
         if (!openedAt) {
           openedAt = isoTime(candle?.time) || new Date().toISOString();
+          openedIndex = i;
           status = "active";
           events.push(event(tradeId, "opened", candle, price, 0, payload));
         } else {
@@ -96,6 +99,7 @@ function replayPlan({ plan, range, candles, startIndex, tradeId, timeframe, entr
     if (takePrice > 0 && high != null && high >= takePrice) {
       status = "take_hit";
       closedAt = isoTime(candle?.time) || new Date().toISOString();
+      closedIndex = i;
       currentPrice = takePrice;
       resultPct = averagePrice ? (takePrice - averagePrice) / averagePrice * 100 : null;
       resultOnFullCapitalPct = resultPct == null ? null : resultPct * (usedCapitalPct / 100);
@@ -115,31 +119,61 @@ function replayPlan({ plan, range, candles, startIndex, tradeId, timeframe, entr
   const finalUsedCapitalPct = pathState.usedCapitalPct || usedCapitalPct;
   const finalResultPct = finalStatus === "take_hit" && finalAveragePrice && finalTakePrice ? (finalTakePrice - finalAveragePrice) / finalAveragePrice * 100 : resultPct;
   const finalResultOnFullCapitalPct = finalStatus === "take_hit" && finalResultPct != null ? finalResultPct * (finalUsedCapitalPct / 100) : resultOnFullCapitalPct;
-  return { status:finalStatus, openedAt, closedAt:finalStatus === "take_hit" ? closedAt : null, entryPrice:finite(levels[0]?.price), averagePrice:finalAveragePrice, takePrice:finalTakePrice, currentPrice:pathState.currentPrice ?? currentPrice, activatedLevels:pathState.activatedLevels || filled.length, usedCapitalPct:finalUsedCapitalPct, maxDrawdownPct:pathState.maxDrawdownPct ?? maxDrawdownPct, currentPnlPct, resultPct:finalResultPct, resultOnFullCapitalPct:finalResultOnFullCapitalPct, events };
+  return { status:finalStatus, openedIndex, closedIndex, openedAt, closedAt:finalStatus === "take_hit" ? closedAt : null, entryPrice:finite(levels[0]?.price), averagePrice:finalAveragePrice, takePrice:finalTakePrice, currentPrice:pathState.currentPrice ?? currentPrice, activatedLevels:pathState.activatedLevels || filled.length, usedCapitalPct:finalUsedCapitalPct, maxDrawdownPct:pathState.maxDrawdownPct ?? maxDrawdownPct, currentPnlPct, resultPct:finalResultPct, resultOnFullCapitalPct:finalResultOnFullCapitalPct, events };
+}
+
+function validateSequentialTrades(trades) {
+  const sorted = [...trades].sort((a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime());
+  let previous = null;
+  for (const trade of sorted) {
+    if (!trade?.openedAt) throw new Error("Backfill trade has no openedAt");
+    if (previous) {
+      if (!previous.closedAt) throw new Error(`Overlapping backfill trades: ${previous.id} is still active before ${trade.id}`);
+      const previousClosed = new Date(previous.closedAt).getTime();
+      const currentOpened = new Date(trade.openedAt).getTime();
+      if (Number.isFinite(previousClosed) && Number.isFinite(currentOpened) && currentOpened <= previousClosed) {
+        throw new Error(`Overlapping backfill trades: ${trade.id} opened before ${previous.id} was closed`);
+      }
+    }
+    previous = trade;
+  }
+  const openTrades = sorted.filter((trade) => trade.status !== "take_hit");
+  if (openTrades.length > 1) throw new Error("Backfill contains more than one unfinished trade");
+  return sorted;
 }
 
 export function replayStrategyOnCandles({ symbol, baseSymbol, exchange = "BYBIT", timeframe, entryMode, rangeDetector, candles, capital = 100 } = {}) {
   const rows = Array.isArray(candles) ? candles : [];
   const trades = [], events = [], seenRanges = new Set();
   const minLookback = Math.min(50, Math.max(5, rows.length - 1));
-  for (let i = minLookback; i < rows.length; i++) {
+  let i = minLookback;
+  while (i < rows.length) {
     const history = rows.slice(0, i + 1);
     const range = normalizeDetectedRange(rangeDetector?.(history));
-    if (!range?.bullish || !range.aTime || !range.bTime) continue;
-    const rangeKey = `${symbol}:${timeframe}:${entryMode}:${range.aTime}:${range.bTime}`;
-    if (seenRanges.has(rangeKey)) continue;
+    if (!range?.bullish || !range.aTime || !range.bTime) { i += 1; continue; }
+    const rangeKey = [symbol, timeframe, entryMode, range.aTime, range.bTime].join(":");
+    if (seenRanges.has(rangeKey)) { i += 1; continue; }
     seenRanges.add(rangeKey);
     const plan = buildStrategyPlan({ range, entryMode, currentPrice:rows[i]?.close, candles:history, capital });
     const id = backfillTradeId({ exchange, symbol, timeframe, entryMode, range });
     const replay = replayPlan({ plan, range, candles:rows, startIndex:i, tradeId:id, timeframe, entryMode });
-    if (!replay) continue;
-    const updatedAt = replay.closedAt || isoTime(rows.at(-1)?.time) || new Date().toISOString();
-    trades.push({ id, symbol, baseSymbol:baseSymbol || String(symbol || "").replace(/USDT$/, ""), exchange, timeframe, direction:"long", entryMode, range:{ ...range, source:"backfill" }, levels:plan.levels, ...replay, updatedAt });
-    events.push(...replay.events);
+    if (!replay) { i += 1; continue; }
+    const { openedIndex, closedIndex, ...persistedReplay } = replay;
+    const updatedAt = persistedReplay.closedAt || isoTime(rows.at(-1)?.time) || new Date().toISOString();
+    trades.push({ id, symbol, baseSymbol:baseSymbol || String(symbol || "").replace(/USDT$/, ""), exchange, timeframe, direction:"long", entryMode, range:{ ...range, source:"backfill" }, levels:plan.levels, ...persistedReplay, updatedAt });
+    events.push(...persistedReplay.events);
+    if (Number.isInteger(closedIndex)) {
+      i = Math.max(i + 1, closedIndex + 1);
+      continue;
+    }
+    break;
   }
-  const takeHits = trades.filter((t) => t.status === "take_hit").length;
-  const activeTrades = trades.filter((t) => ["active", "averaging"].includes(t.status)).length;
-  const drawdownTrades = trades.filter((t) => t.status === "drawdown").length;
-  const avg = (field) => { const vals = trades.map((t) => finite(t[field])).filter(Number.isFinite); return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null; };
-  return { trades, events, summary:{ totalTrades:trades.length, takeHits, activeTrades, drawdownTrades, avgResultPct:avg("resultPct"), avgDrawdownPct:avg("maxDrawdownPct") } };
+  const sequentialTrades = validateSequentialTrades(trades);
+  const takeHits = sequentialTrades.filter((t) => t.status === "take_hit").length;
+  const activeTrades = sequentialTrades.filter((t) => ["active", "averaging"].includes(t.status)).length;
+  const drawdownTrades = sequentialTrades.filter((t) => t.status === "drawdown").length;
+  const avg = (field) => { const vals = sequentialTrades.map((t) => finite(t[field])).filter(Number.isFinite); return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null; };
+  return { trades:sequentialTrades, events, summary:{ totalTrades:sequentialTrades.length, takeHits, activeTrades, drawdownTrades, avgResultPct:avg("resultPct"), avgDrawdownPct:avg("maxDrawdownPct") } };
 }
+
+export const __strategyReplayInternals = { replayPlan, validateSequentialTrades };

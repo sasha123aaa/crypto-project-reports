@@ -253,7 +253,10 @@ class MemoryStrategyStmt {
     if (this.sql.includes("FROM strategy_stats")) return { results:this.db.stats.filter((s) => !this.args[0] || s.symbol === this.args[0]) };
     return { results:[] };
   }
-  async first() { return null; }
+  async first() {
+    if (this.sql.includes("COUNT(*) AS count") && this.sql.includes("virtual_trades")) return { count:this.db.trades.filter((trade) => !String(trade.id || "").startsWith("BACKFILL:")).length };
+    return null;
+  }
   async run() {
     if (this.sql.includes("ALTER TABLE strategy_stats ADD COLUMN")) this.db.strategyStatsColumns.add(this.sql.match(/ADD COLUMN (\w+)/)?.[1]);
     if (this.sql.includes("INSERT OR REPLACE INTO virtual_trades")) {
@@ -275,7 +278,25 @@ class MemoryStrategyStmt {
       this.db.stats = this.db.stats.filter((s) => s.key !== key);
       this.db.stats.push({ key,symbol,timeframe,entry_mode,exchange,total_trades,take_hits,active_trades,drawdown_trades,avg_result_pct,avg_drawdown_pct,avg_time_to_take_minutes,max_activated_levels,avg_used_capital_pct,best_result_pct,worst_drawdown_pct,closed_full_capital_result_pct,active_unrealized_full_capital_pct,updated_at });
     }
-    return { success:true };
+    if (this.sql.includes("DELETE FROM virtual_trade_events") && this.sql.includes("trade_id LIKE 'BACKFILL:%'")) {
+      const before = this.db.events.length;
+      this.db.events = this.db.events.filter((event) => !String(event.trade_id || event[1] || event[0] || "").startsWith("BACKFILL:"));
+      return { success:true, meta:{ changes:before - this.db.events.length } };
+    }
+    if (this.sql.includes("DELETE FROM virtual_trades") && this.sql.includes("id LIKE 'BACKFILL:%'")) {
+      const before = this.db.trades.length;
+      this.db.trades = this.db.trades.filter((trade) => !String(trade.id || "").startsWith("BACKFILL:"));
+      return { success:true, meta:{ changes:before - this.db.trades.length } };
+    }
+    if (this.sql.includes("DELETE FROM strategy_stats")) { this.db.stats = []; return { success:true, meta:{ changes:1 } }; }
+    if (this.sql.includes("DELETE FROM strategy_monitor_state")) { delete this.db.state[this.args[0]]; return { success:true, meta:{ changes:1 } }; }
+    if (this.sql.includes("INSERT INTO strategy_monitor_state") && this.sql.includes("ON CONFLICT")) {
+      const [key, value] = this.args;
+      if (this.db.state[key]) return { success:true, meta:{ changes:0 } };
+      this.db.state[key] = JSON.parse(value);
+      return { success:true, meta:{ changes:1 } };
+    }
+    return { success:true, meta:{ changes:1 } };
   }
 }
 
@@ -606,4 +627,46 @@ test("backfill source protects completed runs, failed jobs, stable universe and 
   assert.match(source, /reason:"backfill_already_running"/);
   assert.match(source, /attemptedJobs \+= 1/);
   assert.match(source, /break;\n\s*}\n\n\s*advancedJobs \+= 1/);
+});
+
+test("/api/strategy/reset-backfill-history requires admin key and POST", async () => {
+  const missing = await worker.fetch(new Request("https://example.com/api/strategy/reset-backfill-history", { method:"POST" }), { STRATEGY_ADMIN_KEY:"secret", DB:new MemoryStrategyDb() });
+  assert.equal(missing.status, 403);
+  const getResponse = await worker.fetch(new Request("https://example.com/api/strategy/reset-backfill-history?key=secret"), { STRATEGY_ADMIN_KEY:"secret", DB:new MemoryStrategyDb() });
+  assert.equal(getResponse.status, 405);
+});
+
+test("/api/strategy/reset-backfill-history deletes only BACKFILL data and rebuilds live stats", async () => {
+  const db = new MemoryStrategyDb();
+  db.trades.push({ id:"BACKFILL:old", symbol:"BTCUSDT", base_symbol:"BTC", exchange:"BYBIT", timeframe:"1h", entry_mode:0.5, status:"take_hit", activated_levels:1 });
+  db.trades.push({ id:"LIVE:keep", symbol:"ETHUSDT", base_symbol:"ETH", exchange:"BYBIT", timeframe:"1h", entry_mode:0.5, status:"active", activated_levels:1, used_capital_pct:20, max_drawdown_pct:0 });
+  db.events.push({ trade_id:"BACKFILL:old" }, { trade_id:"LIVE:keep" });
+  db.state.strategy_backfill = { offset:10 };
+  db.state.strategy_universe_cache = { items:[{ symbol:"ETHUSDT" }] };
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/reset-backfill-history?key=secret", { method:"POST" }), { STRATEGY_ADMIN_KEY:"secret", DB:db });
+  const payload = await readJson(response);
+  assert.equal(response.status, 200);
+  assert.equal(payload.deletedBackfillTrades, 1);
+  assert.equal(payload.deletedBackfillEvents, 1);
+  assert.deepEqual(db.trades.map((trade) => trade.id), ["LIVE:keep"]);
+  assert.deepEqual(db.events.map((event) => event.trade_id), ["LIVE:keep"]);
+  assert.equal(db.state.strategy_backfill, undefined);
+  assert.ok(db.state.strategy_universe_cache);
+  assert.equal(payload.rebuiltStatsGroups, 1);
+});
+
+test("/api/strategy/reset-backfill-history returns busy and deletes nothing when locked", async () => {
+  const db = new MemoryStrategyDb();
+  db.state.strategy_backfill_lock = { token:"busy" };
+  db.trades.push({ id:"BACKFILL:old", symbol:"BTCUSDT", base_symbol:"BTC", exchange:"BYBIT", timeframe:"1h", entry_mode:0.5, status:"take_hit" });
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/reset-backfill-history?key=secret", { method:"POST" }), { STRATEGY_ADMIN_KEY:"secret", DB:db });
+  const payload = await readJson(response);
+  assert.equal(payload.busy, true);
+  assert.equal(db.trades.length, 1);
+});
+
+test("reset backfill code never deletes all virtual_trades unconditionally", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
+  assert.match(source, /DELETE FROM virtual_trades\s+WHERE id LIKE 'BACKFILL:%'/);
+  assert.doesNotMatch(source, /DELETE FROM virtual_trades\s*`\)/);
 });

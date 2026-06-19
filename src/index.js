@@ -31,6 +31,7 @@ export default {
     if (url.pathname === "/api/strategy/repair-trades") return handleStrategyRepairTradesApi(request, env);
     if (url.pathname === "/api/strategy/duplicates") return handleStrategyDuplicatesApi(request, env);
     if (url.pathname === "/api/strategy/rebuild-stats") return handleStrategyRebuildStatsApi(request, env);
+    if (url.pathname === "/api/strategy/reset-backfill-history") return handleStrategyResetBackfillHistoryApi(request, env);
     if (url.pathname === "/api/strategy/active") return handleStrategyActiveApi(env);
     if (url.pathname === "/api/strategy/status") return handleStrategyStatusApi(env);
     if (url.pathname === "/api/strategy/refresh-universe") return handleStrategyRefreshUniverseApi(request, env);
@@ -637,6 +638,70 @@ async function handleStrategyRebuildStatsApi(request, env) {
   return json({ ok:true, dbAvailable:true, groups:groups.length, rebuilt }, 200, { cacheControl:"no-store" });
 }
 
+async function handleStrategyResetBackfillHistoryApi(request, env) {
+  const url = new URL(request.url);
+  const adminKey = env.STRATEGY_ADMIN_KEY;
+  const providedKey = url.searchParams.get("key") || request.headers.get("x-strategy-admin-key");
+  if (!adminKey || providedKey !== adminKey) return json({ ok:false, message:"Invalid strategy admin key" }, 403, { cacheControl:"no-store" });
+  if (request.method !== "POST") return json({ ok:false, message:"Method not allowed" }, 405, { cacheControl:"no-store" });
+  const db = strategyDb(env);
+  if (!db) return json({ ok:false, dbAvailable:false }, 200, { cacheControl:"no-store" });
+  await ensureStrategySchema(db);
+  let backfillLease = null;
+  let monitorLease = null;
+  try {
+    backfillLease = await acquireStrategyLease(db, "strategy_backfill_lock", 60000);
+    if (!backfillLease) return json({ ok:true, dbAvailable:true, busy:true, reason:"backfill_already_running" }, 200, { cacheControl:"no-store" });
+    monitorLease = await acquireStrategyLease(db, "strategy_monitor_lock", 60000);
+    if (!monitorLease) return json({ ok:true, dbAvailable:true, busy:true, reason:"monitor_already_running" }, 200, { cacheControl:"no-store" });
+
+    const eventsResult = await db.prepare(`
+      DELETE FROM virtual_trade_events
+      WHERE trade_id LIKE 'BACKFILL:%'
+    `).run();
+    const tradesResult = await db.prepare(`
+      DELETE FROM virtual_trades
+      WHERE id LIKE 'BACKFILL:%'
+    `).run();
+    await db.prepare(`
+      DELETE FROM strategy_monitor_state
+      WHERE key=?
+    `).bind(STRATEGY_BACKFILL_STATE_KEY).run();
+    await db.prepare(`DELETE FROM strategy_stats`).run();
+    const groups = (await db.prepare(`
+      SELECT DISTINCT
+        base_symbol AS symbol,
+        timeframe,
+        entry_mode AS entryMode,
+        exchange
+      FROM virtual_trades
+      WHERE
+        base_symbol IS NOT NULL
+        AND timeframe IS NOT NULL
+        AND entry_mode IS NOT NULL
+        AND exchange IS NOT NULL
+    `).all()).results || [];
+    let rebuiltStatsGroups = 0;
+    for (const group of groups) {
+      await refreshStrategyStats(db, group.symbol, group.timeframe, Number(group.entryMode), group.exchange);
+      rebuiltStatsGroups += 1;
+    }
+    const remaining = await db.prepare(`SELECT COUNT(*) AS count FROM virtual_trades WHERE id NOT LIKE 'BACKFILL:%'`).first().catch(() => null);
+    return json({
+      ok:true,
+      dbAvailable:true,
+      deletedBackfillTrades:Number(tradesResult?.meta?.changes || 0),
+      deletedBackfillEvents:Number(eventsResult?.meta?.changes || 0),
+      remainingLiveTrades:Number(remaining?.count || 0),
+      rebuiltStatsGroups,
+      backfillReset:true,
+    }, 200, { cacheControl:"no-store" });
+  } finally {
+    if (monitorLease) await releaseStrategyLease(db, "strategy_monitor_lock", monitorLease).catch(() => {});
+    if (backfillLease) await releaseStrategyLease(db, "strategy_backfill_lock", backfillLease).catch(() => {});
+  }
+}
+
 async function handleStrategyRepairTradesApi(request, env) {
   const url = new URL(request.url);
   const adminKey = env.STRATEGY_ADMIN_KEY;
@@ -887,6 +952,17 @@ async function processStrategyBackfillJob(db, { asset, timeframe, entryMode }, o
       return { range:rangePayload(rangeData.range, rangeData.analysisCandles), analysisCandles:rangeData.analysisCandles };
     },
   });
+  const unfinishedTrades = replay.trades.filter((trade) => trade.status !== "take_hit");
+  if (unfinishedTrades.length > 1) {
+    throw new Error(["Backfill sequence violation", asset.symbol, timeframe, entryMode, `unfinished=${unfinishedTrades.length}`].join(" · "));
+  }
+  const orderedTrades = [...replay.trades].sort((a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime());
+  for (let index = 1; index < orderedTrades.length; index++) {
+    const previous = orderedTrades[index - 1];
+    const current = orderedTrades[index];
+    if (!previous.closedAt) throw new Error(`Backfill overlap: ${previous.id}`);
+    if (new Date(current.openedAt).getTime() <= new Date(previous.closedAt).getTime()) throw new Error(`Backfill overlap: ${current.id}`);
+  }
   let createdTrades = 0, updatedTrades = 0;
   for (const trade of replay.trades) {
     const existing = await db.prepare(`SELECT id FROM virtual_trades WHERE id=?`).bind(trade.id).first().catch(() => null);
@@ -2576,4 +2652,4 @@ function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ re
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
 
 
-export const __strategyTestInternals = { STRATEGY_MONITOR_CRON, STRATEGY_BACKFILL_CRON, runStrategyMonitorBatch, runStrategyBackfillBatch, acquireStrategyLease, releaseStrategyLease, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi };
+export const __strategyTestInternals = { STRATEGY_MONITOR_CRON, STRATEGY_BACKFILL_CRON, runStrategyMonitorBatch, runStrategyBackfillBatch, acquireStrategyLease, releaseStrategyLease, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi, handleStrategyResetBackfillHistoryApi };
