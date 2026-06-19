@@ -41,7 +41,9 @@ test("strategy backfill UI uses safe loop controls", () => {
   assert.match(dashboardJs, /let backfillLoopAbort=false/);
   assert.match(dashboardJs, /limit:"1"/);
   assert.match(dashboardJs, /maxRuntimeMs:"18000"/);
-  assert.match(dashboardJs, /Number\(payload\.offset\|\|0\)===0&&Number\(payload\.totalJobs\|\|0\)>0/);
+  assert.match(dashboardJs, /payload\.completed===true\|\|payload\.backfillState\?\.completed===true/);
+  assert.doesNotMatch(dashboardJs, /Number\(payload\.offset\|\|0\)===0&&Number\(payload\.totalJobs\|\|0\)>0/);
+  assert.match(dashboardJs, /payload\.busy===true/);
   assert.match(dashboardJs, /Cloudflare остановил слишком большую пачку/);
   assert.match(strategyHtml, /strategyBackfillStopBtn/);
   assert.match(strategyHtml, /Остановить/);

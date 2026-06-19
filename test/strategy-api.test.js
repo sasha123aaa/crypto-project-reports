@@ -104,12 +104,25 @@ class FakeStmt {
   }
   async all() { return { results:[] }; }
   async run() {
+    if (this.sql.includes("INSERT INTO strategy_monitor_state")) {
+      const [key, value] = this.args;
+      if (!this.db.state[key]) {
+        this.db.state[key] = JSON.parse(value);
+        return { success:true, meta:{ changes:1 } };
+      }
+      return { success:true, meta:{ changes:0 } };
+    }
+    if (this.sql.includes("DELETE FROM strategy_monitor_state")) {
+      const [key] = this.args;
+      delete this.db.state[key];
+      return { success:true, meta:{ changes:1 } };
+    }
     if (this.sql.includes("INSERT OR REPLACE INTO strategy_monitor_state")) {
       const key = this.sql.includes("'main'") ? "main" : this.args[0];
       const value = this.sql.includes("'main'") ? this.args[0] : this.args[1];
       this.db.state[key] = JSON.parse(value);
     }
-    return { success:true };
+    return { success:true, meta:{ changes:1 } };
   }
 }
 
@@ -430,8 +443,8 @@ test("chartTradePayload restores incomplete legacy levels with calculateLevels",
 
 test("strategy backfill implementation uses Cloudflare-safe limits and state", async () => {
   const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
-  assert.match(source, /ctx\.waitUntil\(runScheduledStrategyTasks\(env\)\)/);
-  assert.match(source, /runStrategyBackfillBatch\(env, \{\s*limit:1,\s*scheduled:true,\s*maxRuntimeMs:12000,\s*\}\)/);
+  assert.doesNotMatch(source, /runScheduledStrategyTasks/);
+  assert.match(source, /runStrategyBackfillBatch\(env, \{\s*limit:1,\s*maxRuntimeMs:12000,\s*scheduled:true,\s*triggerSource:"cron-backfill",\s*\}\)/);
   assert.match(source, /const requestedLimit = params\.get\("limit"\)/);
   assert.match(source, /clampLimit\(requestedLimit, 1, 3\)/);
   assert.match(source, /filterSignature = JSON\.stringify/);
@@ -447,8 +460,8 @@ test("runStrategyBackfillBatch defaults to one job and clamps limit to three", a
   await withMockFetch(async () => new Response("unavailable", { status:500 }), async () => {
     const one = await __strategyTestInternals.runStrategyBackfillBatch(db, { symbol:"BTC", timeframe:"1h", entryMode:"0.5", maxRuntimeMs:"18000" });
     assert.equal(one.backfillState.batchSize, 1);
-    assert.equal(one.backfillState.filterSignature, JSON.stringify({ symbol:"BTC", timeframes:["1h"], entryModes:[0.5] }));
-    const three = await __strategyTestInternals.runStrategyBackfillBatch(db, { symbol:"BTC", timeframe:"1h", entryMode:"0.5", limit:"99", maxRuntimeMs:"18000" });
+    assert.equal(one.backfillState.filterSignature, JSON.stringify({ symbol:"BTC", timeframes:["1h"], entryModes:[0.5], universeSignature:"BTCUSDT" }));
+    const three = await __strategyTestInternals.runStrategyBackfillBatch(db, { symbol:"BTC", timeframe:"1h", entryMode:"0.5", limit:"99", maxRuntimeMs:"18000", reset:"1" });
     assert.equal(three.backfillState.batchSize, 3);
   });
 });
@@ -477,8 +490,8 @@ test("runStrategyMonitorBatch accepts options limit and stores requested batch s
 
 test("scheduled strategy monitor runs with limit eight and runtime budget", async () => {
   const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
-  assert.match(source, /runStrategyMonitorBatch\(env, \{\s*limit:8,\s*maxRuntimeMs:18000,\s*\}\)/);
-  assert.match(source, /runStrategyBackfillBatch\(env, \{\s*limit:1,\s*scheduled:true,\s*maxRuntimeMs:12000,\s*\}\)/);
+  assert.match(source, /runStrategyMonitorBatch\(env, \{\s*limit:8,\s*maxRuntimeMs:18000,\s*triggerSource:"cron-monitor",\s*\}\)/);
+  assert.match(source, /runStrategyBackfillBatch\(env, \{\s*limit:1,\s*maxRuntimeMs:12000,\s*scheduled:true,\s*triggerSource:"cron-backfill",\s*\}\)/);
 });
 
 test("strategy backfill and monitor use cached universe helper", async () => {
@@ -571,4 +584,26 @@ test("strategy lifecycle source contains closedTrade/displayMode and UI avoids c
   assert.match(ui, /const nextLevel = isClosed \? null/);
   assert.match(ui, /payload\?\.plan&&payload\.plan\.status!=="take_hit"/);
   assert.doesNotMatch(ui, /Расч[её]т плана[\s\S]{0,120}Сделка закрыта по тейку/);
+});
+
+test("wrangler config schedules independent monitor and backfill cron triggers", async () => {
+  const wrangler = await import("node:fs/promises").then(fs => fs.readFile("wrangler.toml", "utf8"));
+  assert.match(wrangler, /crons = \[/);
+  assert.match(wrangler, /"\*\/15 \* \* \* \*"/);
+  assert.match(wrangler, /"2,7,12,17,22,27,32,37,42,47,52,57 \* \* \* \*"/);
+});
+
+test("backfill source protects completed runs, failed jobs, stable universe and locks", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
+  assert.match(source, /previous\?\.completed === true/);
+  assert.match(source, /reason:"already_completed"/);
+  assert.match(source, /const nextOffset = Math\.min\(jobs\.length, offset \+ advancedJobs\)/);
+  assert.match(source, /offset:completed \? jobs\.length : nextOffset/);
+  assert.match(source, /universe = \[\.\.\.universe\]\.sort/);
+  assert.match(source, /universeSignature/);
+  assert.match(source, /strategy_backfill_lock/);
+  assert.match(source, /strategy_monitor_lock/);
+  assert.match(source, /reason:"backfill_already_running"/);
+  assert.match(source, /attemptedJobs \+= 1/);
+  assert.match(source, /break;\n\s*}\n\n\s*advancedJobs \+= 1/);
 });
