@@ -229,6 +229,21 @@ export function buildStrategyPlan({ range, entryMode = 0.5, currentPrice, candle
   return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", currentPrice:price, levels:levels.map((level, index) => ({ ...level, state:levelStates[index]?.state || "waiting" })), levelStates, activatedLevels:activated.length, averagePrice:avg, usedCapitalPct:activated.reduce((s, l) => s + l.capitalPct, 0), takePrice:take.takePrice, dynamicTakeMode:take.dynamicTakeMode, currentPnlPct, maxDrawdownPct:currentPnlPct == null ? 0 : Math.min(0, currentPnlPct), status, pathBased:false, capitalPlan };
 }
 export function evaluateVirtualTrade({ trade, candles, currentPrice } = {}) {
+  if (trade?.status === "take_hit") {
+    const averagePrice = finite(trade.averagePrice) ?? finite(trade.entryPrice);
+    const takePrice = finite(trade.takePrice);
+    const resultPct = averagePrice > 0 && takePrice > 0 ? ((takePrice - averagePrice) / averagePrice) * 100 : finite(trade.resultPct);
+    const usedCapitalPct = finite(trade.usedCapitalPct) ?? 0;
+    return {
+      ...trade,
+      status:"take_hit",
+      currentPrice:takePrice,
+      currentPnlPct:resultPct,
+      resultPct,
+      resultOnFullCapitalPct:Number.isFinite(resultPct) ? resultPct * (usedCapitalPct / 100) : finite(trade.resultOnFullCapitalPct),
+    };
+  }
+
   const price = lastPrice(candles, currentPrice) ?? finite(trade?.currentPrice);
   const levels = Array.isArray(trade?.levels) ? trade.levels : [];
   const filled = levels.filter((l) => price != null && price <= Number(l.price));
@@ -243,8 +258,24 @@ export function evaluateVirtualTrade({ trade, candles, currentPrice } = {}) {
   if (!hadEntry && activated.length) status = "active";
   if ((hadEntry || activated.length) && activated.length > 1) status = "averaging";
   if ((hadEntry || activated.length) && currentPnlPct < 0) status = "drawdown";
-  if ((hadEntry || activated.length) && takePrice && price >= takePrice) status = "take_hit";
-  return { ...trade, status, currentPrice:price, activatedLevels:activated.length || Number(trade?.activatedLevels) || 0, averagePrice, takePrice, dynamicTakeMode:take.dynamicTakeMode, usedCapitalPct:activated.reduce((s, l) => s + (Number(l.capitalPct) || 0), 0) || trade?.usedCapitalPct || 0, currentPnlPct, maxDrawdownPct:drawdown, resultPct:status === "take_hit" ? currentPnlPct : trade?.resultPct ?? null, resultOnFullCapitalPct:status === "take_hit" ? currentPnlPct * ((activated.reduce((s,l)=>s+(Number(l.capitalPct)||0),0))/100) : trade?.resultOnFullCapitalPct ?? null };
+  const takeHit = (hadEntry || activated.length) && takePrice && price >= takePrice;
+  if (takeHit) status = "take_hit";
+  const realizedResultPct = takeHit && averagePrice > 0 && takePrice > 0 ? ((takePrice - averagePrice) / averagePrice) * 100 : null;
+  const finalUsedCapitalPct = activated.reduce((sum, level) => sum + (Number(level.capitalPct) || 0), 0) || Number(trade?.usedCapitalPct) || 0;
+  return {
+    ...trade,
+    status,
+    currentPrice:takeHit ? takePrice : price,
+    activatedLevels:activated.length || Number(trade?.activatedLevels) || 0,
+    averagePrice,
+    takePrice,
+    dynamicTakeMode:take.dynamicTakeMode,
+    usedCapitalPct:finalUsedCapitalPct,
+    currentPnlPct:takeHit ? realizedResultPct : currentPnlPct,
+    maxDrawdownPct:drawdown,
+    resultPct:takeHit ? realizedResultPct : trade?.resultPct ?? null,
+    resultOnFullCapitalPct:takeHit && Number.isFinite(realizedResultPct) ? realizedResultPct * (finalUsedCapitalPct / 100) : trade?.resultOnFullCapitalPct ?? null,
+  };
 }
 
 if (typeof window !== "undefined") {

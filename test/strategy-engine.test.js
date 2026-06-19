@@ -179,3 +179,25 @@ test("take_hit result is fixed at take price and separated from later market pri
   assert.equal(plan.realizedResultPct, plan.resultPct);
   assert.ok(Math.abs(plan.resultOnFullCapitalPct - plan.resultPct * (plan.usedCapitalPct / 100)) < 1e-9);
 });
+
+test("closed take_hit trade stays fixed at take price after market drop", () => {
+  const updated = evaluateVirtualTrade({
+    trade:{ status:"take_hit", averagePrice:166.36, takePrice:173.0044, currentPrice:160, resultPct:3.99399, usedCapitalPct:0.06 },
+    currentPrice:150,
+  });
+  assert.equal(updated.status, "take_hit");
+  assert.equal(updated.currentPrice, 173.0044);
+  assert.ok(updated.resultPct > 0);
+  assert.equal(updated.currentPnlPct, updated.resultPct);
+});
+
+test("new take hit closes at take price instead of higher market price", () => {
+  const updated = evaluateVirtualTrade({
+    trade:{ status:"active", averagePrice:166.36, takePrice:173, usedCapitalPct:10, activatedLevels:1, levels:[] },
+    currentPrice:180,
+  });
+  assert.equal(updated.status, "take_hit");
+  assert.equal(updated.currentPrice, 173);
+  assert.ok(Math.abs(updated.resultPct - ((173 - 166.36) / 166.36 * 100)) < 1e-9);
+  assert.notEqual(updated.resultPct, ((180 - 166.36) / 166.36 * 100));
+});
