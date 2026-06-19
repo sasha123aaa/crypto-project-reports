@@ -112,7 +112,33 @@ function baseFromSymbol(symbol) { return String(symbol || "").toUpperCase().repl
 function strategyTradeId({ symbol, exchange, timeframe, entryMode, range }) {
   return [exchange, symbol, timeframe, entryMode, range?.aTime || "a", range?.bTime || "b"].join(":");
 }
-function rowToTrade(row) {
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+function calculateClosedTradeResultPct(trade) {
+  if (!trade || trade.status !== "take_hit") return finiteNumber(trade?.resultPct);
+  const averagePrice = finiteNumber(trade.averagePrice) ?? finiteNumber(trade.entryPrice);
+  const takePrice = finiteNumber(trade.takePrice);
+  if (averagePrice > 0 && takePrice > 0) return ((takePrice - averagePrice) / averagePrice) * 100;
+  return finiteNumber(trade.resultPct);
+}
+function normalizeClosedTradeResult(trade) {
+  if (!trade || trade.status !== "take_hit") return trade;
+  const resultPct = calculateClosedTradeResultPct(trade);
+  const usedCapitalPct = finiteNumber(trade.usedCapitalPct);
+  const resultOnFullCapitalPct = Number.isFinite(resultPct) && Number.isFinite(usedCapitalPct)
+    ? resultPct * (usedCapitalPct / 100)
+    : finiteNumber(trade.resultOnFullCapitalPct);
+  return {
+    ...trade,
+    currentPrice:finiteNumber(trade.takePrice) ?? finiteNumber(trade.currentPrice),
+    currentPnlPct:Number.isFinite(resultPct) ? resultPct : null,
+    resultPct,
+    resultOnFullCapitalPct,
+  };
+}
+function rowToTradeWithoutNormalization(row) {
   return {
     id:row.id, symbol:row.symbol, baseSymbol:row.base_symbol, exchange:row.exchange, timeframe:row.timeframe,
     direction:row.direction, entryMode:row.entry_mode, range:JSON.parse(row.range_json || "null"), levels:JSON.parse(row.levels_json || "[]"),
@@ -121,6 +147,9 @@ function rowToTrade(row) {
     activatedLevels:row.activated_levels, usedCapitalPct:row.used_capital_pct, maxDrawdownPct:row.max_drawdown_pct,
     currentPnlPct:row.current_pnl_pct, resultPct:row.result_pct, resultOnFullCapitalPct:row.result_on_full_capital_pct,
   };
+}
+function rowToTrade(row) {
+  return normalizeClosedTradeResult(rowToTradeWithoutNormalization(row));
 }
 function tradeParams(trade) {
   return [trade.id, trade.symbol, trade.baseSymbol, trade.exchange, trade.timeframe, trade.direction, trade.entryMode,
@@ -368,7 +397,7 @@ function levelsForChartTrade(trade) {
 }
 function chartTradePayload(trade, sourceType = "active-trade") {
   if (!trade) return null;
-  trade = normalizeTradeStatus(trade);
+  trade = normalizeTradeStatus(normalizeClosedTradeResult(trade));
   const activatedLevels = Number(trade.activatedLevels || 0);
   const levels = levelsForChartTrade(trade);
   const mappedLevels = levels.map((level, index) => ({
@@ -381,7 +410,7 @@ function chartTradePayload(trade, sourceType = "active-trade") {
     qtyMultiplier:level.qtyMultiplier,
     state:index < activatedLevels ? "executed" : (level.state || "waiting"),
   }));
-  return { id:trade.id, status:trade.status, sourceType, entryMode:trade.entryMode, openedAt:trade.openedAt, closedAt:trade.closedAt, closePrice:trade.currentPrice, resultPct:trade.resultPct, resultOnFullCapitalPct:trade.resultOnFullCapitalPct, averagePrice:trade.averagePrice, takePrice:trade.takePrice, currentPrice:trade.currentPrice, usedCapitalPct:trade.usedCapitalPct, activatedLevels:trade.activatedLevels, maxDrawdownPct:trade.maxDrawdownPct, currentPnlPct:trade.currentPnlPct,
+  return { id:trade.id, status:trade.status, sourceType, entryMode:trade.entryMode, openedAt:trade.openedAt, closedAt:trade.closedAt, closePrice:trade.status === "take_hit" ? trade.takePrice : null, resultPct:trade.resultPct, resultOnFullCapitalPct:trade.resultOnFullCapitalPct, averagePrice:trade.averagePrice, takePrice:trade.takePrice, currentPrice:trade.currentPrice, usedCapitalPct:trade.usedCapitalPct, activatedLevels:trade.activatedLevels, maxDrawdownPct:trade.maxDrawdownPct, currentPnlPct:trade.status === "take_hit" ? trade.resultPct : trade.currentPnlPct,
     levels:mappedLevels,
     levelStates:mappedLevels.map((level, index) => ({ ...level, index, state:index < activatedLevels ? "executed" : (level.state || "waiting"), executed:index < activatedLevels })) };
 }
@@ -710,19 +739,41 @@ async function handleStrategyRepairTradesApi(request, env) {
   const db = strategyDb(env);
   if (!db) return json({ ok:false, dbAvailable:false }, 200, { cacheControl:"no-store" });
   await ensureStrategySchema(db);
-  const rows = (await db.prepare(`SELECT * FROM virtual_trades WHERE status IN ('active','averaging','drawdown','waiting_entry')`).all()).results || [];
+  const rows = (await db.prepare(`SELECT * FROM virtual_trades`).all()).results || [];
   const touchedGroups = new Map();
-  let updated = 0;
+  let repairedStatuses = 0;
+  let repairedTakeResults = 0;
   const now = new Date().toISOString();
+  const touch = (trade) => {
+    if (trade?.baseSymbol && trade?.timeframe && trade?.entryMode != null && trade?.exchange) {
+      touchedGroups.set(`${trade.baseSymbol}:${trade.timeframe}:${trade.entryMode}:${trade.exchange}`, trade);
+    }
+  };
   for (const row of rows) {
-    const trade = rowToTrade(row);
-    const normalized = normalizeTradeStatus(trade);
-    if (normalized?.status !== trade.status) {
-      await db.prepare(`UPDATE virtual_trades SET status=?, updated_at=? WHERE id=?`).bind(normalized.status, now, normalized.id).run();
-      updated += 1;
-      if (trade.baseSymbol && trade.timeframe && trade.entryMode != null && trade.exchange) {
-        touchedGroups.set(`${trade.baseSymbol}:${trade.timeframe}:${trade.entryMode}:${trade.exchange}`, trade);
+    const originalTrade = rowToTradeWithoutNormalization(row);
+    if (originalTrade.status === "take_hit") {
+      const repaired = normalizeClosedTradeResult(originalTrade);
+      const oldResult = finiteNumber(row.result_pct);
+      const oldFullResult = finiteNumber(row.result_on_full_capital_pct);
+      const resultChanged = !Number.isFinite(oldResult) || !Number.isFinite(repaired.resultPct) || Math.abs(oldResult - repaired.resultPct) > 0.000001;
+      const fullResultChanged = Number.isFinite(repaired.resultOnFullCapitalPct) && (!Number.isFinite(oldFullResult) || Math.abs(oldFullResult - repaired.resultOnFullCapitalPct) > 0.000001);
+      const priceChanged = Number(row.current_price) !== Number(repaired.takePrice);
+      if (resultChanged || fullResultChanged || priceChanged || Number(row.current_pnl_pct) !== Number(repaired.resultPct)) {
+        await db.prepare(`
+          UPDATE virtual_trades
+          SET current_price=?, current_pnl_pct=?, result_pct=?, result_on_full_capital_pct=?, updated_at=?
+          WHERE id=?
+        `).bind(repaired.takePrice, repaired.resultPct, repaired.resultPct, repaired.resultOnFullCapitalPct, now, row.id).run();
+        repairedTakeResults += 1;
+        touch(repaired);
       }
+      continue;
+    }
+    const normalized = normalizeTradeStatus(originalTrade);
+    if (normalized?.status !== originalTrade.status) {
+      await db.prepare(`UPDATE virtual_trades SET status=?, updated_at=? WHERE id=?`).bind(normalized.status, now, normalized.id).run();
+      repairedStatuses += 1;
+      touch(originalTrade);
     }
   }
   let groupsRebuilt = 0;
@@ -730,7 +781,7 @@ async function handleStrategyRepairTradesApi(request, env) {
     await refreshStrategyStats(db, group.baseSymbol, group.timeframe, Number(group.entryMode), group.exchange);
     groupsRebuilt += 1;
   }
-  return json({ ok:true, dbAvailable:true, checked:rows.length, updated, groupsRebuilt }, 200, { cacheControl:"no-store" });
+  return json({ ok:true, dbAvailable:true, checked:rows.length, repairedStatuses, updated:repairedStatuses, repairedTakeResults, groupsRebuilt }, 200, { cacheControl:"no-store" });
 }
 
 async function handleStrategyDuplicatesApi(request, env) {
@@ -1279,26 +1330,26 @@ async function upsertStrategyTradeFromPlan(db, { source, symbol, baseSymbol, exc
 async function refreshStrategyStats(db, symbol, timeframe, entryMode, exchange) {
   await ensureStrategySchema(db);
   const rows = (await db.prepare(`SELECT * FROM virtual_trades WHERE base_symbol=? AND timeframe=? AND entry_mode=? AND exchange=?`).bind(symbol, timeframe, entryMode, exchange).all()).results || [];
-  const total = rows.length;
-  const takeHits = rows.filter((row) => row.status === "take_hit").length;
-  const activeRows = rows.filter((row) => ["active", "averaging", "drawdown"].includes(row.status));
-  const active = activeRows.length;
-  const drawdown = rows.filter((row) => row.status === "drawdown").length;
-  const finite = (value) => { const number = Number(value); return Number.isFinite(number) ? number : null; };
-  const avg = (field, sourceRows = rows) => {
-    const values = sourceRows.map((row) => finite(row[field])).filter(Number.isFinite);
+  const trades = rows.map((row) => normalizeClosedTradeResult(rowToTrade(row)));
+  const total = trades.length;
+  const takeHits = trades.filter((trade) => trade.status === "take_hit").length;
+  const activeTrades = trades.filter((trade) => ["active", "averaging", "drawdown"].includes(trade.status));
+  const active = activeTrades.length;
+  const drawdown = trades.filter((trade) => trade.status === "drawdown").length;
+  const avg = (field, sourceTrades = trades) => {
+    const values = sourceTrades.map((trade) => finiteNumber(trade[field])).filter(Number.isFinite);
     return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
   };
-  const sum = (field, sourceRows = rows) => sourceRows.map((row) => finite(row[field])).filter(Number.isFinite).reduce((a, b) => a + b, 0);
-  const closedRows = rows.filter((row) => row.status === "take_hit");
-  const activeUnrealizedFullCapitalResultPct = activeRows.reduce((totalValue, row) => {
-    const pnl = finite(row.current_pnl_pct);
-    const used = finite(row.used_capital_pct);
+  const sum = (field, sourceTrades = trades) => sourceTrades.map((trade) => finiteNumber(trade[field])).filter(Number.isFinite).reduce((a, b) => a + b, 0);
+  const closedTrades = trades.filter((trade) => trade.status === "take_hit");
+  const activeUnrealizedFullCapitalResultPct = activeTrades.reduce((totalValue, trade) => {
+    const pnl = finiteNumber(trade.currentPnlPct);
+    const used = finiteNumber(trade.usedCapitalPct);
     if (!Number.isFinite(pnl) || !Number.isFinite(used)) return totalValue;
     return totalValue + pnl * (used / 100);
   }, 0);
-  const resultValues = rows.map((row) => finite(row.result_pct)).filter(Number.isFinite);
-  const drawdownValues = rows.map((row) => finite(row.max_drawdown_pct)).filter(Number.isFinite);
+  const resultValues = closedTrades.map((trade) => finiteNumber(trade.resultPct)).filter(Number.isFinite);
+  const drawdownValues = trades.map((trade) => finiteNumber(trade.maxDrawdownPct)).filter(Number.isFinite);
   await db.prepare(`
     INSERT OR REPLACE INTO strategy_stats (
       key,symbol,timeframe,entry_mode,exchange,total_trades,take_hits,active_trades,drawdown_trades,
@@ -1307,9 +1358,9 @@ async function refreshStrategyStats(db, symbol, timeframe, entryMode, exchange) 
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).bind(
     `${exchange}:${symbol}:${timeframe}:${entryMode}`, symbol, timeframe, entryMode, exchange, total, takeHits, active, drawdown,
-    avg("result_pct", closedRows), avg("max_drawdown_pct"), null, Math.max(0, ...rows.map((row) => Number(row.activated_levels || 0))),
-    avg("used_capital_pct"), resultValues.length ? Math.max(...resultValues) : null, drawdownValues.length ? Math.min(...drawdownValues) : null,
-    sum("result_on_full_capital_pct", closedRows), activeUnrealizedFullCapitalResultPct, new Date().toISOString()
+    avg("resultPct", closedTrades), avg("maxDrawdownPct"), null, Math.max(0, ...trades.map((trade) => Number(trade.activatedLevels || 0))),
+    avg("usedCapitalPct"), resultValues.length ? Math.max(...resultValues) : null, drawdownValues.length ? Math.min(...drawdownValues) : null,
+    sum("resultOnFullCapitalPct", closedTrades), activeUnrealizedFullCapitalResultPct, new Date().toISOString()
   ).run();
 }
 
@@ -2652,4 +2703,4 @@ function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ re
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
 
 
-export const __strategyTestInternals = { STRATEGY_MONITOR_CRON, STRATEGY_BACKFILL_CRON, runStrategyMonitorBatch, runStrategyBackfillBatch, acquireStrategyLease, releaseStrategyLease, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi, handleStrategyResetBackfillHistoryApi };
+export const __strategyTestInternals = { STRATEGY_MONITOR_CRON, STRATEGY_BACKFILL_CRON, runStrategyMonitorBatch, runStrategyBackfillBatch, acquireStrategyLease, releaseStrategyLease, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, calculateClosedTradeResultPct, normalizeClosedTradeResult, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi, handleStrategyResetBackfillHistoryApi };
