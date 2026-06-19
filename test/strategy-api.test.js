@@ -519,5 +519,35 @@ test("/strategy/ contains refresh universe button", async () => {
   const js = await import("node:fs/promises").then(fs => fs.readFile("public/assets/strategy-dashboard.js", "utf8"));
   assert.match(html, /Обновить список монет/);
   assert.match(html, /strategyRefreshUniverseBtn/);
-  assert.match(js, /\/api\/strategy\/refresh-universe\?key=/);
+  assert.match(js, /strategyAdminFetch\("\/api\/strategy\/refresh-universe",key\)/);
+});
+
+test("/api/strategy/trades?status=closed returns only take_hit trades", async () => {
+  class ClosedTradesDb {
+    prepare(sql) { return new ClosedTradesStmt(sql); }
+  }
+  class ClosedTradesStmt {
+    constructor(sql) { this.sql = sql; this.args = []; }
+    bind(...args) { this.args = args; return this; }
+    async run() { return { success:true }; }
+    async first() { return { count:0 }; }
+    async all() {
+      if (this.sql.includes("WHERE status='take_hit'")) {
+        return { results:[{
+          id:"1", symbol:"BTCUSDT", base_symbol:"BTC", exchange:"BYBIT", timeframe:"1h", direction:"long", entry_mode:0.5,
+          range_json:"null", levels_json:"[]", status:"take_hit", opened_at:"2026-01-01T00:00:00.000Z", updated_at:"2026-01-02T00:00:00.000Z", closed_at:"2026-01-02T00:00:00.000Z",
+          entry_price:1, average_price:1, take_price:1.1, current_price:1.1, activated_levels:1, used_capital_pct:1, max_drawdown_pct:0,
+          current_pnl_pct:10, result_pct:10, result_on_full_capital_pct:10,
+        }] };
+      }
+      return { results:[{ id:"2", status:"active", range_json:"null", levels_json:"[]" }] };
+    }
+  }
+
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/trades?status=closed&limit=50"), { DB:new ClosedTradesDb() });
+  const payload = await readJson(response);
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.trades.length, 1);
+  assert.equal(payload.trades[0].status, "take_hit");
 });

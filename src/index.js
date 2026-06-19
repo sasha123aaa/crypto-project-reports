@@ -389,10 +389,15 @@ async function handleStrategyTradesApi(url, env) {
   const db = strategyDb(env); if (!db) return strategyDbUnavailable({ trades:[] });
   await ensureStrategySchema(db);
   const symbol = String(url.searchParams.get("symbol") || "").toUpperCase();
+  const statusFilter = String(url.searchParams.get("status") || "").toLowerCase();
   const limit = clampLimit(url.searchParams.get("limit"), 50, 100);
-  const stmt = symbol
-    ? db.prepare(`SELECT * FROM virtual_trades WHERE base_symbol=? OR symbol=? ORDER BY updated_at DESC LIMIT ?`).bind(baseFromSymbol(symbol), symbol.endsWith("USDT") ? symbol : `${symbol}USDT`, limit)
-    : db.prepare(`SELECT * FROM virtual_trades ORDER BY updated_at DESC LIMIT ?`).bind(limit);
+  const stmt = statusFilter === "closed"
+    ? (symbol
+      ? db.prepare(`SELECT * FROM virtual_trades WHERE status='take_hit' AND (base_symbol=? OR symbol=?) ORDER BY closed_at DESC, updated_at DESC LIMIT ?`).bind(baseFromSymbol(symbol), symbol.endsWith("USDT") ? symbol : `${symbol}USDT`, limit)
+      : db.prepare(`SELECT * FROM virtual_trades WHERE status='take_hit' ORDER BY closed_at DESC, updated_at DESC LIMIT ?`).bind(limit))
+    : (symbol
+      ? db.prepare(`SELECT * FROM virtual_trades WHERE base_symbol=? OR symbol=? ORDER BY updated_at DESC LIMIT ?`).bind(baseFromSymbol(symbol), symbol.endsWith("USDT") ? symbol : `${symbol}USDT`, limit)
+      : db.prepare(`SELECT * FROM virtual_trades ORDER BY updated_at DESC LIMIT ?`).bind(limit));
   const res = await stmt.all(); return json({ ok:true, dbAvailable:true, trades:(res.results || []).map(rowToTrade).map(normalizeTradeStatus) }, 200, { cacheControl:"no-store" });
 }
 async function handleStrategyActiveApi(env) {
