@@ -51,7 +51,11 @@ function replayPlan({ plan, range, candles, startIndex, tradeId, timeframe, entr
   let openedAt = null;
   let closedAt = null;
   let status = "waiting_entry";
+  let dynamicTakeMode = false;
+  let dynamicAnchorB = finite(range?.bPrice);
+  let dynamicExtremeC = null;
   let takePrice = null;
+  let takeActivatedAfterIndex = null;
   let averagePrice = null;
   let usedCapitalPct = 0;
   let currentPrice = null;
@@ -92,18 +96,23 @@ function replayPlan({ plan, range, candles, startIndex, tradeId, timeframe, entr
     }
 
     if (!openedAt) continue;
-    const take = calculateDynamicTake({ range, filledLevels:filled, candles:candles.slice(0, i + 1), currentPrice:close });
+    const take = calculateDynamicTake({ range, filledLevels:filled, candles, currentIndex:i, previousExtremeC:dynamicExtremeC, previousTakePrice:takePrice, averagePrice });
+    if (take.takePrice > 0 && (!(takePrice > 0) || take.takePrice < takePrice - 1e-12)) takeActivatedAfterIndex = i;
     takePrice = take.takePrice;
+    dynamicTakeMode = take.dynamicTakeMode;
+    dynamicAnchorB = take.anchorB ?? dynamicAnchorB;
+    dynamicExtremeC = take.extremeC ?? dynamicExtremeC;
     if (averagePrice && low != null) maxDrawdownPct = Math.min(maxDrawdownPct, (low - averagePrice) / averagePrice * 100);
     if (maxDrawdownPct <= -1 && !events.some((e) => e.eventType === "drawdown")) events.push(event(tradeId, "drawdown", candle, low, null, { source:"backfill", timeframe, entryMode, candleTime:isoTime(candle?.time), maxDrawdownPct }));
-    if (takePrice > 0 && high != null && high >= takePrice) {
+    const executableTake = dynamicTakeMode && takeActivatedAfterIndex === i ? null : takePrice;
+    if (executableTake > 0 && high != null && high >= executableTake) {
       status = "take_hit";
       closedAt = isoTime(candle?.time) || new Date().toISOString();
       closedIndex = i;
-      currentPrice = takePrice;
-      resultPct = averagePrice ? (takePrice - averagePrice) / averagePrice * 100 : null;
+      currentPrice = executableTake;
+      resultPct = averagePrice ? (executableTake - averagePrice) / averagePrice * 100 : null;
       resultOnFullCapitalPct = resultPct == null ? null : resultPct * (usedCapitalPct / 100);
-      events.push(event(tradeId, "take_hit", candle, takePrice, null, { source:"backfill", timeframe, entryMode, candleTime:isoTime(candle?.time) }));
+      events.push(event(tradeId, "take_hit", candle, executableTake, null, { source:"backfill", timeframe, entryMode, candleTime:isoTime(candle?.time) }));
       break;
     }
     if (status !== "averaging" && maxDrawdownPct <= -1) status = "drawdown";
@@ -119,7 +128,7 @@ function replayPlan({ plan, range, candles, startIndex, tradeId, timeframe, entr
   const finalUsedCapitalPct = pathState.usedCapitalPct || usedCapitalPct;
   const finalResultPct = finalStatus === "take_hit" && finalAveragePrice && finalTakePrice ? (finalTakePrice - finalAveragePrice) / finalAveragePrice * 100 : resultPct;
   const finalResultOnFullCapitalPct = finalStatus === "take_hit" && finalResultPct != null ? finalResultPct * (finalUsedCapitalPct / 100) : resultOnFullCapitalPct;
-  return { status:finalStatus, openedIndex, closedIndex, openedAt, closedAt:finalStatus === "take_hit" ? closedAt : null, entryPrice:finite(levels[0]?.price), averagePrice:finalAveragePrice, takePrice:finalTakePrice, currentPrice:pathState.currentPrice ?? currentPrice, activatedLevels:pathState.activatedLevels || filled.length, usedCapitalPct:finalUsedCapitalPct, maxDrawdownPct:pathState.maxDrawdownPct ?? maxDrawdownPct, currentPnlPct, resultPct:finalResultPct, resultOnFullCapitalPct:finalResultOnFullCapitalPct, events };
+  return { status:finalStatus, openedIndex, closedIndex, openedAt, closedAt:finalStatus === "take_hit" ? closedAt : null, entryPrice:finite(levels[0]?.price), averagePrice:finalAveragePrice, takePrice:finalTakePrice, dynamicTakeMode:pathState.dynamicTakeMode ?? dynamicTakeMode, dynamicAnchorB:pathState.dynamicAnchorB ?? dynamicAnchorB, dynamicExtremeC:pathState.dynamicExtremeC ?? dynamicExtremeC, currentPrice:pathState.currentPrice ?? currentPrice, activatedLevels:pathState.activatedLevels || filled.length, usedCapitalPct:finalUsedCapitalPct, maxDrawdownPct:pathState.maxDrawdownPct ?? maxDrawdownPct, currentPnlPct, resultPct:finalResultPct, resultOnFullCapitalPct:finalResultOnFullCapitalPct, events };
 }
 
 function validateSequentialTrades(trades) {

@@ -146,6 +146,9 @@ function rowToTradeWithoutNormalization(row) {
     entryPrice:row.entry_price, averagePrice:row.average_price, takePrice:row.take_price, currentPrice:row.current_price,
     activatedLevels:row.activated_levels, usedCapitalPct:row.used_capital_pct, maxDrawdownPct:row.max_drawdown_pct,
     currentPnlPct:row.current_pnl_pct, resultPct:row.result_pct, resultOnFullCapitalPct:row.result_on_full_capital_pct,
+    dynamicTakeMode:Boolean(JSON.parse(row.range_json || "null")?.dynamicTakeMode),
+    dynamicAnchorB:JSON.parse(row.range_json || "null")?.dynamicAnchorB ?? null,
+    dynamicExtremeC:JSON.parse(row.range_json || "null")?.dynamicExtremeC ?? null,
   };
 }
 function rowToTrade(row) {
@@ -410,7 +413,7 @@ function chartTradePayload(trade, sourceType = "active-trade") {
     qtyMultiplier:level.qtyMultiplier,
     state:index < activatedLevels ? "executed" : (level.state || "waiting"),
   }));
-  return { id:trade.id, status:trade.status, sourceType, entryMode:trade.entryMode, openedAt:trade.openedAt, closedAt:trade.closedAt, closePrice:trade.status === "take_hit" ? trade.takePrice : null, resultPct:trade.resultPct, resultOnFullCapitalPct:trade.resultOnFullCapitalPct, averagePrice:trade.averagePrice, takePrice:trade.takePrice, currentPrice:trade.currentPrice, usedCapitalPct:trade.usedCapitalPct, activatedLevels:trade.activatedLevels, maxDrawdownPct:trade.maxDrawdownPct, currentPnlPct:trade.status === "take_hit" ? trade.resultPct : trade.currentPnlPct,
+  return { id:trade.id, status:trade.status, sourceType, entryMode:trade.entryMode, openedAt:trade.openedAt, closedAt:trade.closedAt, closePrice:trade.status === "take_hit" ? trade.takePrice : null, resultPct:trade.resultPct, resultOnFullCapitalPct:trade.resultOnFullCapitalPct, averagePrice:trade.averagePrice, takePrice:trade.takePrice, dynamicTakeMode:trade.dynamicTakeMode, dynamicAnchorB:trade.dynamicAnchorB, dynamicExtremeC:trade.dynamicExtremeC, currentPrice:trade.currentPrice, usedCapitalPct:trade.usedCapitalPct, activatedLevels:trade.activatedLevels, maxDrawdownPct:trade.maxDrawdownPct, currentPnlPct:trade.status === "take_hit" ? trade.resultPct : trade.currentPnlPct,
     levels:mappedLevels,
     levelStates:mappedLevels.map((level, index) => ({ ...level, index, state:index < activatedLevels ? "executed" : (level.state || "waiting"), executed:index < activatedLevels })) };
 }
@@ -1311,12 +1314,18 @@ async function upsertStrategyTradeFromPlan(db, { source, symbol, baseSymbol, exc
   const oldTrade = existing ? rowToTrade(existing) : null;
   const now = new Date().toISOString();
   const status = deriveTradeStatus(plan);
+  const dynamicAnchorB = oldTrade?.range?.dynamicAnchorB ?? plan.dynamicAnchorB ?? null;
+  const oldExtremeC = finiteNumber(oldTrade?.range?.dynamicExtremeC);
+  const planExtremeC = finiteNumber(plan.dynamicExtremeC);
+  const dynamicExtremeC = oldExtremeC > 0 && planExtremeC > 0 ? Math.min(oldExtremeC, planExtremeC) : (planExtremeC ?? oldExtremeC ?? null);
+  const rangeWithDynamicTake = { ...range, dynamicTakeMode:Boolean(plan.dynamicTakeMode), dynamicAnchorB, dynamicExtremeC };
   const trade = {
-    id, symbol, baseSymbol:baseSymbol || baseFromSymbol(symbol), exchange, timeframe, direction:"long", entryMode, range, levels:plan.levels || [], status,
+    id, symbol, baseSymbol:baseSymbol || baseFromSymbol(symbol), exchange, timeframe, direction:"long", entryMode, range:rangeWithDynamicTake, levels:plan.levels || [], status,
     openedAt:oldTrade?.openedAt || plan.openedAt || now, updatedAt:now, closedAt:status === "take_hit" ? (oldTrade?.closedAt || plan.closedAt || now) : null,
     entryPrice:plan.entryPrice || plan.levels?.[0]?.price || null, averagePrice:plan.averagePrice ?? null, takePrice:plan.takePrice ?? null, currentPrice:status === "take_hit" ? (plan.closePrice || plan.takePrice || currentPrice) : (currentPrice ?? plan.currentPrice ?? null),
     activatedLevels:Number(plan.activatedLevels || 0), usedCapitalPct:plan.usedCapitalPct ?? null, maxDrawdownPct:plan.maxDrawdownPct ?? 0, currentPnlPct:plan.currentPnlPct ?? null,
     resultPct:status === "take_hit" ? (plan.resultPct ?? plan.realizedResultPct ?? null) : null, resultOnFullCapitalPct:status === "take_hit" ? (plan.resultOnFullCapitalPct ?? null) : null,
+    dynamicTakeMode:Boolean(plan.dynamicTakeMode), dynamicAnchorB, dynamicExtremeC,
   };
   await putTrade(db, trade);
   if (!existing) await addTradeEvent(db, id, "opened", trade.entryPrice || trade.currentPrice, 0, { source, timeframe, entryMode });
