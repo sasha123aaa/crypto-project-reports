@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getStrategyConfig, calculateLevels, calculateAveragePrice, calculateCapitalPlan, calculateDynamicTake, buildStrategyPlan, evaluateVirtualTrade, evaluateStrategyPath } from "../public/assets/strategy-engine.js";
+import { getStrategyConfig, calculateLevels, calculateAveragePrice, calculateCapitalPlan, calculateDynamicTake, calculateBc29Take, buildStrategyPlan, evaluateVirtualTrade, evaluateStrategyPath } from "../public/assets/strategy-engine.js";
 
 const range = { aTime:1, bTime:2, aPrice:100, bPrice:200, bullish:true };
 const sampleRange = range;
@@ -82,14 +82,16 @@ test("used capital pct is calculated from multiplier plan", () => {
   assert.ok(Math.abs(plan.usedCapitalPct - expected) < 1e-9);
 });
 
-test("fixed take before 1.0 level and dynamic take after 1.0", () => {
-  const levels = calculateLevels({ range, entryMode:0.75 });
-  const fixed = calculateDynamicTake({ range, filledLevels:[levels[0]], currentPrice:125 });
-  const dynamic = calculateDynamicTake({ range, filledLevels:[levels[0], levels[1]], currentPrice:90 });
+test("fixed take before 1.0 level and BC29 dynamic take after 1.0", () => {
+  const levels = calculateLevels({ range, entryMode:0.31 });
+  const fixed = calculateDynamicTake({ range, filledLevels:levels.slice(0, 3), currentIndex:1, candles:[{ time:2, low:198 }, { time:3, low:125 }] });
+  const dynamic = calculateDynamicTake({ range, filledLevels:levels.slice(0, 4), currentIndex:1, candles:[{ time:2, low:198 }, { time:3, low:90 }], averagePrice:80 });
   assert.equal(fixed.dynamicTakeMode, false);
   assert.equal(fixed.takePrice, 192);
   assert.equal(dynamic.dynamicTakeMode, true);
-  assert.ok(dynamic.takePrice > 90);
+  assert.equal(dynamic.anchorB, 200);
+  assert.equal(dynamic.extremeC, 90);
+  assert.equal(dynamic.takePrice, 121.9);
 });
 
 test("active trade is not invalidated by later range change", () => {
@@ -200,4 +202,39 @@ test("new take hit closes at take price instead of higher market price", () => {
   assert.equal(updated.currentPrice, 173);
   assert.ok(Math.abs(updated.resultPct - ((173 - 166.36) / 166.36 * 100)) < 1e-9);
   assert.notEqual(updated.resultPct, ((180 - 166.36) / 166.36 * 100));
+});
+
+
+test("BC29 exact example and monotonic C behavior", () => {
+  const take = calculateBc29Take({ anchorB:67.78, extremeC:65.61, direction:"long" });
+  assert.ok(Math.abs(take - 66.2393) < 0.000001);
+  const lower = calculateBc29Take({ anchorB:67.78, extremeC:65.40, direction:"long" });
+  assert.ok(Math.abs(lower - 66.0902) < 0.000001);
+  assert.ok(lower < take);
+  const unchanged = calculateDynamicTake({ range:{ aTime:1, bTime:2, aPrice:65.85, bPrice:67.78, bullish:true }, filledLevels:[{ ratio:1, price:65.85, qtyMultiplier:1 }], candles:[{ time:2, low:67.7 }, { time:3, low:65.9 }], currentIndex:1, previousExtremeC:65.40, previousTakePrice:lower, averagePrice:65.5 });
+  assert.equal(unchanged.extremeC, 65.40);
+  assert.ok(Math.abs(unchanged.takePrice - lower) < 0.000001);
+});
+
+test("BC29 average price protection keeps active trade without take_hit", () => {
+  const levels = [{ ratio:1, price:65.85, qtyMultiplier:1, capitalPct:100 }];
+  const dynamic = calculateDynamicTake({ range:{ aTime:1, bTime:2, aPrice:65.85, bPrice:67.78, bullish:true }, filledLevels:levels, candles:[{ time:2, low:67.7 }, { time:3, low:65.61 }], currentIndex:1, averagePrice:66.30 });
+  assert.equal(dynamic.dynamicTakeMode, true);
+  assert.equal(dynamic.takePrice, null);
+  const trade = evaluateVirtualTrade({ trade:{ status:"active", range:{ aTime:1, bTime:2, aPrice:65.85, bPrice:67.78, bullish:true }, levels, activatedLevels:1, averagePrice:66.30 }, candles:[{ time:3, high:66.5, low:65.61, close:66.4 }] });
+  assert.notEqual(trade.status, "take_hit");
+});
+
+test("new BC29 take is not executable on the same candle it is lowered", () => {
+  const localRange = { aTime:1, bTime:2, aPrice:100, bPrice:200, bullish:true };
+  const levels = calculateLevels({ range:localRange, entryMode:0.75 });
+  const state = evaluateStrategyPath({ range:localRange, levels, candles:[
+    { time:1, open:100, high:100, low:100, close:100 },
+    { time:2, open:200, high:200, low:200, close:200 },
+    { time:3, open:200, high:160, low:100, close:120 },
+  ], currentPrice:120 });
+  assert.notEqual(state.status, "take_hit");
+  assert.equal(state.dynamicTakeMode, true);
+  assert.equal(state.dynamicExtremeC, 100);
+  assert.equal(state.takePrice, 129);
 });
