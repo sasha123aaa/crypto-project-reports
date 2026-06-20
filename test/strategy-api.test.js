@@ -642,13 +642,14 @@ test("/api/strategy/reset-backfill-history requires admin key and POST", async (
   assert.equal(getResponse.status, 405);
 });
 
-test("/api/strategy/reset-backfill-history deletes only BACKFILL data and rebuilds live stats", async () => {
+test("/api/strategy/reset-backfill-history deletes only BACKFILL data and defers live stats rebuild", async () => {
   const db = new MemoryStrategyDb();
   db.trades.push({ id:"BACKFILL:old", symbol:"BTCUSDT", base_symbol:"BTC", exchange:"BYBIT", timeframe:"1h", entry_mode:0.5, status:"take_hit", activated_levels:1 });
   db.trades.push({ id:"LIVE:keep", symbol:"ETHUSDT", base_symbol:"ETH", exchange:"BYBIT", timeframe:"1h", entry_mode:0.5, status:"active", activated_levels:1, used_capital_pct:20, max_drawdown_pct:0 });
   db.events.push({ trade_id:"BACKFILL:old" }, { trade_id:"LIVE:keep" });
   db.state.strategy_backfill = { offset:10 };
   db.state.strategy_universe_cache = { items:[{ symbol:"ETHUSDT" }] };
+  db.stats.push({ key:"old" });
   const response = await worker.fetch(new Request("https://example.com/api/strategy/reset-backfill-history?key=secret", { method:"POST" }), { STRATEGY_ADMIN_KEY:"secret", DB:db });
   const payload = await readJson(response);
   assert.equal(response.status, 200);
@@ -658,7 +659,12 @@ test("/api/strategy/reset-backfill-history deletes only BACKFILL data and rebuil
   assert.deepEqual(db.events.map((event) => event.trade_id), ["LIVE:keep"]);
   assert.equal(db.state.strategy_backfill, undefined);
   assert.ok(db.state.strategy_universe_cache);
-  assert.equal(payload.rebuiltStatsGroups, 1);
+  assert.deepEqual(db.stats, []);
+  assert.equal(payload.backfillReset, true);
+  assert.equal(payload.statsCleared, true);
+  assert.equal(payload.statsRebuildRequired, true);
+  assert.equal(payload.remainingLiveTrades, 1);
+  assert.equal(payload.rebuiltStatsGroups, undefined);
 });
 
 test("/api/strategy/reset-backfill-history returns busy and deletes nothing when locked", async () => {
@@ -716,4 +722,41 @@ test("closed trades dashboard does not fall back to currentPnlPct", async () => 
   assert.match(source, /closedTradeResultPct\(t\)/);
   assert.match(source, /Результат сделки/);
   assert.match(source, /На весь капитал/);
+});
+
+test("/api/strategy/reset-backfill-history only clears BACKFILL data and defers stats rebuild", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile("src/index.js", "utf8"));
+  const resetBody = source.slice(source.indexOf("async function handleStrategyResetBackfillHistoryApi"), source.indexOf("async function handleStrategyRepairTradesApi"));
+  assert.doesNotMatch(resetBody, /refreshStrategyStats\(/);
+  assert.doesNotMatch(resetBody, /SELECT DISTINCT/);
+  assert.match(resetBody, /DELETE FROM virtual_trade_events\s+WHERE trade_id LIKE 'BACKFILL:%'/);
+  assert.match(resetBody, /DELETE FROM virtual_trades\s+WHERE id LIKE 'BACKFILL:%'/);
+  assert.match(resetBody, /DELETE FROM strategy_stats/);
+  assert.match(resetBody, /statsRebuildRequired:true/);
+
+  const db = new MemoryStrategyDb();
+  db.trades.push(
+    { id:"BACKFILL:old", symbol:"BTCUSDT", base_symbol:"BTC", exchange:"BYBIT", timeframe:"1h", entry_mode:0.5, status:"take_hit" },
+    { id:"live-1", symbol:"ETHUSDT", base_symbol:"ETH", exchange:"BYBIT", timeframe:"1h", entry_mode:0.5, status:"active" },
+  );
+  db.events.push({ trade_id:"BACKFILL:old" }, { trade_id:"live-1" });
+  db.state.strategy_backfill = { offset:10 };
+  db.stats.push({ key:"old" });
+
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/reset-backfill-history?key=secret", { method:"POST" }), { STRATEGY_ADMIN_KEY:"secret", DB:db });
+  const payload = await readJson(response);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "application/json; charset=utf-8");
+  assert.equal(payload.ok, true);
+  assert.equal(payload.backfillReset, true);
+  assert.equal(payload.statsRebuildRequired, true);
+  assert.equal(payload.statsCleared, true);
+  assert.equal(payload.deletedBackfillTrades, 1);
+  assert.equal(payload.deletedBackfillEvents, 1);
+  assert.equal(payload.remainingLiveTrades, 1);
+  assert.deepEqual(db.trades.map((trade) => trade.id), ["live-1"]);
+  assert.deepEqual(db.events.map((event) => event.trade_id), ["live-1"]);
+  assert.equal(db.state.strategy_backfill, undefined);
+  assert.deepEqual(db.stats, []);
 });

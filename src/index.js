@@ -699,25 +699,11 @@ async function handleStrategyResetBackfillHistoryApi(request, env) {
       DELETE FROM strategy_monitor_state
       WHERE key=?
     `).bind(STRATEGY_BACKFILL_STATE_KEY).run();
+    /*
+     * Старые агрегаты больше не соответствуют оставшимся сделкам.
+     * Их пересоберём отдельным запросом.
+     */
     await db.prepare(`DELETE FROM strategy_stats`).run();
-    const groups = (await db.prepare(`
-      SELECT DISTINCT
-        base_symbol AS symbol,
-        timeframe,
-        entry_mode AS entryMode,
-        exchange
-      FROM virtual_trades
-      WHERE
-        base_symbol IS NOT NULL
-        AND timeframe IS NOT NULL
-        AND entry_mode IS NOT NULL
-        AND exchange IS NOT NULL
-    `).all()).results || [];
-    let rebuiltStatsGroups = 0;
-    for (const group of groups) {
-      await refreshStrategyStats(db, group.symbol, group.timeframe, Number(group.entryMode), group.exchange);
-      rebuiltStatsGroups += 1;
-    }
     const remaining = await db.prepare(`SELECT COUNT(*) AS count FROM virtual_trades WHERE id NOT LIKE 'BACKFILL:%'`).first().catch(() => null);
     return json({
       ok:true,
@@ -725,9 +711,16 @@ async function handleStrategyResetBackfillHistoryApi(request, env) {
       deletedBackfillTrades:Number(tradesResult?.meta?.changes || 0),
       deletedBackfillEvents:Number(eventsResult?.meta?.changes || 0),
       remainingLiveTrades:Number(remaining?.count || 0),
-      rebuiltStatsGroups,
       backfillReset:true,
+      statsCleared:true,
+      statsRebuildRequired:true,
     }, 200, { cacheControl:"no-store" });
+  } catch (error) {
+    return json({
+      ok:false,
+      dbAvailable:true,
+      message:error?.message || "Backfill reset failed",
+    }, 500, { cacheControl:"no-store" });
   } finally {
     if (monitorLease) await releaseStrategyLease(db, "strategy_monitor_lock", monitorLease).catch(() => {});
     if (backfillLease) await releaseStrategyLease(db, "strategy_backfill_lock", backfillLease).catch(() => {});
