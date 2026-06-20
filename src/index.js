@@ -1103,6 +1103,14 @@ function aggregateStrategyStats(rows) {
   };
 }
 
+const STRATEGY_START_CAPITAL = 1000;
+
+function strategyCapitalFromResultPct(resultPct) {
+  const number = Number(resultPct);
+  if (!Number.isFinite(number)) return null;
+  return Math.round(STRATEGY_START_CAPITAL * (1 + number / 100) * 100) / 100;
+}
+
 function finiteNumberOrNull(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -1126,7 +1134,8 @@ function strategySummaryRow(row) {
     takeRatePct:totalTrades > 0 ? takeHits / totalTrades * 100 : 0,
     totalFullCapitalResultPct,
     estimatedFullCapitalResultPct:totalFullCapitalResultPct + activeUnrealizedPct,
-    capitalFrom100:100 + totalFullCapitalResultPct,
+    capitalAfterClosed:strategyCapitalFromResultPct(totalFullCapitalResultPct),
+    capitalNow:strategyCapitalFromResultPct(totalFullCapitalResultPct + activeUnrealizedPct),
     avgResultPct:finiteNumberOrNull(row.avg_result_pct),
     bestResultPct:finiteNumberOrNull(row.best_result_pct),
     avgDrawdownPct:finiteNumberOrNull(row.avg_drawdown_pct),
@@ -2844,4 +2853,4 @@ function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ re
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
 
 
-export const __strategyTestInternals = { STRATEGY_MONITOR_CRON, STRATEGY_BACKFILL_CRON, runStrategyMonitorBatch, runStrategyBackfillBatch, acquireStrategyLease, releaseStrategyLease, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, findActiveStrategyTrade, updateExistingActiveTrade, discoverAndOpenStrategyTrade, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, calculateClosedTradeResultPct, normalizeClosedTradeResult, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi, handleStrategyResetBackfillHistoryApi, strategySummaryRow };
+export const __strategyTestInternals = { STRATEGY_MONITOR_CRON, STRATEGY_BACKFILL_CRON, runStrategyMonitorBatch, runStrategyBackfillBatch, acquireStrategyLease, releaseStrategyLease, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, findActiveStrategyTrade, updateExistingActiveTrade, discoverAndOpenStrategyTrade, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, calculateClosedTradeResultPct, normalizeClosedTradeResult, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi, handleStrategyResetBackfillHistoryApi, strategySummaryRow, strategyCapitalFromResultPct, STRATEGY_START_CAPITAL };

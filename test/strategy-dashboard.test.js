@@ -118,11 +118,27 @@ test("strategy summary UI is present between stats and trade tables", () => {
 });
 
 test("strategy summary table renders required columns and labels", () => {
-  for (const label of ["Монета","Биржа","ТФ","Режим","Сделок","Тейков","Завершено тейком","Активных","Общий результат","Из $100","Средний результат позиции","Лучший результат","Макс. усреднений","Средняя просадка","Макс. просадка","Средний капитал","Выборка"]) {
+  for (const label of ["Монета","Биржа","ТФ","Режим","Сделок","Тейков","Завершено тейком","Активных","Общий результат","Баланс после закрытых","Баланс сейчас","Средний результат позиции","Лучший результат","Макс. усреднений","Средняя просадка","Макс. просадка","Средний капитал","Выборка"]) {
     assert.match(dashboardJs, new RegExp(label.replace("$", "\\$")));
   }
   assert.doesNotMatch(dashboardJs, /Winrate/);
-  assert.match(dashboardJs, /Результат на весь капитал без реинвестирования/);
+  assert.match(dashboardJs, /Расчёт ведётся от начального виртуального капитала \$1 000/);
+  assert.match(dashboardJs, /Баланс после закрытых учитывает только зафиксированный результат/);
+  assert.match(dashboardJs, /Баланс сейчас дополнительно учитывает текущий незакрытый результат/);
+});
+
+
+test("strategy summary capital formatting always uses two decimals and 1000 base", () => {
+  assert.match(dashboardJs, /const STRATEGY_START_CAPITAL=1000/);
+  assert.match(dashboardJs, /function fmtStrategyCapital\(value\)/);
+  assert.match(dashboardJs, /minimumFractionDigits:2,maximumFractionDigits:2/);
+  assert.match(dashboardJs, /STRATEGY_START_CAPITAL\*\(1\+number\/100\)/);
+  assert.match(dashboardJs, /fmtStrategyCapital\(capitalAfterClosed\)/);
+  assert.match(dashboardJs, /fmtStrategyCapital\(capitalNow\)/);
+  assert.doesNotMatch(dashboardJs, /fmtMoneyFrom100/);
+  assert.doesNotMatch(dashboardJs, /Из \$100/);
+  assert.doesNotMatch(dashboardJs, /100 \+ closedResultPct/);
+  assert.equal(`$${(1000*(1+0.0001/100)).toLocaleString("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:2})}`, "$1 000,00");
 });
 
 test("strategy summary filtering sorting and refresh hooks are wired", () => {
@@ -151,5 +167,5 @@ test("strategy dashboard shows long active trade diagnostics and summary labels"
   assert.match(dashboardJs, /strategyUncoveredActiveTrades/);
   assert.match(dashboardJs, /Завершено тейком/);
   assert.match(dashboardJs, /Средний результат позиции/);
-  assert.match(dashboardJs, /Средний результат позиции показывает изменение самой позиции/);
+  assert.match(dashboardJs, /Расчёт ведётся от начального виртуального капитала \$1 000/);
 });
