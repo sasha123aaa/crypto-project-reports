@@ -105,3 +105,41 @@ test("strategy page shows overlapping live trades audit metric", async () => {
   assert.match(html, /Наложенных live-сделок/);
   assert.match(html, /strategyOverlappingLiveGroups/);
 });
+
+test("strategy summary UI is present between stats and trade tables", () => {
+  assert.ok(strategyHtml.indexOf("Статистика стратегии") < strategyHtml.indexOf("Сводка по монетам и стратегиям"));
+  assert.ok(strategyHtml.indexOf("Сводка по монетам и стратегиям") < strategyHtml.indexOf("Активные сделки"));
+  assert.ok(strategyHtml.indexOf("Активные сделки") < strategyHtml.indexOf("Завершённые сделки"));
+  assert.match(strategyHtml, /strategySummarySearch/);
+  assert.match(strategyHtml, /strategySummaryTimeframe/);
+  assert.match(strategyHtml, /strategySummaryEntryMode/);
+  assert.match(strategyHtml, /strategySummaryMinTrades/);
+  assert.match(strategyHtml, /strategySummarySort/);
+});
+
+test("strategy summary table renders required columns and labels", () => {
+  for (const label of ["Монета","Биржа","ТФ","Режим","Сделок","Тейков","Доля тейков","Активных","Общий результат","Из $100","Средний результат","Лучший результат","Макс. усреднений","Средняя просадка","Макс. просадка","Средний капитал","Выборка"]) {
+    assert.match(dashboardJs, new RegExp(label.replace("$", "\\$")));
+  }
+  assert.doesNotMatch(dashboardJs, /Winrate/);
+  assert.match(dashboardJs, /Результат на весь капитал без реинвестирования/);
+});
+
+test("strategy summary filtering sorting and refresh hooks are wired", () => {
+  assert.match(dashboardJs, /let strategySummaryRows=\[\]/);
+  assert.match(dashboardJs, /function filteredStrategySummary\(\)/);
+  assert.match(dashboardJs, /function sortStrategySummary\(rows\)/);
+  assert.match(dashboardJs, /Number\(row\.entryMode\)!==Number\(entryMode\)/);
+  assert.match(dashboardJs, /Number\(row\.totalTrades\|\|0\)<minTrades/);
+  assert.match(dashboardJs, /totalFullCapitalResultPct/);
+  assert.match(dashboardJs, /await loadStrategySummary\(\)/);
+  assert.match(dashboardJs, /strategySummarySearch","strategySummaryTimeframe","strategySummaryEntryMode","strategySummaryMinTrades","strategySummarySort/);
+});
+
+test("strategy summary scrolls and avoids negative zero display", () => {
+  assert.match(appCss, /\.strategy-summary-table-wrap\{max-height:620px;overflow:auto;border:1px solid var\(--line\);border-radius:16px/);
+  assert.match(appCss, /\.strategy-summary-table thead th\{position:sticky;top:0;z-index:2/);
+  assert.match(appCss, /min-width:1320px/);
+  assert.match(dashboardJs, /function normalizeDisplayZero\(value\)/);
+  assert.match(dashboardJs, /Math\.abs\(number\)<0\.00005\?0:number/);
+});
