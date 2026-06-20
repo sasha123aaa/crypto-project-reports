@@ -238,3 +238,15 @@ test("new BC29 take is not executable on the same candle it is lowered", () => {
   assert.equal(state.dynamicExtremeC, 100);
   assert.equal(state.takePrice, 129);
 });
+
+test("evaluateVirtualTrade does not close on the same candle that lowers dynamic take", () => {
+  const localRange = { aTime:1, bTime:2, aPrice:100, bPrice:200, bullish:true, dynamicAnchorB:200 };
+  const levels = [{ ratio:1, price:110, qtyMultiplier:1, capitalPct:100 }];
+  const updated = evaluateVirtualTrade({
+    trade:{ status:"active", range:localRange, levels, activatedLevels:1, averagePrice:120, takePrice:164.5, dynamicTakeMode:true },
+    candles:[{ time:2, open:200, high:200, low:200, close:200 }, { time:3, open:140, high:130, low:100, close:120 }],
+  });
+  assert.notEqual(updated.status, "take_hit");
+  assert.equal(updated.dynamicExtremeC, 100);
+  assert.equal(updated.takePrice, 129);
+});

@@ -104,9 +104,13 @@ export function calculateDynamicTake({ range, filledLevels = [], candles = [], c
   if (!(A > 0) || !(B > 0)) return { takePrice:null, dynamicTakeMode:false, anchorB:null, extremeC:null };
   if (deepestRatio < 1 - 1e-9) return { takePrice:fixedTakeForRange(range), dynamicTakeMode:false, anchorB:B, extremeC:null };
 
-  let extremeC = Number(previousExtremeC);
-  if (!Number.isFinite(extremeC) || extremeC <= 0) {
-    extremeC = findLongExtremeAfterB({ range, candles, endIndex:currentIndex });
+  const storedExtremeC = Number(previousExtremeC);
+  const latestExtremeC = findLongExtremeAfterB({ range, candles, endIndex:currentIndex });
+  let extremeC = latestExtremeC;
+  if (Number.isFinite(storedExtremeC) && storedExtremeC > 0 && Number.isFinite(latestExtremeC) && latestExtremeC > 0) {
+    extremeC = Math.min(storedExtremeC, latestExtremeC);
+  } else if (Number.isFinite(storedExtremeC) && storedExtremeC > 0) {
+    extremeC = storedExtremeC;
   }
   const candidate = calculateBc29Take({ anchorB:B, extremeC, direction });
   const average = Number(averagePrice);
@@ -313,6 +317,9 @@ export function evaluateVirtualTrade({ trade, candles, currentPrice } = {}) {
   const storedTakePrice = finite(trade?.takePrice);
   const take = calculateDynamicTake({ range:trade?.range, filledLevels:activated, candles, currentIndex:Array.isArray(candles) ? candles.length - 1 : undefined, previousExtremeC:storedExtremeC, previousTakePrice:storedTakePrice, averagePrice });
   const takePrice = take.takePrice ?? storedTakePrice;
+  const oldExtremeC = storedExtremeC;
+  const newExtremeC = finite(take.extremeC);
+  const takeChangedOnLatestCandle = take.dynamicTakeMode && newExtremeC > 0 && (!(oldExtremeC > 0) || newExtremeC < oldExtremeC - 1e-12);
   const currentPnlPct = averagePrice && price ? (price - averagePrice) / averagePrice * 100 : null;
   const drawdown = currentPnlPct == null ? finite(trade?.maxDrawdownPct) ?? 0 : Math.min(finite(trade?.maxDrawdownPct) ?? 0, currentPnlPct);
   let status = trade?.status || "waiting_entry";
@@ -323,7 +330,7 @@ export function evaluateVirtualTrade({ trade, candles, currentPrice } = {}) {
   const latestHigh = rows.length ? finite(rows[rows.length - 1]?.high) : null;
   const touchPrice = latestHigh ?? price;
   const canCloseAtTake = !take.dynamicTakeMode || (takePrice > 0 && averagePrice > 0 && takePrice > averagePrice);
-  const takeHit = (hadEntry || activated.length) && canCloseAtTake && takePrice && touchPrice >= takePrice;
+  const takeHit = !takeChangedOnLatestCandle && (hadEntry || activated.length) && canCloseAtTake && takePrice > 0 && touchPrice >= takePrice;
   if (takeHit) status = "take_hit";
   const realizedResultPct = takeHit && averagePrice > 0 && takePrice > 0 ? ((takePrice - averagePrice) / averagePrice) * 100 : null;
   const finalUsedCapitalPct = activated.reduce((sum, level) => sum + (Number(level.capitalPct) || 0), 0) || Number(trade?.usedCapitalPct) || 0;

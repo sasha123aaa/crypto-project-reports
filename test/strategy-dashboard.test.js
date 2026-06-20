@@ -92,3 +92,16 @@ test("strategy UI distinguishes live monitor and historical backfill progress", 
   assert.match(strategyHtml, /Live-монитор постоянно проверяет текущий рынок/);
   assert.match(strategyHtml, /Их прогресс не связан между собой/);
 });
+
+test("completed trades table shows averaging count column", async () => {
+  const dashboardJs = await import("node:fs/promises").then(fs => fs.readFile("public/assets/strategy-dashboard.js", "utf8"));
+  assert.match(dashboardJs, /function averagingCount\(trade\)/);
+  assert.match(dashboardJs, /"Усреднений"/);
+  assert.match(dashboardJs, /fmtNum\(averagingCount\(t\),0\)/);
+});
+
+test("strategy page shows overlapping live trades audit metric", async () => {
+  const html = await import("node:fs/promises").then(fs => fs.readFile("public/strategy/index.html", "utf8"));
+  assert.match(html, /Наложенных live-сделок/);
+  assert.match(html, /strategyOverlappingLiveGroups/);
+});
