@@ -544,6 +544,18 @@ async function handleStrategyStatusApi(env) {
     `SELECT COUNT(*) AS count FROM virtual_trades WHERE status='drawdown'`
   ).first().catch(() => ({ count:0 }));
 
+  const overlappingLiveGroups = await db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM (
+      SELECT symbol, exchange, timeframe, entry_mode, COUNT(*) AS active_count
+      FROM virtual_trades
+      WHERE id NOT LIKE 'BACKFILL:%'
+        AND status IN ('active','averaging','drawdown')
+      GROUP BY symbol, exchange, timeframe, entry_mode
+      HAVING COUNT(*) > 1
+    )
+  `).first().catch(() => ({ count:0 }));
+
   return json({
     ok:true,
     dbAvailable:true,
@@ -561,6 +573,9 @@ async function handleStrategyStatusApi(env) {
       activeTrades:Number(active?.count || 0),
       takeHits:Number(takes?.count || 0),
       drawdownTrades:Number(drawdown?.count || 0),
+    },
+    audit:{
+      overlappingLiveGroups:Number(overlappingLiveGroups?.count || 0),
     },
   }, 200, { cacheControl:"no-store" });
 }
@@ -1291,24 +1306,82 @@ async function runStrategyMonitorBatch(env, options = {}) {
     await releaseStrategyLease(db, "strategy_monitor_lock", leaseToken);
   }
 }
+async function findActiveStrategyTrade(db, { symbol, exchange, timeframe, entryMode }) {
+  const row = await db.prepare(`
+    SELECT *
+    FROM virtual_trades
+    WHERE
+      symbol=?
+      AND exchange=?
+      AND timeframe=?
+      AND entry_mode=?
+      AND status IN ('active','averaging','drawdown')
+    ORDER BY opened_at ASC
+    LIMIT 1
+  `).bind(symbol, exchange, timeframe, entryMode).first().catch(() => null);
+  return row ? rowToTrade(row) : null;
+}
+
 async function processStrategyJob(db, { asset, timeframe, entryMode }) {
-  const built = await buildStrategyPlanForMarket({ symbol:asset.symbol, exchange:"BYBIT", timeframe, entryMode });
+  const exchange = "BYBIT";
+  const activeTrade = await findActiveStrategyTrade(db, { symbol:asset.symbol, exchange, timeframe, entryMode });
+  if (activeTrade) return updateExistingActiveTrade(db, { asset, exchange, timeframe, entryMode, activeTrade });
+  return discoverAndOpenStrategyTrade(db, { asset, exchange, timeframe, entryMode });
+}
+
+async function updateExistingActiveTrade(db, { asset, exchange, timeframe, entryMode, activeTrade }) {
+  const routes = [{ exchange, symbol:asset.symbol, source:`${exchange} spot` }];
+  const candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50, timeoutMs:4500 });
+  if (!candleResult.route || !candleResult.candles.length) throw new Error("Candles unavailable for active trade");
+  const range = activeTrade.range;
+  if (!range || !range.aTime || !range.bTime || !(Number(range.aPrice) > 0) || !(Number(range.bPrice) > 0)) throw new Error(`Active trade has invalid range: ${activeTrade.id}`);
+  const levels = tradeLevelsNeedRestore(activeTrade.levels) ? calculateLevels({ range, entryMode }) : activeTrade.levels;
+  const current = Number(candleResult.candles.at(-1)?.close);
+  const path = evaluateStrategyPath({ range, levels, candles:candleResult.candles, currentPrice:current, capital:100 });
+  if (!path.pathFound || Number(path.activatedLevels || 0) <= 0) return { created:false, updated:false, preserved:true, trade:activeTrade };
+  const plan = {
+    ...activeTrade,
+    ...path,
+    levels:levels.map((level, index) => ({ ...level, state:path.levelStates?.[index]?.state || level.state || "waiting" })),
+    dynamicAnchorB:activeTrade.dynamicAnchorB ?? activeTrade.range?.dynamicAnchorB ?? path.dynamicAnchorB,
+    dynamicExtremeC:path.dynamicExtremeC ?? activeTrade.dynamicExtremeC ?? activeTrade.range?.dynamicExtremeC,
+    takePrice:path.takePrice ?? activeTrade.takePrice,
+  };
+  return upsertStrategyTradeFromPlan(db, { source:"monitor", symbol:asset.symbol, baseSymbol:asset.ticker, exchange, timeframe, entryMode, range, plan, currentPrice:current, existingTradeId:activeTrade.id });
+}
+
+async function discoverAndOpenStrategyTrade(db, { asset, exchange, timeframe, entryMode }) {
+  const built = await buildStrategyPlanForMarket({ symbol:asset.symbol, exchange, timeframe, entryMode });
   if (!built.plan || !built.range?.bullish) return {};
   const plan = { ...built.plan, ...evaluateStrategyPath({ range:built.range, levels:built.plan.levels, candles:built.candles, currentPrice:built.currentPrice }) };
   if (Number(plan.activatedLevels || 0) <= 0) return {};
-  return upsertStrategyTradeFromPlan(db, { source:"monitor", symbol:asset.symbol, baseSymbol:asset.ticker, exchange:"BYBIT", timeframe, entryMode, range:built.range, plan, currentPrice:built.currentPrice });
+  const activeTrade = await findActiveStrategyTrade(db, { symbol:asset.symbol, exchange, timeframe, entryMode });
+  if (activeTrade) return { created:false, updated:false, skipped:true, reason:"active_trade_already_exists", trade:activeTrade };
+  return upsertStrategyTradeFromPlan(db, { source:"monitor", symbol:asset.symbol, baseSymbol:asset.ticker, exchange, timeframe, entryMode, range:built.range, plan, currentPrice:built.currentPrice });
 }
 
-async function upsertStrategyTradeFromPlan(db, { source, symbol, baseSymbol, exchange = "BYBIT", timeframe, entryMode, range, plan, currentPrice }) {
+async function upsertStrategyTradeFromPlan(db, { source, symbol, baseSymbol, exchange = "BYBIT", timeframe, entryMode, range, plan, currentPrice, existingTradeId = null }) {
   if (!db || !plan || Number(plan.activatedLevels || 0) <= 0) return { created:false, updated:false };
   await ensureStrategySchema(db);
-  const id = source === "backfill" && plan.id ? plan.id : strategyTradeId({ symbol, exchange, timeframe, entryMode, range });
+  const id = existingTradeId || (source === "backfill" && plan.id ? plan.id : strategyTradeId({ symbol, exchange, timeframe, entryMode, range }));
   const existing = await db.prepare(`SELECT * FROM virtual_trades WHERE id=?`).bind(id).first().catch(() => null);
   const oldTrade = existing ? rowToTrade(existing) : null;
+  if (source !== "backfill" && !existing) {
+    const activeCount = await db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM virtual_trades
+      WHERE symbol=?
+        AND exchange=?
+        AND timeframe=?
+        AND entry_mode=?
+        AND status IN ('active','averaging','drawdown')
+    `).bind(symbol, exchange, timeframe, entryMode).first().catch(() => ({ count:0 }));
+    if (Number(activeCount?.count || 0) > 0) return { created:false, updated:false, skipped:true, reason:"overlapping_active_trade_blocked" };
+  }
   const now = new Date().toISOString();
   const status = deriveTradeStatus(plan);
-  const dynamicAnchorB = oldTrade?.range?.dynamicAnchorB ?? plan.dynamicAnchorB ?? null;
-  const oldExtremeC = finiteNumber(oldTrade?.range?.dynamicExtremeC);
+  const dynamicAnchorB = finiteNumber(oldTrade?.dynamicAnchorB) ?? finiteNumber(oldTrade?.range?.dynamicAnchorB) ?? finiteNumber(oldTrade?.range?.bPrice) ?? finiteNumber(plan.dynamicAnchorB);
+  const oldExtremeC = finiteNumber(oldTrade?.dynamicExtremeC ?? oldTrade?.range?.dynamicExtremeC);
   const planExtremeC = finiteNumber(plan.dynamicExtremeC);
   const dynamicExtremeC = oldExtremeC > 0 && planExtremeC > 0 ? Math.min(oldExtremeC, planExtremeC) : (planExtremeC ?? oldExtremeC ?? null);
   const rangeWithDynamicTake = { ...range, dynamicTakeMode:Boolean(plan.dynamicTakeMode), dynamicAnchorB, dynamicExtremeC };
@@ -2705,4 +2778,4 @@ function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ re
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
 
 
-export const __strategyTestInternals = { STRATEGY_MONITOR_CRON, STRATEGY_BACKFILL_CRON, runStrategyMonitorBatch, runStrategyBackfillBatch, acquireStrategyLease, releaseStrategyLease, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, calculateClosedTradeResultPct, normalizeClosedTradeResult, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi, handleStrategyResetBackfillHistoryApi };
+export const __strategyTestInternals = { STRATEGY_MONITOR_CRON, STRATEGY_BACKFILL_CRON, runStrategyMonitorBatch, runStrategyBackfillBatch, acquireStrategyLease, releaseStrategyLease, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, findActiveStrategyTrade, updateExistingActiveTrade, discoverAndOpenStrategyTrade, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, calculateClosedTradeResultPct, normalizeClosedTradeResult, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi, handleStrategyResetBackfillHistoryApi };

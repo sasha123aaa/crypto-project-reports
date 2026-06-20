@@ -255,6 +255,23 @@ class MemoryStrategyStmt {
     return { results:[] };
   }
   async first() {
+    if (this.sql.includes("SELECT * FROM virtual_trades WHERE id=?")) return this.db.trades.find((t) => t.id === this.args[0]) || null;
+    if (this.sql.includes("SELECT *") && this.sql.includes("symbol=?") && this.sql.includes("entry_mode=?") && this.sql.includes("ORDER BY opened_at ASC")) {
+      const [symbol, exchange, timeframe, entryMode] = this.args;
+      return this.db.trades.filter((t) => t.symbol === symbol && t.exchange === exchange && t.timeframe === timeframe && Number(t.entry_mode) === Number(entryMode) && ["active","averaging","drawdown"].includes(t.status)).sort((a, b) => String(a.opened_at || "").localeCompare(String(b.opened_at || "")))[0] || null;
+    }
+    if (this.sql.includes("COUNT(*) AS count") && this.sql.includes("symbol=?") && this.sql.includes("entry_mode=?") && this.sql.includes("status IN")) {
+      const [symbol, exchange, timeframe, entryMode] = this.args;
+      return { count:this.db.trades.filter((t) => t.symbol === symbol && t.exchange === exchange && t.timeframe === timeframe && Number(t.entry_mode) === Number(entryMode) && ["active","averaging","drawdown"].includes(t.status)).length };
+    }
+    if (this.sql.includes("HAVING COUNT(*) > 1")) {
+      const groups = new Map();
+      for (const t of this.db.trades.filter((trade) => !String(trade.id || "").startsWith("BACKFILL:") && ["active","averaging","drawdown"].includes(trade.status))) {
+        const key = `${t.symbol}:${t.exchange}:${t.timeframe}:${t.entry_mode}`;
+        groups.set(key, (groups.get(key) || 0) + 1);
+      }
+      return { count:[...groups.values()].filter((count) => count > 1).length };
+    }
     if (this.sql.includes("COUNT(*) AS count") && this.sql.includes("virtual_trades")) return { count:this.db.trades.filter((trade) => !String(trade.id || "").startsWith("BACKFILL:")).length };
     return null;
   }
@@ -759,4 +776,43 @@ test("/api/strategy/reset-backfill-history only clears BACKFILL data and defers 
   assert.deepEqual(db.events.map((event) => event.trade_id), ["live-1"]);
   assert.equal(db.state.strategy_backfill, undefined);
   assert.deepEqual(db.stats, []);
+});
+
+
+test("live upsert preserves active trade id, original B, and blocks overlapping active trade", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?live=${Date.now()}-${Math.random()}`);
+  const db = new MemoryStrategyDb();
+  const oldRange = { aTime:1, bTime:2, aPrice:100, bPrice:200, bullish:true, dynamicAnchorB:200, dynamicExtremeC:120 };
+  const levels = [{ price:150, capitalPct:10 }];
+  await __strategyTestInternals.upsertStrategyTradeFromPlan(db, { source:"monitor", symbol:"ABCUSDT", baseSymbol:"ABC", exchange:"BYBIT", timeframe:"1d", entryMode:0.5, range:oldRange, plan:{ levels, activatedLevels:1, averagePrice:150, dynamicAnchorB:200, dynamicExtremeC:120, takePrice:142, status:"active" }, currentPrice:140, existingTradeId:"LIVE:OLD" });
+  const updated = await __strategyTestInternals.upsertStrategyTradeFromPlan(db, { source:"monitor", symbol:"ABCUSDT", baseSymbol:"ABC", exchange:"BYBIT", timeframe:"1d", entryMode:0.5, range:{ ...oldRange, bPrice:250, dynamicAnchorB:250 }, plan:{ levels, activatedLevels:1, averagePrice:150, dynamicAnchorB:250, dynamicExtremeC:130, takePrice:155, status:"active" }, currentPrice:145, existingTradeId:"LIVE:OLD" });
+  assert.equal(updated.updated, true);
+  assert.equal(db.trades.length, 1);
+  assert.equal(updated.trade.id, "LIVE:OLD");
+  assert.equal(JSON.parse(db.trades[0].range_json).dynamicAnchorB, 200);
+  assert.equal(JSON.parse(db.trades[0].range_json).dynamicExtremeC, 120);
+  const blocked = await __strategyTestInternals.upsertStrategyTradeFromPlan(db, { source:"monitor", symbol:"ABCUSDT", baseSymbol:"ABC", exchange:"BYBIT", timeframe:"1d", entryMode:0.5, range:{ ...oldRange, aTime:3, bTime:4 }, plan:{ levels, activatedLevels:1, averagePrice:150, dynamicAnchorB:210, dynamicExtremeC:110, takePrice:139, status:"active" }, currentPrice:149 });
+  assert.equal(blocked.skipped, true);
+  assert.equal(blocked.reason, "overlapping_active_trade_blocked");
+  assert.equal(db.trades.length, 1);
+});
+
+test("live upsert allows a new trade after previous trade reached take", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?livetake=${Date.now()}-${Math.random()}`);
+  const db = new MemoryStrategyDb();
+  db.trades.push({ id:"LIVE:CLOSED", symbol:"XYZUSDT", base_symbol:"XYZ", exchange:"BYBIT", timeframe:"1d", entry_mode:0.5, range_json:JSON.stringify({ aTime:1, bTime:2, aPrice:100, bPrice:200, bullish:true }), levels_json:"[]", status:"take_hit", opened_at:"2026-01-01T00:00:00.000Z" });
+  const result = await __strategyTestInternals.upsertStrategyTradeFromPlan(db, { source:"monitor", symbol:"XYZUSDT", baseSymbol:"XYZ", exchange:"BYBIT", timeframe:"1d", entryMode:0.5, range:{ aTime:3, bTime:4, aPrice:110, bPrice:210, bullish:true }, plan:{ levels:[{ price:160, capitalPct:10 }], activatedLevels:1, averagePrice:160, dynamicAnchorB:210, dynamicExtremeC:120, takePrice:146, status:"active" }, currentPrice:150 });
+  assert.equal(result.created, true);
+  assert.equal(db.trades.length, 2);
+});
+
+test("/api/strategy/status audits overlapping live groups", async () => {
+  const db = new MemoryStrategyDb();
+  db.trades.push(
+    { id:"A", symbol:"ONEUSDT", base_symbol:"ONE", exchange:"BYBIT", timeframe:"1d", entry_mode:0.5, status:"active" },
+    { id:"B", symbol:"ONEUSDT", base_symbol:"ONE", exchange:"BYBIT", timeframe:"1d", entry_mode:0.5, status:"averaging" }
+  );
+  const response = await worker.fetch(new Request("https://example.com/api/strategy/status"), { DB:db });
+  const payload = await readJson(response);
+  assert.equal(payload.audit.overlappingLiveGroups, 1);
 });
