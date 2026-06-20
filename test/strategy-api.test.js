@@ -832,9 +832,24 @@ test("strategy summary row derives grouped UI metrics from strategy_stats", asyn
   assert.equal(row.totalTrades, 5);
   assert.equal(row.takeRatePct, 100);
   assert.equal(row.totalFullCapitalResultPct, 4.72);
-  assert.equal(row.capitalFrom100, 104.72);
+  assert.equal(row.capitalAfterClosed, 1047.2);
+  assert.equal(row.capitalNow, 1042.2);
   assert.equal(row.maxAveragingCount, 3);
   assert.equal(row.sampleQuality, "Средняя выборка");
+});
+
+
+test("strategy summary capital uses 1000 base and percent math", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?capital=${Date.now()}-${Math.random()}`);
+  assert.equal(__strategyTestInternals.STRATEGY_START_CAPITAL, 1000);
+  for (const [closedResultPct, capitalAfterClosed] of [[1, 1010], [0.5, 1005], [0.001, 1000.01]]) {
+    const row = __strategyTestInternals.strategySummaryRow({
+      key:`ALT:BYBIT:15m:${closedResultPct}`, symbol:"ALT", exchange:"BYBIT", timeframe:"15m", entry_mode:0.5,
+      total_trades:1, take_hits:1, active_trades:0, max_activated_levels:1,
+      closed_full_capital_result_pct:closedResultPct, active_unrealized_full_capital_pct:0,
+    });
+    assert.equal(row.capitalAfterClosed, capitalAfterClosed);
+  }
 });
 
 test("updateExistingActiveTrade preserves active trade when B is not covered by paginated history", async () => {
