@@ -110,15 +110,15 @@ function selectedStrategyEntryMode(){const el=document.getElementById("strategyE
 function formatPrice(value){return money(Number(value))}
 function formatStrategyPct(value){const n=Number(value);if(!Number.isFinite(n))return "—";return `${n>=0?"+":""}${n.toFixed(2)}%`}
 
-function strategyLevelState(level,index,source){const stateFromSource=source?.levelStates?.[index]?.state||source?.levels?.[index]?.state||null;if(stateFromSource==="executed"||stateFromSource==="filled")return "filled";if(stateFromSource==="near")return "near";const activeCount=Number(source?.activatedLevels||0);if(index<activeCount)return "filled";const currentPrice=Number(source?.currentPrice),price=Number(level?.price);if(Number.isFinite(currentPrice)&&Number.isFinite(price)){const distancePct=Math.abs((currentPrice-price)/currentPrice*100);if(distancePct<=1)return "near"}return "waiting"}
+function strategyLevelState(level,index,source){if(level?.valid===false||!(Number(level?.price)>0))return "unavailable";const stateFromSource=source?.levelStates?.[index]?.state||source?.levels?.[index]?.state||null;if(stateFromSource==="unavailable")return "unavailable";if(stateFromSource==="executed"||stateFromSource==="filled")return "filled";if(stateFromSource==="near")return "near";const activeCount=Number(source?.activatedLevels||0);if(index<activeCount)return "filled";const currentPrice=Number(source?.currentPrice),price=Number(level?.price);if(Number.isFinite(currentPrice)&&Number.isFinite(price)){const distancePct=Math.abs((currentPrice-price)/currentPrice*100);if(distancePct<=1)return "near"}return "waiting"}
 function isStrategyActiveTrade(source){return source?.sourceType==="active-trade"||Boolean(source?.id&&source?.status&&source?.openedAt)}
-function strategyLevelStateText(state,source){if(state==="filled")return "Исполнено";if(state==="near")return "Близко к уровню";return "План"}
-function strategyLevelStateClass(state){if(state==="filled")return "is-filled";if(state==="near")return "is-near";return "is-waiting"}
+function strategyLevelStateText(state,source){if(state==="unavailable")return "Недоступен";if(state==="filled")return "Исполнено";if(state==="near")return "Близко к уровню";return "План"}
+function strategyLevelStateClass(state){if(state==="unavailable")return "is-unavailable";if(state==="filled")return "is-filled";if(state==="near")return "is-near";return "is-waiting"}
 function renderStrategyLevels(source){const body=document.getElementById("strategyLevelsBody"),hint=document.getElementById("strategyLevelsHint");if(!body)return;const levels=Array.isArray(source?.levels)?source.levels:[];if(hint)hint.textContent=source?.entryMode?`Режим входа ${source.entryMode}`:"Режим не выбран";if(!levels.length){body.innerHTML=`<tr><td colspan="6">Уровни стратегии пока недоступны</td></tr>`;return}body.innerHTML=levels.map((level,index)=>{const state=strategyLevelState(level,index,source),label=level.label||(index===0?"Вход":`Уср. ${index}`);return `
       <tr class="${strategyLevelStateClass(state)}">
         <td>${escapeHtml(label)}</td>
         <td>${escapeHtml(String(level.ratio??"—"))}</td>
-        <td>${escapeHtml(formatPrice(level.price))}</td>
+        <td>${state==="unavailable"?"—":escapeHtml(formatPrice(level.price))}</td>
         <td>${escapeHtml(formatStrategyPct(level.capitalPct))}</td>
         <td>${escapeHtml(String(level.qtyMultiplier??"—"))}</td>
         <td><span>${escapeHtml(strategyLevelStateText(state,source))}</span></td>

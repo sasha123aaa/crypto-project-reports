@@ -64,8 +64,10 @@ test("first active level is the selected entry mode", () => {
 test("levels are built in descending long order", () => {
   const levels = calculateLevels({ range, entryMode:0.5 });
   assert.equal(levels.length, 11);
-  for (let i = 1; i < levels.length; i += 1) assert.ok(levels[i].price < levels[i - 1].price);
-  assert.ok(levels.every((level) => level.price > 0));
+  const validLevels = levels.filter((level) => level.valid !== false);
+  for (let i = 1; i < validLevels.length; i += 1) assert.ok(validLevels[i].price < validLevels[i - 1].price);
+  assert.ok(validLevels.every((level) => level.price > 0));
+  assert.ok(levels.filter((level) => level.valid === false).every((level) => level.price === null));
 });
 
 test("average price changes after averaging", () => {
@@ -249,4 +251,33 @@ test("evaluateVirtualTrade does not close on the same candle that lowers dynamic
   assert.notEqual(updated.status, "take_hit");
   assert.equal(updated.dynamicExtremeC, 100);
   assert.equal(updated.takePrice, 129);
+});
+
+test("calculateLevels matches Python linear formula for all 12 ratios", () => {
+  const range = { aPrice:65.85, bPrice:67.78, bullish:true };
+  const levels = calculateLevels({ range, entryMode:0.31 });
+  const ratios = [0.31, 0.5, 0.75, 1, 1.2, 1.42, 1.68, 2, 2.38, 2.85, 3.4, 4.1];
+  assert.equal(levels.length, ratios.length);
+  ratios.forEach((ratio, index) => {
+    const expected = 67.78 - (67.78 - 65.85) * ratio;
+    assert.equal(levels[index].ratio, ratio);
+    assert.ok(Math.abs(levels[index].price - expected) < 1e-12);
+    assert.equal(levels[index].valid, true);
+    assert.equal(levels[index].levelMode, "linear");
+  });
+});
+
+test("calculateLevels keeps wide ranges linear and marks non-positive levels invalid", () => {
+  const range = { aPrice:50, bPrice:100, bullish:true };
+  const levels = calculateLevels({ range, entryMode:0.31 });
+  assert.equal(levels[0].price, 100 - (100 - 50) * 0.31);
+  assert.equal(levels[1].price, 100 - (100 - 50) * 0.5);
+  const invalid = levels.filter((level) => level.rawPrice <= 0);
+  assert.ok(invalid.length > 0);
+  invalid.forEach((level) => {
+    assert.equal(level.valid, false);
+    assert.equal(level.price, null);
+    assert.equal(level.invalidReason, "non_positive_linear_price");
+    assert.equal(level.levelMode, "linear");
+  });
 });
