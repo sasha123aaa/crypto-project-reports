@@ -836,3 +836,56 @@ test("strategy summary row derives grouped UI metrics from strategy_stats", asyn
   assert.equal(row.maxAveragingCount, 3);
   assert.equal(row.sampleQuality, "Средняя выборка");
 });
+
+test("updateExistingActiveTrade preserves active trade when B is not covered by paginated history", async () => {
+  const { __strategyTestInternals } = await import(`../src/index.js?partialHistory=${Date.now()}-${Math.random()}`);
+  const activeTrade = {
+    id:"live-partial",
+    symbol:"BTCUSDT",
+    baseSymbol:"BTC",
+    exchange:"BYBIT",
+    timeframe:"15m",
+    entryMode:0.5,
+    status:"averaging",
+    range:{ aTime:1, bTime:1, aPrice:90, bPrice:110, bullish:true, dynamicAnchorB:110, dynamicExtremeC:95 },
+    levels:[{ price:100, state:"filled" }, { price:95, state:"filled" }],
+    activatedLevels:2,
+    averagePrice:97.5,
+    dynamicAnchorB:110,
+    dynamicExtremeC:95,
+    takePrice:105,
+  };
+  let earliest = 10_000;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const page = [
+      [String(earliest), "100", "101", "99", "100"],
+      [String(earliest + 60), "100", "101", "99", "100"],
+    ];
+    earliest -= 120;
+    return { ok:true, status:200, async json() { return { result:{ list:page } }; } };
+  };
+  try {
+    const result = await __strategyTestInternals.updateExistingActiveTrade(null, {
+      asset:{ symbol:"BTCUSDT", ticker:"BTC" },
+      exchange:"BYBIT",
+      timeframe:"15m",
+      entryMode:0.5,
+      activeTrade,
+    });
+
+    assert.equal(result.reason, "active_trade_history_not_covered");
+    assert.equal(result.preserved, true);
+    assert.equal(result.updated, false);
+    assert.equal(result.coverage.pagesFetched, 5);
+    assert.strictEqual(result.trade, activeTrade);
+    assert.equal(result.trade.activatedLevels, 2);
+    assert.equal(result.trade.averagePrice, 97.5);
+    assert.equal(result.trade.dynamicAnchorB, 110);
+    assert.equal(result.trade.dynamicExtremeC, 95);
+    assert.equal(result.trade.takePrice, 105);
+    assert.equal(result.trade.status, "averaging");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

@@ -41,7 +41,7 @@ function toFiniteNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
-function normalizeChartTimestamp(value) {
+export function normalizeChartTimestamp(value) {
   const raw = Number(value);
   if (!Number.isFinite(raw)) return NaN;
   if (raw >= 1e12) return Math.floor(raw / 1000);
@@ -656,10 +656,24 @@ async function fetchWithOptionalTimeout(url, options = {}) {
   }
 }
 
-async function fetchBybitCandles(symbol, timeframe, options = {}) {
+function bybitKlineUrl({ symbol, timeframe, limit = 1000, end } = {}) {
   const interval = BYBIT_INTERVAL[timeframe];
-  if (!interval) return [];
-  const url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&limit=1000`;
+  if (!interval) return null;
+  const params = new URLSearchParams({
+    category:"spot",
+    symbol:String(symbol),
+    interval:String(interval),
+    limit:String(Math.min(1000, Math.max(1, limit))),
+  });
+  if (Number.isFinite(Number(end)) && Number(end) > 0) {
+    params.set("end", String(Math.floor(Number(end))));
+  }
+  return "https://api.bybit.com/v5/market/kline?" + params.toString();
+}
+
+async function fetchBybitCandles(symbol, timeframe, options = {}) {
+  const url = bybitKlineUrl({ symbol, timeframe, limit:1000 });
+  if (!url) return [];
   const res = await fetchWithOptionalTimeout(url, options);
   if (!res.ok) throw new Error(`Bybit kline HTTP ${res.status}`);
   const json = await res.json();
@@ -698,6 +712,53 @@ async function fetchGateCandles(symbol, timeframe, options = {}) {
   if (!response.ok) throw new Error(`Gate.io kline HTTP ${response.status}`);
   const json = await response.json();
   return normalizeCandles(json, parseGateKlineRow);
+}
+
+export async function fetchBybitCandlesCoveringTime(symbol, timeframe, targetTime, options = {}) {
+  const normalizedTarget = normalizeChartTimestamp(targetTime);
+  if (!Number.isFinite(normalizedTarget)) {
+    return { candles:[], covered:false, pagesFetched:0, targetTime:null, earliestTime:null, latestTime:null, reason:"invalid_target_time" };
+  }
+  const maxPages = Math.min(5, Math.max(1, Number(options.maxPages || 5)));
+  const deadlineMs = Number(options.deadlineMs);
+  const allCandles = new Map();
+  let endMs = null;
+  let pagesFetched = 0;
+  let covered = false;
+  let lastEarliest = null;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    if (Number.isFinite(deadlineMs) && Date.now() >= deadlineMs) break;
+    const url = bybitKlineUrl({ symbol, timeframe, limit:1000, end:endMs });
+    if (!url) break;
+    const response = await fetchWithOptionalTimeout(url, options);
+    if (!response.ok) throw new Error(`Bybit kline HTTP ${response.status}`);
+    const payload = await response.json();
+    const list = Array.isArray(payload?.result?.list) ? payload.result.list : [];
+    const pageCandles = normalizeCandles(list, parseBybitKlineRow);
+    if (!pageCandles.length) break;
+    pagesFetched += 1;
+    for (const candle of pageCandles) {
+      if (Number.isFinite(Number(candle.time))) allCandles.set(Number(candle.time), candle);
+    }
+    const earliest = Number(pageCandles[0]?.time);
+    if (!Number.isFinite(earliest)) break;
+    if (earliest <= normalizedTarget) { covered = true; break; }
+    if (lastEarliest != null && earliest >= lastEarliest) break;
+    lastEarliest = earliest;
+    endMs = earliest * 1000 - 1;
+  }
+
+  const candles = [...allCandles.values()].sort((a, b) => Number(a.time) - Number(b.time));
+  return {
+    candles,
+    covered:covered || Number(candles[0]?.time) <= normalizedTarget,
+    pagesFetched,
+    targetTime:normalizedTarget,
+    earliestTime:Number(candles[0]?.time) || null,
+    latestTime:Number(candles.at(-1)?.time) || null,
+    reason:candles.length ? null : "no_candles",
+  };
 }
 
 export async function fetchMarketCandles(route, timeframe, options = {}) {
@@ -749,6 +810,28 @@ export async function fetchMarketCandlesWithFallback(routeInput, timeframe, opti
     }
   }
   return { candles:[], route:null, source:null, exchange:null, symbol:null, status:"unavailable", errors };
+}
+
+export async function fetchCandlesForActiveTrade(routeInput, timeframe, targetTime, options = {}) {
+  const routes = normalizeRoutes(routeInput);
+  const errors = [];
+  for (const route of routes) {
+    try {
+      if (route.exchange === "BYBIT") {
+        const result = await fetchBybitCandlesCoveringTime(route.symbol, timeframe, targetTime, options);
+        if (result.candles.length) {
+          return { ...result, route, exchange:route.exchange, symbol:route.symbol, source:route.source || "BYBIT spot", status:result.covered ? "covered" : "partial", errors };
+        }
+      }
+      const candles = await fetchMarketCandles(route, timeframe, options);
+      if (candles.length) {
+        return { candles, route, covered:Number(candles[0]?.time) <= normalizeChartTimestamp(targetTime), pagesFetched:1, exchange:route.exchange, symbol:route.symbol, status:"fallback", errors };
+      }
+    } catch (error) {
+      errors.push({ exchange:route.exchange, symbol:route.symbol, reason:error?.message || String(error) });
+    }
+  }
+  return { candles:[], route:null, covered:false, pagesFetched:0, status:"unavailable", errors };
 }
 
 async function resolveWorkingRoute(routeInput) {

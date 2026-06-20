@@ -118,7 +118,7 @@ test("strategy summary UI is present between stats and trade tables", () => {
 });
 
 test("strategy summary table renders required columns and labels", () => {
-  for (const label of ["Монета","Биржа","ТФ","Режим","Сделок","Тейков","Доля тейков","Активных","Общий результат","Из $100","Средний результат","Лучший результат","Макс. усреднений","Средняя просадка","Макс. просадка","Средний капитал","Выборка"]) {
+  for (const label of ["Монета","Биржа","ТФ","Режим","Сделок","Тейков","Завершено тейком","Активных","Общий результат","Из $100","Средний результат позиции","Лучший результат","Макс. усреднений","Средняя просадка","Макс. просадка","Средний капитал","Выборка"]) {
     assert.match(dashboardJs, new RegExp(label.replace("$", "\\$")));
   }
   assert.doesNotMatch(dashboardJs, /Winrate/);
@@ -142,4 +142,14 @@ test("strategy summary scrolls and avoids negative zero display", () => {
   assert.match(appCss, /min-width:1320px/);
   assert.match(dashboardJs, /function normalizeDisplayZero\(value\)/);
   assert.match(dashboardJs, /Math\.abs\(number\)<0\.00005\?0:number/);
+});
+
+test("strategy dashboard shows long active trade diagnostics and summary labels", () => {
+  assert.match(strategyHtml, /Доп\. страниц свечей/);
+  assert.match(strategyHtml, /Сделок без полной истории/);
+  assert.match(dashboardJs, /strategyLongTradePages/);
+  assert.match(dashboardJs, /strategyUncoveredActiveTrades/);
+  assert.match(dashboardJs, /Завершено тейком/);
+  assert.match(dashboardJs, /Средний результат позиции/);
+  assert.match(dashboardJs, /Средний результат позиции показывает изменение самой позиции/);
 });
