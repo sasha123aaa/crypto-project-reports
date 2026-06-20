@@ -3,7 +3,7 @@ import { resolveProject } from "./lib/project-resolution.js";
 import { buildReport } from "./lib/build-report.js";
 import { buildReportShell } from "./lib/report-shell.js";
 import { applySectionSelection, isSectionSelected } from "./lib/section-selection.js";
-import { activeRangeForCandles, analysisCandlesForRange, detectRangesWithPreview, fetchMarketCandlesWithFallback, fetchBybitSpotUsdtUniverse, __resetBybitAdapterCaches, getTechnicalBias, RANGE_PARAMS } from "./adapters/bybit.js";
+import { activeRangeForCandles, analysisCandlesForRange, detectRangesWithPreview, fetchMarketCandlesWithFallback, fetchCandlesForActiveTrade, normalizeChartTimestamp, fetchBybitSpotUsdtUniverse, __resetBybitAdapterCaches, getTechnicalBias, RANGE_PARAMS } from "./adapters/bybit.js";
 import { createMarketSymbols, marketTechnicalRoutes } from "./lib/market-symbols.js";
 import { fetchUsersMetrics } from "./lib/users-source.js";
 import { fetchDefiLlamaRwaActiveMcap, fetchStablecoinChains, fetchStablecoinHistory, normalizeStablecoinHistory, stablecoinMcapUsd } from "./adapters/defillama.js";
@@ -505,6 +505,8 @@ async function handleStrategyStatusApi(env) {
     timeframes:STRATEGY_TIMEFRAMES,
     entryModes:STRATEGY_ENTRY_MODES,
     lastError:null,
+    longTradePagesFetched:0,
+    uncoveredActiveTrades:0,
   };
 
   if (!db) {
@@ -1281,6 +1283,8 @@ async function runStrategyMonitorBatch(env, options = {}) {
   let nextOffset = 0;
   let processedJobs = 0;
   let stoppedByBudget = false;
+  let longTradePagesFetched = 0;
+  let uncoveredActiveTrades = 0;
   try {
     const universeResult = await getStrategyUniverse(db, {
       ttlMs:6 * 60 * 60 * 1000,
@@ -1301,7 +1305,12 @@ async function runStrategyMonitorBatch(env, options = {}) {
         break;
       }
 
-      await processStrategyJob(db, job).catch((error) => console.log("Strategy monitor job failed", error?.message || error));
+      const result = await processStrategyJob(db, job, { deadlineMs:startedAt + maxRuntimeMs }).catch((error) => {
+        console.log("Strategy monitor job failed", error?.message || error);
+        return { error:error?.message || String(error) };
+      });
+      longTradePagesFetched += Number(result?.coverage?.pagesFetched || result?.pagesFetched || 0);
+      if (result?.reason === "active_trade_history_not_covered") uncoveredActiveTrades += 1;
       processedJobs += 1;
     }
     nextOffset = offset + processedJobs >= jobs.length ? 0 : offset + processedJobs;
@@ -1318,6 +1327,8 @@ async function runStrategyMonitorBatch(env, options = {}) {
       universeSource,
       universeWarning,
       universeCached,
+      longTradePagesFetched,
+      uncoveredActiveTrades,
       lastError:null,
     };
     await putMonitorState(db, state);
@@ -1337,6 +1348,8 @@ async function runStrategyMonitorBatch(env, options = {}) {
       universeSource,
       universeWarning,
       universeCached,
+      longTradePagesFetched,
+      uncoveredActiveTrades,
       lastError:error?.message || String(error),
     }).catch(() => {});
     throw error;
@@ -1360,17 +1373,24 @@ async function findActiveStrategyTrade(db, { symbol, exchange, timeframe, entryM
   return row ? rowToTrade(row) : null;
 }
 
-async function processStrategyJob(db, { asset, timeframe, entryMode }) {
+async function processStrategyJob(db, { asset, timeframe, entryMode }, options = {}) {
   const exchange = "BYBIT";
   const activeTrade = await findActiveStrategyTrade(db, { symbol:asset.symbol, exchange, timeframe, entryMode });
-  if (activeTrade) return updateExistingActiveTrade(db, { asset, exchange, timeframe, entryMode, activeTrade });
+  if (activeTrade) return updateExistingActiveTrade(db, { asset, exchange, timeframe, entryMode, activeTrade }, options);
   return discoverAndOpenStrategyTrade(db, { asset, exchange, timeframe, entryMode });
 }
 
-async function updateExistingActiveTrade(db, { asset, exchange, timeframe, entryMode, activeTrade }) {
+async function updateExistingActiveTrade(db, { asset, exchange, timeframe, entryMode, activeTrade }, options = {}) {
   const routes = [{ exchange, symbol:asset.symbol, source:`${exchange} spot` }];
-  const candleResult = await fetchMarketCandlesWithFallback(routes, timeframe, { minCandles:50, timeoutMs:4500 });
+  const bTime = Number(activeTrade.range?.bTime);
+  const candleResult = await fetchCandlesForActiveTrade(routes, timeframe, bTime, { minCandles:50, maxPages:5, timeoutMs:4500, deadlineMs:options?.deadlineMs });
   if (!candleResult.route || !candleResult.candles.length) throw new Error("Candles unavailable for active trade");
+  const earliestCandleTime = Number(candleResult.candles[0]?.time);
+  const bTimeNormalized = normalizeChartTimestamp(activeTrade.range?.bTime);
+  const coversB = Number.isFinite(earliestCandleTime) && Number.isFinite(bTimeNormalized) && earliestCandleTime <= bTimeNormalized;
+  if (!coversB) {
+    return { created:false, updated:false, preserved:true, stale:true, reason:"active_trade_history_not_covered", trade:activeTrade, coverage:{ bTime:bTimeNormalized, earliestTime:earliestCandleTime, latestTime:Number(candleResult.candles.at(-1)?.time), pagesFetched:candleResult.pagesFetched } };
+  }
   const range = activeTrade.range;
   if (!range || !range.aTime || !range.bTime || !(Number(range.aPrice) > 0) || !(Number(range.bPrice) > 0)) throw new Error(`Active trade has invalid range: ${activeTrade.id}`);
   const levels = tradeLevelsNeedRestore(activeTrade.levels) ? calculateLevels({ range, entryMode }) : activeTrade.levels;
