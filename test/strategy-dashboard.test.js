@@ -69,3 +69,26 @@ test("strategy admin requests use header instead of key query parameter", () => 
   assert.doesNotMatch(dashboardJs, /new URLSearchParams\(\{key,/);
   assert.match(dashboardJs, /"x-strategy-admin-key":key/);
 });
+
+test("reset backfill history triggers separate stats rebuild and preserves reset success on rebuild failure", () => {
+  assert.match(dashboardJs, /strategyAdminFetch\("\/api\/strategy\/reset-backfill-history",key,\{method:"POST"\}\)/);
+  assert.match(dashboardJs, /strategyAdminFetch\("\/api\/strategy\/rebuild-stats",key\)/);
+  assert.match(dashboardJs, /statsWarning=error\?\.message\|\|String\(error\)/);
+  assert.match(dashboardJs, /Статистика пока не пересобрана/);
+  assert.match(dashboardJs, /Историческая история сброшена/);
+});
+
+test("fetchJson reports HTTP status and HTML preview for non-JSON responses", () => {
+  assert.match(dashboardJs, /const raw=await response\.text\(\)/);
+  assert.match(dashboardJs, /HTTP \$\{response\.status\}/);
+  assert.match(dashboardJs, /Сервер вернул не JSON/);
+  assert.match(dashboardJs, /Ответ: \$\{preview\}/);
+  assert.doesNotMatch(dashboardJs, /Некорректный JSON/);
+});
+
+test("strategy UI distinguishes live monitor and historical backfill progress", () => {
+  assert.match(strategyHtml, /Прогресс live-монитора/);
+  assert.match(strategyHtml, /Прогресс исторического прогона/);
+  assert.match(strategyHtml, /Live-монитор постоянно проверяет текущий рынок/);
+  assert.match(strategyHtml, /Их прогресс не связан между собой/);
+});
