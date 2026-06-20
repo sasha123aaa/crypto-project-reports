@@ -142,6 +142,7 @@ function rowToTradeWithoutNormalization(row) {
   return {
     id:row.id, symbol:row.symbol, baseSymbol:row.base_symbol, exchange:row.exchange, timeframe:row.timeframe,
     direction:row.direction, entryMode:row.entry_mode, range:JSON.parse(row.range_json || "null"), levels:JSON.parse(row.levels_json || "[]"),
+    levelMode:JSON.parse(row.range_json || "null")?.levelMode || (JSON.parse(row.levels_json || "[]")?.[0]?.levelMode) || "legacy",
     status:row.status, openedAt:row.opened_at, updatedAt:row.updated_at, closedAt:row.closed_at,
     entryPrice:row.entry_price, averagePrice:row.average_price, takePrice:row.take_price, currentPrice:row.current_price,
     activatedLevels:row.activated_levels, usedCapitalPct:row.used_capital_pct, maxDrawdownPct:row.max_drawdown_pct,
@@ -404,6 +405,10 @@ function chartTradePayload(trade, sourceType = "active-trade") {
   const activatedLevels = Number(trade.activatedLevels || 0);
   const levels = levelsForChartTrade(trade);
   const mappedLevels = levels.map((level, index) => ({
+    levelMode:level.levelMode || trade.levelMode || "legacy",
+    valid:level.valid,
+    rawPrice:level.rawPrice,
+    invalidReason:level.invalidReason,
     ...level,
     index,
     label:level.label || (index === 0 ? "Вход" : `Уср. ${index}`),
@@ -411,11 +416,11 @@ function chartTradePayload(trade, sourceType = "active-trade") {
     ratio:level.ratio,
     capitalPct:level.capitalPct,
     qtyMultiplier:level.qtyMultiplier,
-    state:index < activatedLevels ? "executed" : (level.state || "waiting"),
+    state:level.valid === false ? "unavailable" : (index < activatedLevels ? "executed" : (level.state || "waiting")),
   }));
-  return { id:trade.id, status:trade.status, sourceType, entryMode:trade.entryMode, openedAt:trade.openedAt, closedAt:trade.closedAt, closePrice:trade.status === "take_hit" ? trade.takePrice : null, resultPct:trade.resultPct, resultOnFullCapitalPct:trade.resultOnFullCapitalPct, averagePrice:trade.averagePrice, takePrice:trade.takePrice, dynamicTakeMode:trade.dynamicTakeMode, dynamicAnchorB:trade.dynamicAnchorB, dynamicExtremeC:trade.dynamicExtremeC, currentPrice:trade.currentPrice, usedCapitalPct:trade.usedCapitalPct, activatedLevels:trade.activatedLevels, maxDrawdownPct:trade.maxDrawdownPct, currentPnlPct:trade.status === "take_hit" ? trade.resultPct : trade.currentPnlPct,
+  return { id:trade.id, status:trade.status, sourceType, entryMode:trade.entryMode, levelMode:trade.levelMode || "legacy", openedAt:trade.openedAt, closedAt:trade.closedAt, closePrice:trade.status === "take_hit" ? trade.takePrice : null, resultPct:trade.resultPct, resultOnFullCapitalPct:trade.resultOnFullCapitalPct, averagePrice:trade.averagePrice, takePrice:trade.takePrice, dynamicTakeMode:trade.dynamicTakeMode, dynamicAnchorB:trade.dynamicAnchorB, dynamicExtremeC:trade.dynamicExtremeC, currentPrice:trade.currentPrice, usedCapitalPct:trade.usedCapitalPct, activatedLevels:trade.activatedLevels, maxDrawdownPct:trade.maxDrawdownPct, currentPnlPct:trade.status === "take_hit" ? trade.resultPct : trade.currentPnlPct,
     levels:mappedLevels,
-    levelStates:mappedLevels.map((level, index) => ({ ...level, index, state:index < activatedLevels ? "executed" : (level.state || "waiting"), executed:index < activatedLevels })) };
+    levelStates:mappedLevels.map((level, index) => ({ ...level, index, state:level.valid === false ? "unavailable" : (index < activatedLevels ? "executed" : (level.state || "waiting")), executed:level.valid === false ? false : index < activatedLevels })) };
 }
 async function buildStrategyPlanForMarket({ symbol, exchange = "BYBIT", timeframe = "4h", entryMode = 0.5 }) {
   const routes = [{ exchange, symbol, source:`${exchange} spot` }];
@@ -512,6 +517,7 @@ async function handleStrategyStatusApi(env) {
   if (!db) {
     return json({
       ok:true,
+      levelCalculation:{ currentMode:"linear", logarithmicFallbackEnabled:false },
       dbAvailable:false,
       monitorActive:false,
       message:"D1 database is not configured. Strategy memory works only as live plan calculation.",
@@ -561,6 +567,7 @@ async function handleStrategyStatusApi(env) {
   return json({
     ok:true,
     dbAvailable:true,
+    levelCalculation:{ currentMode:"linear", logarithmicFallbackEnabled:false },
     monitorActive:true,
     monitorState,
     backfillState:{ lastRunAt:backfillState.lastRunAt, startedAt:backfillState.startedAt || null, completed:backfillState.completed === true, completedAt:backfillState.completedAt || null, offset:backfillState.offset, totalJobs:backfillState.totalJobs, processedTotal:backfillState.processedTotal || 0, processedJobs:backfillState.processedJobs, lastBatchProcessed:backfillState.lastBatchProcessed || 0, attemptedJobs:backfillState.attemptedJobs || 0, batchSize:backfillState.batchSize, triggerSource:backfillState.triggerSource || null, timeframes:backfillState.timeframes, entryModes:backfillState.entryModes, universeSize:backfillState.universeSize, universeSource:backfillState.universeSource || null, universeWarning:backfillState.universeWarning || null, universeCached:Boolean(backfillState.universeCached), filterSignature:backfillState.filterSignature || null, errors:backfillState.errors || 0, lastJobError:backfillState.lastJobError || null, failedJob:backfillState.failedJob || null, lastError:backfillState.lastError, createdTrades:backfillState.createdTrades || 0, updatedTrades:backfillState.updatedTrades || 0, takeHits:backfillState.takeHits || 0, activeTrades:backfillState.activeTrades || 0, drawdownTrades:backfillState.drawdownTrades || 0 },
@@ -1309,7 +1316,8 @@ async function runStrategyMonitorBatch(env, options = {}) {
         console.log("Strategy monitor job failed", error?.message || error);
         return { error:error?.message || String(error) };
       });
-      longTradePagesFetched += Number(result?.coverage?.pagesFetched || result?.pagesFetched || 0);
+      const pagesFetched = Number(result?.coverage?.pagesFetched ?? result?.pagesFetched ?? 0);
+      longTradePagesFetched += Math.max(0, pagesFetched - 1);
       if (result?.reason === "active_trade_history_not_covered") uncoveredActiveTrades += 1;
       processedJobs += 1;
     }
@@ -1412,6 +1420,7 @@ async function discoverAndOpenStrategyTrade(db, { asset, exchange, timeframe, en
   const built = await buildStrategyPlanForMarket({ symbol:asset.symbol, exchange, timeframe, entryMode });
   if (!built.plan || !built.range?.bullish) return {};
   const plan = { ...built.plan, ...evaluateStrategyPath({ range:built.range, levels:built.plan.levels, candles:built.candles, currentPrice:built.currentPrice }) };
+  if (built.plan?.invalidPlan || built.plan?.planAvailable === false) return { created:false, skipped:true, invalidPlan:true, invalidReason:built.plan?.invalidReason };
   if (Number(plan.activatedLevels || 0) <= 0) return {};
   const activeTrade = await findActiveStrategyTrade(db, { symbol:asset.symbol, exchange, timeframe, entryMode });
   if (activeTrade) return { created:false, updated:false, skipped:true, reason:"active_trade_already_exists", trade:activeTrade };
@@ -1442,9 +1451,10 @@ async function upsertStrategyTradeFromPlan(db, { source, symbol, baseSymbol, exc
   const oldExtremeC = finiteNumber(oldTrade?.dynamicExtremeC ?? oldTrade?.range?.dynamicExtremeC);
   const planExtremeC = finiteNumber(plan.dynamicExtremeC);
   const dynamicExtremeC = oldExtremeC > 0 && planExtremeC > 0 ? Math.min(oldExtremeC, planExtremeC) : (planExtremeC ?? oldExtremeC ?? null);
-  const rangeWithDynamicTake = { ...range, dynamicTakeMode:Boolean(plan.dynamicTakeMode), dynamicAnchorB, dynamicExtremeC };
+  const levelMode = plan.levelMode || (plan.levels || []).find((level) => level?.levelMode)?.levelMode || "linear";
+  const rangeWithDynamicTake = { ...range, levelMode, dynamicTakeMode:Boolean(plan.dynamicTakeMode), dynamicAnchorB, dynamicExtremeC };
   const trade = {
-    id, symbol, baseSymbol:baseSymbol || baseFromSymbol(symbol), exchange, timeframe, direction:"long", entryMode, range:rangeWithDynamicTake, levels:plan.levels || [], status,
+    id, symbol, baseSymbol:baseSymbol || baseFromSymbol(symbol), exchange, timeframe, direction:"long", entryMode, levelMode, range:rangeWithDynamicTake, levels:(plan.levels || []).map((level) => ({ levelMode, ...level })), status,
     openedAt:oldTrade?.openedAt || plan.openedAt || now, updatedAt:now, closedAt:status === "take_hit" ? (oldTrade?.closedAt || plan.closedAt || now) : null,
     entryPrice:plan.entryPrice || plan.levels?.[0]?.price || null, averagePrice:plan.averagePrice ?? null, takePrice:plan.takePrice ?? null, currentPrice:status === "take_hit" ? (plan.closePrice || plan.takePrice || currentPrice) : (currentPrice ?? plan.currentPrice ?? null),
     activatedLevels:Number(plan.activatedLevels || 0), usedCapitalPct:plan.usedCapitalPct ?? null, maxDrawdownPct:plan.maxDrawdownPct ?? 0, currentPnlPct:plan.currentPnlPct ?? null,
@@ -1454,7 +1464,11 @@ async function upsertStrategyTradeFromPlan(db, { source, symbol, baseSymbol, exc
   await putTrade(db, trade);
   if (!existing) await addTradeEvent(db, id, "opened", trade.entryPrice || trade.currentPrice, 0, { source, timeframe, entryMode });
   const previousActivated = Number(oldTrade?.activatedLevels || 0);
-  for (let i = existing ? previousActivated : 0; i < trade.activatedLevels; i++) await addTradeEvent(db, id, "level_filled", trade.levels?.[i]?.price || trade.currentPrice, i, { source, timeframe, entryMode, level:trade.levels?.[i] });
+  for (let i = existing ? previousActivated : 0; i < trade.activatedLevels; i++) {
+    const eventLevel = trade.levels?.[i];
+    if (eventLevel?.valid === false || !(Number(eventLevel?.price) > 0)) continue;
+    await addTradeEvent(db, id, "level_filled", eventLevel.price || trade.currentPrice, i, { source, timeframe, entryMode, level:eventLevel });
+  }
   if (trade.status === "drawdown") await addTradeEvent(db, id, "drawdown", trade.currentPrice, null, { source, timeframe, entryMode, maxDrawdownPct:trade.maxDrawdownPct });
   if (trade.status === "take_hit") await addTradeEvent(db, id, "take_hit", trade.takePrice || trade.currentPrice, null, { source, timeframe, entryMode });
   await refreshStrategyStats(db, trade.baseSymbol, timeframe, entryMode, exchange);
@@ -1584,14 +1598,10 @@ function parseCsv(value, fallback) {
   return items.length ? items : fallback;
 }
 
-function radarFibPrice(range, fib, logBased = false) {
+function radarFibPrice(range, fib) {
   const top = Math.max(Number(range?.aPrice), Number(range?.bPrice));
   const bottom = Math.min(Number(range?.aPrice), Number(range?.bPrice));
   if (!(top > 0 && bottom > 0)) return NaN;
-  if (logBased) {
-    const logSize = Math.log(top) - Math.log(bottom);
-    return Math.exp(range.bullish ? Math.log(top) - Number(fib) * logSize : Math.log(bottom) + Number(fib) * logSize);
-  }
   const size = top - bottom;
   return range.bullish ? top - Number(fib) * size : bottom + Number(fib) * size;
 }
@@ -1599,12 +1609,10 @@ function radarFibPrice(range, fib, logBased = false) {
 export function buildRadarLevels(range, settings = {}) {
   const entryFib = clampNumber(settings.entryFib, 0.3, 0.99, 0.5);
   const avgFibs = (Array.isArray(settings.avgFibs) ? settings.avgFibs : [1, 1.5, 2]).map(Number).filter(Number.isFinite).slice(0, 3);
-  const specs = [{ key:"take", label:"Тейк", fib:0 }, { key:"entry", label:"Вход", fib:entryFib }, ...avgFibs.map((fib, index) => ({ key:`average${index + 1}`, label:`Уср. ${index + 1}`, fib }))];
-  const logBased = specs.some((spec) => radarFibPrice(range, spec.fib) <= 0);
-  const take = { label:"Тейк", fib:0, value:radarFibPrice(range, 0, logBased), state:"take" };
-  const entry = { label:"Вход", fib:entryFib, value:radarFibPrice(range, entryFib, logBased), state:"waiting" };
-  const averages = avgFibs.map((fib, index) => ({ label:`Уср. ${index + 1}`, fib, value:radarFibPrice(range, fib, logBased), state:"waiting" }));
-  return { take, entry, averages, logBased };
+  const take = { label:"Тейк", fib:0, value:radarFibPrice(range, 0), state:"take" };
+  const entry = { label:"Вход", fib:entryFib, value:radarFibPrice(range, entryFib), state:"waiting" };
+  const averages = avgFibs.map((fib, index) => ({ label:`Уср. ${index + 1}`, fib, value:radarFibPrice(range, fib), state:"waiting" })).filter((level) => Number(level.value) > 0);
+  return { take, entry, averages, logBased:false };
 }
 
 function radarStatus(price, levels, absDistanceToEntryPct) {

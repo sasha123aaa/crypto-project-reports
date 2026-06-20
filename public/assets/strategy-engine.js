@@ -20,14 +20,14 @@ function rangeTopBottom(range) {
   if (!(a > 0 && b > 0)) return null;
   return { top:Math.max(a, b), bottom:Math.min(a, b), bullish:range?.bullish !== false };
 }
-function levelPrice(range, ratio, forceLog = false) {
+function levelPrice(range, ratio) {
   const rb = rangeTopBottom(range);
   if (!rb) return null;
   const { top, bottom, bullish } = rb;
-  const linear = bullish ? top - Number(ratio) * (top - bottom) : bottom + Number(ratio) * (top - bottom);
-  if (!forceLog && linear > 0) return linear;
-  const logSize = Math.log(top) - Math.log(bottom);
-  return bullish ? Math.exp(Math.log(top) - Number(ratio) * logSize) : Math.exp(Math.log(bottom) + Number(ratio) * logSize);
+  const numericRatio = Number(ratio);
+  if (!Number.isFinite(numericRatio)) return null;
+  const price = bullish ? top - numericRatio * (top - bottom) : bottom + numericRatio * (top - bottom);
+  return Number.isFinite(price) ? price : null;
 }
 export function getStrategyConfig(entryMode = 0.5) {
   const key = modeKey(entryMode);
@@ -59,17 +59,24 @@ export function calculateCapitalPlan({ entryMode = 0.5, capital = 100 } = {}) {
 export function calculateLevels({ range, entryMode = 0.5 } = {}) {
   const config = getStrategyConfig(entryMode);
   const capitalPlan = calculateCapitalPlan({ entryMode, capital:100 });
-  const forceLog = config.entryRatios.some((ratio) => { const rb = rangeTopBottom(range); if (!rb) return false; const linear = rb.bullish ? rb.top - Number(ratio) * (rb.top - rb.bottom) : rb.bottom + Number(ratio) * (rb.top - rb.bottom); return !(linear > 0); });
 
-  return config.entryRatios.map((ratio, index) => ({
-    index,
-    globalIndex:config.startIndex + index,
-    ratio,
-    label:index === 0 ? "Вход" : `Уср. ${index}`,
-    price:levelPrice(range, ratio, forceLog),
-    qtyMultiplier:capitalPlan[index].qtyMultiplier,
-    capitalPct:capitalPlan[index].capitalPct,
-  }));
+  return config.entryRatios.map((ratio, index) => {
+    const rawPrice = levelPrice(range, ratio);
+    const valid = Number.isFinite(rawPrice) && rawPrice > 0;
+    return {
+      index,
+      globalIndex:config.startIndex + index,
+      ratio,
+      label:index === 0 ? "Вход" : `Уср. ${index}`,
+      rawPrice,
+      price:valid ? rawPrice : null,
+      valid,
+      invalidReason:valid ? null : "non_positive_linear_price",
+      levelMode:"linear",
+      qtyMultiplier:capitalPlan[index].qtyMultiplier,
+      capitalPct:capitalPlan[index].capitalPct,
+    };
+  });
 }
 export function calculateAveragePrice(filledLevels = []) {
   const levels = Array.isArray(filledLevels) ? filledLevels.filter((l) => finite(l?.price) > 0 && finite(l?.qtyMultiplier) > 0) : [];
@@ -138,7 +145,7 @@ function candleTimeValue(value) {
 function buildLevelStates({ levels = [], filledCount = 0, candles = [], bIndex = -1, currentPrice } = {}) {
   const current = finite(currentPrice);
   return (Array.isArray(levels) ? levels : []).map((level, index) => {
-    const price = finite(level?.price);
+    const price = level?.valid === false ? null : finite(level?.price);
     let executedAt = null;
     if (price > 0 && bIndex >= 0) {
       for (let i = bIndex + 1; i < candles.length; i += 1) {
@@ -223,7 +230,7 @@ export function evaluateStrategyPath({ range, levels, candles, currentPrice, cap
 
     for (let levelIndex = filled.length; levelIndex < activeLevels.length; levelIndex += 1) {
       const level = activeLevels[levelIndex];
-      const levelValue = finite(level?.price);
+      const levelValue = level?.valid === false ? null : finite(level?.price);
       if (levelValue > 0 && low != null && low <= levelValue) {
         filled.push(level);
         if (!openedAt) openedAt = candle?.time ?? null;
@@ -277,19 +284,21 @@ export function buildStrategyPlan({ range, entryMode = 0.5, currentPrice, candle
   const price = lastPrice(candles, currentPrice);
   const levels = calculateLevels({ range, entryMode });
   const capitalPlan = calculateCapitalPlan({ entryMode, capital });
+  const entryLevel = levels[0];
+  if (entryLevel?.valid === false || !(Number(entryLevel?.price) > 0)) return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", levelMode:"linear", currentPrice:price, levels, planAvailable:false, invalidPlan:true, invalidReason:"entry_level_is_not_positive", activatedLevels:0, status:"invalid" };
   const pathState = evaluateStrategyPath({ range, levels, candles, currentPrice:price, capital });
   if (pathState.pathFound && pathState.activatedLevels > 0) {
-    return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", currentPrice:pathState.currentPrice ?? price, marketPrice:pathState.marketPrice, openedAt:pathState.openedAt, closedAt:pathState.closedAt, closePrice:pathState.closePrice, levels:levels.map((level, index) => ({ ...level, state:pathState.levelStates?.[index]?.state || "waiting" })), levelStates:pathState.levelStates || [], activatedLevels:pathState.activatedLevels, averagePrice:pathState.averagePrice, usedCapitalPct:pathState.usedCapitalPct, takePrice:pathState.takePrice, dynamicTakeMode:pathState.dynamicTakeMode, dynamicAnchorB:pathState.dynamicAnchorB, dynamicExtremeC:pathState.dynamicExtremeC, currentPnlPct:pathState.currentPnlPct, realizedResultPct:pathState.realizedResultPct, resultPct:pathState.resultPct, resultOnFullCapitalPct:pathState.resultOnFullCapitalPct, maxDrawdownPct:pathState.maxDrawdownPct, status:pathState.status, pathBased:true, capitalPlan };
+    return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", levelMode:"linear", planAvailable:true, currentPrice:pathState.currentPrice ?? price, marketPrice:pathState.marketPrice, openedAt:pathState.openedAt, closedAt:pathState.closedAt, closePrice:pathState.closePrice, levels:levels.map((level, index) => ({ ...level, state:pathState.levelStates?.[index]?.state || "waiting" })), levelStates:pathState.levelStates || [], activatedLevels:pathState.activatedLevels, averagePrice:pathState.averagePrice, usedCapitalPct:pathState.usedCapitalPct, takePrice:pathState.takePrice, dynamicTakeMode:pathState.dynamicTakeMode, dynamicAnchorB:pathState.dynamicAnchorB, dynamicExtremeC:pathState.dynamicExtremeC, currentPnlPct:pathState.currentPnlPct, realizedResultPct:pathState.realizedResultPct, resultPct:pathState.resultPct, resultOnFullCapitalPct:pathState.resultOnFullCapitalPct, maxDrawdownPct:pathState.maxDrawdownPct, status:pathState.status, pathBased:true, capitalPlan };
   }
   const side = rangeTopBottom(range)?.bullish !== false ? "long" : "short";
-  const activated = levels.filter((l) => price != null && side === "long" && price <= Number(l.price));
+  const activated = levels.filter((l) => l?.valid !== false && price != null && side === "long" && price <= Number(l.price) && Number(l.price) > 0);
   const avg = calculateAveragePrice(activated);
   const take = calculateDynamicTake({ range, filledLevels:activated, candles, currentIndex:Array.isArray(candles) ? candles.length - 1 : undefined, averagePrice:avg });
   const currentPnlPct = avg && price ? (price - avg) / avg * 100 : null;
   const status = activated.length > 1 ? (currentPnlPct < 0 ? "drawdown" : "averaging") : activated.length === 1 ? (currentPnlPct < 0 ? "drawdown" : "active") : "waiting_entry";
   const bIndex = findRangeBIndex(range, Array.isArray(candles) ? candles : []);
   const levelStates = buildLevelStates({ levels, filledCount:activated.length, candles:Array.isArray(candles) ? candles : [], bIndex, currentPrice:price });
-  return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", currentPrice:price, levels:levels.map((level, index) => ({ ...level, state:levelStates[index]?.state || "waiting" })), levelStates, activatedLevels:activated.length, averagePrice:avg, usedCapitalPct:activated.reduce((s, l) => s + l.capitalPct, 0), takePrice:take.takePrice, dynamicTakeMode:take.dynamicTakeMode, dynamicAnchorB:take.anchorB, dynamicExtremeC:take.extremeC, currentPnlPct, maxDrawdownPct:currentPnlPct == null ? 0 : Math.min(0, currentPnlPct), status, pathBased:false, capitalPlan };
+  return { entryMode:getStrategyConfig(entryMode).entryMode, direction:"long", levelMode:"linear", planAvailable:true, currentPrice:price, levels:levels.map((level, index) => ({ ...level, state:levelStates[index]?.state || "waiting" })), levelStates, activatedLevels:activated.length, averagePrice:avg, usedCapitalPct:activated.reduce((s, l) => s + l.capitalPct, 0), takePrice:take.takePrice, dynamicTakeMode:take.dynamicTakeMode, dynamicAnchorB:take.anchorB, dynamicExtremeC:take.extremeC, currentPnlPct, maxDrawdownPct:currentPnlPct == null ? 0 : Math.min(0, currentPnlPct), status, pathBased:false, capitalPlan };
 }
 export function evaluateVirtualTrade({ trade, candles, currentPrice } = {}) {
   if (trade?.status === "take_hit") {
@@ -309,7 +318,7 @@ export function evaluateVirtualTrade({ trade, candles, currentPrice } = {}) {
 
   const price = lastPrice(candles, currentPrice) ?? finite(trade?.currentPrice);
   const levels = Array.isArray(trade?.levels) ? trade.levels : [];
-  const filled = levels.filter((l) => price != null && price <= Number(l.price));
+  const filled = levels.filter((l) => l?.valid !== false && price != null && price <= Number(l.price) && Number(l.price) > 0);
   const hadEntry = ["active", "averaging", "drawdown", "take_hit"].includes(trade?.status) || Number(trade?.activatedLevels) > 0;
   const activated = hadEntry && filled.length === 0 ? levels.slice(0, Math.max(1, Number(trade?.activatedLevels) || 1)) : filled;
   const averagePrice = calculateAveragePrice(activated) ?? finite(trade?.averagePrice);
