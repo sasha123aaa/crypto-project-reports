@@ -816,3 +816,23 @@ test("/api/strategy/status audits overlapping live groups", async () => {
   const payload = await readJson(response);
   assert.equal(payload.audit.overlappingLiveGroups, 1);
 });
+
+test("strategy summary row derives grouped UI metrics from strategy_stats", async () => {
+  const { __strategyTestInternals } = await import("../src/index.js");
+  const row = __strategyTestInternals.strategySummaryRow({
+    key:"ALT:BYBIT:15m:0.31", symbol:"ALT", exchange:"BYBIT", timeframe:"15m", entry_mode:0.31,
+    total_trades:5, take_hits:5, active_trades:0, max_activated_levels:4,
+    closed_full_capital_result_pct:4.72, active_unrealized_full_capital_pct:-0.5,
+    avg_result_pct:1.46, best_result_pct:2.84, avg_drawdown_pct:-1.2, worst_drawdown_pct:-3.4,
+    avg_used_capital_pct:32, updated_at:"2026-06-20T00:00:00Z",
+  });
+  assert.equal(row.symbol, "ALT");
+  assert.equal(row.timeframe, "15m");
+  assert.equal(row.entryMode, 0.31);
+  assert.equal(row.totalTrades, 5);
+  assert.equal(row.takeRatePct, 100);
+  assert.equal(row.totalFullCapitalResultPct, 4.72);
+  assert.equal(row.capitalFrom100, 104.72);
+  assert.equal(row.maxAveragingCount, 3);
+  assert.equal(row.sampleQuality, "Средняя выборка");
+});

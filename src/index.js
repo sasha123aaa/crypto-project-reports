@@ -1093,6 +1093,43 @@ function aggregateStrategyStats(rows) {
     bestSymbolsByTakeHits:[...symbols.values()].sort((a, b) => (b.takeHits - a.takeHits) || (b.totalTrades - a.totalTrades)).slice(0, 5),
   };
 }
+
+function finiteNumberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+function strategySummaryRow(row) {
+  const totalTrades = Number(row.total_trades || 0);
+  const takeHits = Number(row.take_hits || 0);
+  const activeTrades = Number(row.active_trades || 0);
+  const maxActivatedLevels = Number(row.max_activated_levels || 0);
+  const totalFullCapitalResultPct = Number(row.closed_full_capital_result_pct || 0);
+  const activeUnrealizedPct = Number(row.active_unrealized_full_capital_pct || 0);
+  return {
+    key:row.key,
+    symbol:row.symbol,
+    exchange:row.exchange,
+    timeframe:row.timeframe,
+    entryMode:Number(row.entry_mode),
+    totalTrades,
+    takeHits,
+    activeTrades,
+    takeRatePct:totalTrades > 0 ? takeHits / totalTrades * 100 : 0,
+    totalFullCapitalResultPct,
+    estimatedFullCapitalResultPct:totalFullCapitalResultPct + activeUnrealizedPct,
+    capitalFrom100:100 + totalFullCapitalResultPct,
+    avgResultPct:finiteNumberOrNull(row.avg_result_pct),
+    bestResultPct:finiteNumberOrNull(row.best_result_pct),
+    avgDrawdownPct:finiteNumberOrNull(row.avg_drawdown_pct),
+    worstDrawdownPct:finiteNumberOrNull(row.worst_drawdown_pct),
+    maxActivatedLevels,
+    maxAveragingCount:Math.max(0, maxActivatedLevels - 1),
+    avgUsedCapitalPct:finiteNumberOrNull(row.avg_used_capital_pct),
+    sampleQuality:takeHits >= 15 ? "Хорошая выборка" : takeHits >= 5 ? "Средняя выборка" : "Мало данных",
+    updatedAt:row.updated_at,
+  };
+}
+
 async function handleStrategyStatsApi(url, env) {
   const db = strategyDb(env); if (!db) return strategyDbUnavailable({ stats:[], aggregate:aggregateStrategyStats([]) });
   await ensureStrategySchema(db);
@@ -1100,7 +1137,8 @@ async function handleStrategyStatsApi(url, env) {
   const stmt = symbol ? db.prepare(`SELECT * FROM strategy_stats WHERE symbol=? ORDER BY timeframe, entry_mode`).bind(baseFromSymbol(symbol)) : db.prepare(`SELECT * FROM strategy_stats ORDER BY symbol, timeframe, entry_mode`);
   const res = await stmt.all();
   const stats = res.results || [];
-  return json({ ok:true, dbAvailable:true, stats, aggregate:aggregateStrategyStats(stats) }, 200, { cacheControl:"no-store" });
+  const summary = stats.map(strategySummaryRow);
+  return json({ ok:true, dbAvailable:true, stats, summary, aggregate:aggregateStrategyStats(stats) }, 200, { cacheControl:"no-store" });
 }
 
 async function handleStrategyRadarStatsApi(url, env) {
@@ -2778,4 +2816,4 @@ function json(data,status=200,{ cacheControl = "public, max-age=300" } = {}){ re
 function jsonResponse(data, { status = 200, cacheControl = "no-store" } = {}) { return json(data, status, { cacheControl }); }
 
 
-export const __strategyTestInternals = { STRATEGY_MONITOR_CRON, STRATEGY_BACKFILL_CRON, runStrategyMonitorBatch, runStrategyBackfillBatch, acquireStrategyLease, releaseStrategyLease, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, findActiveStrategyTrade, updateExistingActiveTrade, discoverAndOpenStrategyTrade, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, calculateClosedTradeResultPct, normalizeClosedTradeResult, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi, handleStrategyResetBackfillHistoryApi };
+export const __strategyTestInternals = { STRATEGY_MONITOR_CRON, STRATEGY_BACKFILL_CRON, runStrategyMonitorBatch, runStrategyBackfillBatch, acquireStrategyLease, releaseStrategyLease, getStrategyUniverse, getStrategyUniverseCache, putStrategyUniverseCache, processStrategyJob, upsertStrategyTradeFromPlan, findActiveStrategyTrade, updateExistingActiveTrade, discoverAndOpenStrategyTrade, refreshStrategyStats, handleStrategyRadarStatsApi, fallbackStrategyUniverse, STRATEGY_TIMEFRAMES, STRATEGY_ENTRY_MODES, __resetBybitAdapterCaches, ensureStrategySchema, deriveTradeStatus, normalizeTradeStatus, chartTradePayload, tradeLevelsNeedRestore, levelsForChartTrade, aggregateRadarStatsFromTrades, handleStrategyRepairSchemaApi, handleStrategyRepairTradesApi, calculateClosedTradeResultPct, normalizeClosedTradeResult, handleStrategyDuplicatesApi, handleStrategyRebuildStatsApi, handleStrategyResetBackfillHistoryApi, strategySummaryRow };
