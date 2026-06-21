@@ -9,6 +9,9 @@
   const RADAR_BLACKLIST_KEY = "bullRadar:blacklist:v1";
   const RADAR_CHART_REFRESH_MS = 60_000;
   let rawRows = [], rows = [], selectedId = null, chart = null, lastUpdated = null, lastChartKey = null;
+  let selectedCanonicalStrategy = null;
+  let selectedCanonicalStrategyKey = null;
+  let selectedCanonicalStrategyLoading = false;
   let strategyRadarStats = {};
   let sortState = { key: "distanceToEntryAbs", dir: "asc" };
   let scanGeneration = 0;
@@ -60,6 +63,60 @@
     return 0.31;
   }
 
+  function canonicalStrategyKey(row) {
+    if (!row) return "";
+    return [row.exchange || "BYBIT", row.symbol, row.timeframe, resolveRadarStrategyMode(row)].join(":");
+  }
+
+  async function loadCanonicalStrategyForSelectedRow(row) {
+    if (!row) {
+      selectedCanonicalStrategy = null;
+      selectedCanonicalStrategyKey = null;
+      return null;
+    }
+    const key = canonicalStrategyKey(row);
+    if (selectedCanonicalStrategyKey === key && selectedCanonicalStrategy) return selectedCanonicalStrategy;
+    if (selectedCanonicalStrategyLoading) return null;
+    selectedCanonicalStrategyLoading = true;
+    try {
+      const params = new URLSearchParams({
+        symbol:String(row.ticker || row.symbol).replace(/USDT$/i, "").toUpperCase(),
+        timeframe:row.timeframe,
+        exchange:row.exchange || "BYBIT",
+        entryMode:String(resolveRadarStrategyMode(row)),
+        _:String(Date.now()),
+      });
+      const response = await fetch(`/api/strategy/plan?${params.toString()}`, { cache:"no-store", headers:{ "Cache-Control":"no-cache" } });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.message || `HTTP ${response.status}`);
+      let strategy = null;
+      if (payload?.activeTrade) strategy = { ...payload.activeTrade, sourceType:"active-trade" };
+      else if (payload?.plan && payload.plan.status !== "take_hit") strategy = { ...payload.plan, sourceType:"plan-preview" };
+      else if (payload?.closedTrade || payload?.plan?.status === "take_hit") strategy = { sourceType:"completed-range", status:"take_hit", completed:true, levels:[] };
+      selectedCanonicalStrategyKey = key;
+      selectedCanonicalStrategy = strategy;
+      if (strategy?.completed || strategy?.status === "take_hit") {
+        rawRows = rawRows.filter((item) => item.id !== row.id);
+        if (selectedId === row.id) selectedId = rawRows[0]?.id || null;
+        renderAll();
+      }
+      return strategy;
+    } finally {
+      selectedCanonicalStrategyLoading = false;
+    }
+  }
+
+  async function refreshCanonicalSelectedStrategy() {
+    const row = selectedRow();
+    if (!row) return;
+    try {
+      await loadCanonicalStrategyForSelectedRow(row);
+      renderChart();
+    } catch (error) {
+      console.warn("Canonical strategy unavailable", error);
+    }
+  }
+
   function buildRadarStrategyPreview(row) {
     const entryMode = resolveRadarStrategyMode(row);
     const engine = window.StrategyEngine;
@@ -83,8 +140,11 @@
   }
 
   function radarStrategyStatus(price, strategy, absDistance) {
+    if (strategy?.status === "take_hit" || strategy?.completed) return "Диапазон отработан";
+    const activated = Number(strategy?.activatedLevels || 0);
+    if (activated > 1) return "На усреднении";
+    if (activated === 1) return "Активирована";
     if (absDistance <= 1) return "Готово к входу";
-    if (strategy?.activatedLevels > 0) return "Активирована";
     const entry = Number(strategy?.levels?.[0]?.price);
     if (Number.isFinite(entry) && price > entry) return "Выше входа";
     return "Ждем вход";
@@ -396,11 +456,12 @@
       if (selectedChartController === controller) selectedChartController = null;
       selectedChartRefreshing = false;
       selectedChartRefreshAt = Date.now() + RADAR_CHART_REFRESH_MS;
+      refreshCanonicalSelectedStrategy();
     }
   }
   function tradePlanUrl(row) { const mode = resolveRadarStrategyMode(row); const params = new URLSearchParams({ slug:row.slug || row.ticker, timeframe:row.timeframe, exchange:row.exchange || "BYBIT", strategyMode:String(mode) }); return `/trade-plan/?${params.toString()}`; }
   function renderTable() { if (!rows.length && rawRows.length) $("radar-state").textContent = "Бычьи диапазоны по выбранным настройкам не найдены."; $("radar-rows").innerHTML = rows.map((r) => `<tr data-row-id="${r.id}" class="${r.id === selectedId ? "active" : ""}"><td><div class="radar-coin">${radarCoinIconHtml(r)}<b>${r.ticker}</b><span>${r.name || ""}</span></div></td><td>${r.timeframe}</td><td>${r.exchange}</td><td>${money(r.price)}</td><td class="${hasNumber(r.change24hPct) ? (Number(r.change24hPct) >= 0 ? "pos" : "neg") : ""}">${pct(r.change24hPct)}</td><td>${pct(r.metrics.distanceToEntryPct)}</td><td>${pct(r.metrics.rangePct)}</td><td>${escapeHtml(r.strategyMode || "—")}</td><td>${money(r.levels?.entry?.value)}</td><td>${money(r.levels?.nextAverage?.value)}</td><td>${money(r.levels?.take?.value)}</td><td>${escapeHtml(r.strategy?.activatedLevels ?? 0)}</td><td>${pct(r.strategy?.usedCapitalPct)}</td><td>${pct(r.metrics.potentialToTakePct)}</td><td>${compact(r.volume24h)}</td><td><span class="radar-status ${statusClass(r.metrics.status)}">${r.metrics.status}</span></td>${rowStrategyStats(r)?`<td>${escapeHtml(rowStrategyStats(r).totalTrades ?? (rowStrategyStats(r).activeTrade ? 1 : 0))}</td><td>${escapeHtml(rowStrategyStats(r).takeHits ?? 0)}</td><td>${Number(rowStrategyStats(r).winrate||0).toFixed(0)}%</td><td>${escapeHtml(rowStrategyStats(r).maxActivatedLevels ?? 0)}</td><td>${pct(rowStrategyStats(r).avgDrawdownPct)}</td><td>${pct(rowStrategyStats(r).estimatedFullCapitalResultPct)}</td><td>${escapeHtml(rowStrategyStats(r).bestEntryMode ?? "—")}</td><td>${rowStrategyStats(r).activeTrade?escapeHtml(strategyStatusRu(rowStrategyStats(r).activeTrade.status)):"нет"}</td>`:`<td colspan="8">Истории нет</td>`}<td class="radar-row-actions"><button data-show="${r.id}">Показать график</button><a href="${tradePlanUrl(r)}">Торговый план</a><a href="/reports/?slug=${encodeURIComponent(r.slug)}">Отчет</a><button data-hide="${escapeHtml(r.ticker)}">Скрыть</button></td></tr>`).join(""); }
-  function renderChart() { const row = selectedRow(); if (!row || !window.LightweightCharts || !window.TradePlanChart) { $("selected-title").textContent = "График выбранной монеты"; $("selected-meta").textContent = "Запустите сканер и выберите найденный диапазон."; $("radar-chart").innerHTML = ""; chart = null; lastChartKey = null; resetSelectedChartRefreshTimer(); return; } selectedId = row.id; const strategy = row.strategy || buildRadarStrategyPreview(row); $("selected-title").textContent = `${row.ticker} · ${row.timeframe}`; $("selected-meta").textContent = `${row.exchange} · ${row.symbol} · режим ${escapeHtml(strategy?.entryMode || "—")} · вход ${money(row.levels?.entry?.value)} · тейк ${money(row.levels?.take?.value)}`; const opts = { candles:row.candles, range:row.range, levels:{}, activeStrategyTrade:strategy, timeframe:row.timeframe, symbol:row.ticker, ticker:row.ticker, exchange:row.exchange, slug:row.slug, iconHtml:row.iconUrl ? `<img src="${row.iconUrl}" alt="" style="width:18px;height:18px;border-radius:50%">` : "", showPlan:false }; const chartKey = `${row.id}:${row.timeframe}:${row.exchange}`; const previousChartKey = lastChartKey; const preserveView = chartKey === lastChartKey; lastChartKey = chartKey; if (chart) chart.setData(opts, { preserveView }); else chart = new window.TradePlanChart($("radar-chart"), opts); chart?.setActiveStrategyTrade?.(strategy); if (chartKey !== previousChartKey) resetSelectedChartRefreshTimer(); }
+  function renderChart() { const row = selectedRow(); if (!row || !window.LightweightCharts || !window.TradePlanChart) { $("selected-title").textContent = "График выбранной монеты"; $("selected-meta").textContent = "Запустите сканер и выберите найденный диапазон."; $("radar-chart").innerHTML = ""; chart = null; lastChartKey = null; resetSelectedChartRefreshTimer(); return; } selectedId = row.id; const localPreview = row.strategy || buildRadarStrategyPreview(row); const canonicalMatches = selectedCanonicalStrategyKey === canonicalStrategyKey(row); const canonicalStrategy = canonicalMatches ? selectedCanonicalStrategy : localPreview; const completed = canonicalStrategy?.status === "take_hit" || canonicalStrategy?.completed === true; const strategy = completed ? null : canonicalStrategy; $("selected-title").textContent = `${row.ticker} · ${row.timeframe}`; $("selected-meta").textContent = completed ? "Диапазон уже отработан · Диапазон уже завершён по тейку. Ожидаем формирования нового диапазона." : `${row.exchange} · ${row.symbol} · режим ${escapeHtml(strategy?.entryMode || "—")} · вход ${money(row.levels?.entry?.value)} · тейк ${money(row.levels?.take?.value)}`; const opts = { candles:row.candles, range:row.range, levels:{}, activeStrategyTrade:strategy, timeframe:row.timeframe, symbol:row.ticker, ticker:row.ticker, exchange:row.exchange, slug:row.slug, iconHtml:row.iconUrl ? `<img src="${row.iconUrl}" alt="" style="width:18px;height:18px;border-radius:50%">` : "", showPlan:false }; const chartKey = `${row.id}:${row.timeframe}:${row.exchange}`; const previousChartKey = lastChartKey; const preserveView = chartKey === lastChartKey; lastChartKey = chartKey; if (chart) chart.setData(opts, { preserveView }); else chart = new window.TradePlanChart($("radar-chart"), opts); chart?.setActiveStrategyTrade?.(strategy); if (chartKey !== previousChartKey) resetSelectedChartRefreshTimer(); }
 
   function renderSortHeaders() {
     document.querySelectorAll(".radar-table th[data-sort]").forEach((th) => {
@@ -539,6 +600,7 @@
 
         await loadStrategyRadarStatsForRows(rawRows);
         renderAll();
+        refreshCanonicalSelectedStrategy();
 
         const progress = data.progress || {};
         const checked = progress.nextJobOffset || rawRows.length;
@@ -583,6 +645,7 @@
 
       await loadStrategyRadarStatsForRows(rawRows);
       renderAll();
+      refreshCanonicalSelectedStrategy();
       updateRadarProgress(1, 1);
       setTimeout(hideRadarProgress, 1200);
       updateAutoRefreshTimer();
@@ -625,7 +688,7 @@
   renderSortHeaders();
   updateAutoRefreshTimer();
   setRadarScanningState(false);
-  document.addEventListener("change", (event) => { if (event.target.matches('[name="radar-tf"]') || event.target.matches("#radar-strategy-mode") || event.target.matches("#min-turnover-24h") || event.target.matches("#radar-auto-refresh")) { renderAll(); saveRadarPreferences(); updateAutoRefreshTimer(); } });
+  document.addEventListener("change", (event) => { if (event.target.matches('[name="radar-tf"]') || event.target.matches("#radar-strategy-mode") || event.target.matches("#min-turnover-24h") || event.target.matches("#radar-auto-refresh")) { selectedCanonicalStrategy = null; selectedCanonicalStrategyKey = null; renderAll(); refreshCanonicalSelectedStrategy(); saveRadarPreferences(); updateAutoRefreshTimer(); } });
   document.querySelectorAll("[data-tf-preset]").forEach((button) => button.addEventListener("click", () => { const set = new Set(button.dataset.tfPreset.split(",")); document.querySelectorAll('[name="radar-tf"]').forEach((x) => x.checked = set.has(x.value)); saveRadarPreferences(); if (button.dataset.tfPreset.includes("1m")) { $("radar-state").textContent = "Скальпинг проверяется маленькими батчами, чтобы не упереться в лимиты Cloudflare."; } }));
   $("radar-settings").addEventListener("submit", (e) => { e.preventDefault(); scan(); });
   $("refresh-radar").addEventListener("click", () => scan());
@@ -639,7 +702,7 @@
     setRadarScanningState(false);
     $("radar-state").textContent = "Сканирование остановлено. Уже найденные результаты оставлены в таблице.";
   });
-  $("radar-rows").addEventListener("click", (e) => { const hideButton = e.target.closest("[data-hide]"); if (hideButton) { e.preventDefault(); e.stopPropagation(); hideTicker(hideButton.dataset.hide); return; } if (e.target.closest("a")) return; const tr = e.target.closest("tr[data-row-id]"); if (!tr) return; selectedId = tr.dataset.rowId; renderTable(); renderChart(); resetSelectedChartRefreshTimer(); });
+  $("radar-rows").addEventListener("click", (e) => { const hideButton = e.target.closest("[data-hide]"); if (hideButton) { e.preventDefault(); e.stopPropagation(); hideTicker(hideButton.dataset.hide); return; } if (e.target.closest("a")) return; const tr = e.target.closest("tr[data-row-id]"); if (!tr) return; selectedId = tr.dataset.rowId; renderTable(); renderChart(); refreshCanonicalSelectedStrategy(); resetSelectedChartRefreshTimer(); });
   $("radar-blacklist")?.addEventListener("click", (event) => { const button = event.target.closest("[data-unhide]"); if (!button) return; unhideTicker(button.dataset.unhide); });
   document.querySelector(".radar-table thead")?.addEventListener("click", (event) => {
     const th = event.target.closest("th[data-sort]");
