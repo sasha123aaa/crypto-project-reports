@@ -68,6 +68,17 @@
     return [row.exchange || "BYBIT", row.symbol, row.timeframe, resolveRadarStrategyMode(row)].join(":");
   }
 
+
+  function sameRange(left, right) {
+    if (!left || !right) return false;
+    return (
+      Number(left.aTime) === Number(right.aTime) &&
+      Number(left.bTime) === Number(right.bTime) &&
+      Math.abs(Number(left.aPrice) - Number(right.aPrice)) <= Math.max(Math.abs(Number(left.aPrice)) * 1e-9, 1e-12) &&
+      Math.abs(Number(left.bPrice) - Number(right.bPrice)) <= Math.max(Math.abs(Number(left.bPrice)) * 1e-9, 1e-12)
+    );
+  }
+
   async function loadCanonicalStrategyForSelectedRow(row) {
     if (!row) {
       selectedCanonicalStrategy = null;
@@ -93,6 +104,8 @@
       if (payload?.activeTrade) strategy = { ...payload.activeTrade, sourceType:"active-trade" };
       else if (payload?.plan && payload.plan.status !== "take_hit") strategy = { ...payload.plan, sourceType:"plan-preview" };
       else if (payload?.closedTrade || payload?.plan?.status === "take_hit") strategy = { sourceType:"completed-range", status:"take_hit", completed:true, levels:[] };
+      const canonicalRange = payload?.range || payload?.plan?.range || payload?.activeTrade?.range || null;
+      if (canonicalRange && !sameRange(row.range, canonicalRange)) strategy = null;
       selectedCanonicalStrategyKey = key;
       selectedCanonicalStrategy = strategy;
       if (strategy?.completed || strategy?.status === "take_hit") {
