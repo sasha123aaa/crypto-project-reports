@@ -54,3 +54,52 @@ test('all-level scale includes current price, levels, average, take, A, and B', 
   assert.match(chartJs, /data-strategy-scale=\"all\"/);
   assert.match(chartJs, /data-strategy-scale=\"near\"/);
 });
+
+const css = fs.readFileSync(new URL('../public/assets/app.css', import.meta.url), 'utf8');
+
+function methodBody(source, name) {
+  const start = source.indexOf(`  ${name}(`);
+  assert.notEqual(start, -1, `${name} not found`);
+  const bodyStart = source.indexOf('{', start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    if (source[index] === '}') depth -= 1;
+    if (depth === 0) return source.slice(bodyStart + 1, index);
+  }
+  return '';
+}
+
+test('strategy UI overlay is absolutely positioned and controls keep pointer events', () => {
+  assert.match(css, /\.strategy-ui-overlay\s*\{[\s\S]*position:\s*absolute/);
+  assert.match(css, /\.strategy-scale-controls\s*\{[\s\S]*pointer-events:\s*auto/);
+  assert.match(css, /\.trade-chart-info\s*\{[\s\S]*top:\s*42px/);
+});
+
+test('strategy UI elements are appended as overlay after chart creation', () => {
+  const chartIndex = chartJs.indexOf('LightweightCharts.createChart');
+  const uiAppendIndex = chartJs.indexOf('this.plot.appendChild(this.strategyUiOverlay)');
+  assert.ok(chartIndex >= 0 && uiAppendIndex > chartIndex);
+  assert.doesNotMatch(chartJs, /this\.plot\.appendChild\(this\.strategyLevelsMeta\)/);
+  assert.doesNotMatch(chartJs, /this\.plot\.appendChild\(this\.strategyScaleControls\)/);
+  assert.match(chartJs, /this\.strategyUiOverlay\.append\(this\.strategyLevelsMeta,this\.strategyScaleControls\)/);
+});
+
+test('strategy level scale methods do not alter the time scale or chart data', () => {
+  for (const name of ['setStrategyLevelScaleMode', 'fitAllStrategyLevels', 'applyStrategyLevelScale']) {
+    const body = methodBody(chartJs, name);
+    assert.doesNotMatch(body, /fitContent\s*\(/);
+    assert.doesNotMatch(body, /setVisibleLogicalRange\s*\(/);
+    assert.doesNotMatch(body, /timeScale\(\)[\s\S]*setVisibleRange\s*\(/);
+    assert.doesNotMatch(body, /applyDefaultView\s*\(/);
+    assert.doesNotMatch(body, /series\.setData\s*\(/);
+  }
+  assert.match(methodBody(chartJs, 'fitAllStrategyLevels'), /priceScale\?\.setVisibleRange\?\.\(/);
+});
+
+test('radar chart preserves row candles and row range and guards canonical range mismatches', () => {
+  assert.match(radarJs, /candles:row\.candles/);
+  assert.match(radarJs, /range:row\.range/);
+  assert.match(radarJs, /function sameRange\(left, right\)/);
+  assert.match(radarJs, /canonicalRange && !sameRange\(row\.range, canonicalRange\)/);
+});
